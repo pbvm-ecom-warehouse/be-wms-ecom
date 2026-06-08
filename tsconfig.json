@@ -14,6 +14,7 @@
     "outDir": "./dist",
     "incremental": true,
     "skipLibCheck": true,
+    "baseUrl": "./",
     "strictNullChecks": true,
     "forceConsistentCasingInFileNames": true,
     "noImplicitAny": false,
@@ -26,6 +27,8 @@
       "@app/common/*": ["./libs/common/src/*"],
       "@app/database": ["./libs/database/src"],
       "@app/database/*": ["./libs/database/src/*"],
+      "@app/events": ["./libs/events/src"],
+      "@app/events/*": ["./libs/events/src/*"],
       "@app/shared-types": ["./libs/shared-types/src"],
       "@app/shared-types/*": ["./libs/shared-types/src/*"]
     }

@@ -1,14 +1,14 @@
 {
   "$schema": "https://json.schemastore.org/nest-cli",
   "collection": "@nestjs/schematics",
-  "sourceRoot": "apps/be/src",
+  "sourceRoot": "apps/wms/src",
   "compilerOptions": {
     "deleteOutDir": true,
     "webpack": true,
-    "tsConfigPath": "apps/be/tsconfig.app.json"
+    "tsConfigPath": "apps/wms/tsconfig.app.json"
   },
   "monorepo": true,
-  "root": "apps/be",
+  "root": "apps/wms",
   "projects": {
     "auth": {
       "type": "library",
@@ -35,6 +35,15 @@
       "sourceRoot": "libs/database/src",
       "compilerOptions": {
         "tsConfigPath": "libs/database/tsconfig.lib.json"
+      }
+    },
+    "events": {
+      "type": "library",
+      "root": "libs/events",
+      "entryFile": "index",
+      "sourceRoot": "libs/events/src",
+      "compilerOptions": {
+        "tsConfigPath": "libs/events/tsconfig.lib.json"
       }
     },
     "ecommerce": {
@@ -66,11 +75,11 @@
     },
     "wms": {
       "type": "application",
-      "root": "apps/be",
+      "root": "apps/wms",
       "entryFile": "main",
-      "sourceRoot": "apps/be/src",
+      "sourceRoot": "apps/wms/src",
       "compilerOptions": {
-        "tsConfigPath": "apps/be/tsconfig.app.json"
+        "tsConfigPath": "apps/wms/tsconfig.app.json"
       }
     }
   }

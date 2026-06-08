@@ -3,6 +3,7 @@ import { EcommerceModule } from './ecommerce.module';
 
 async function bootstrap() {
   const app = await NestFactory.create(EcommerceModule);
-  await app.listen(process.env.port ?? 3000);
+  app.setGlobalPrefix('api/shop');
+  await app.listen(process.env.ECOM_PORT ?? 3002);
 }
 bootstrap();

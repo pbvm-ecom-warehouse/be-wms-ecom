@@ -1,0 +1,653 @@
+// ============================================================
+// WMS — wms_db (1 trong 2 logical DB, cùng cluster với ecom_db)
+// Sở hữu: warehouse / supplier / shipping / auth-wms
+// Liên kết sang Ecommerce CHỈ qua `sku` + id tham chiếu (orderId...) — không đọc chéo.
+// Nguồn: docs/overview/erd.dbml + data-ownership.md
+// Ref nội bộ lưu dưới dạng ObjectId scalar (không dựng Prisma relation) — đúng triết lý
+// "link bằng id, đồng bộ qua event", tránh ~30 đường ref đổ về users.
+// ============================================================
+
+datasource db {
+  provider = "mongodb"
+  url      = env("WMS_DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../generated/prisma"
+}
+
+// ========================= ENUMS =========================
+enum WarehouseType {
+  CENTRAL
+  SUB
+}
+
+enum ItemType {
+  MATERIAL
+  CUP_BLANK
+  CUP_PRINTED
+  PACKAGING
+}
+
+enum LotStatus {
+  ACTIVE
+  EXPIRED
+}
+
+enum MovementType {
+  RECEIVE
+  PUTAWAY
+  ISSUE
+  TRANSFER_OUT
+  TRANSFER_IN
+  ADJUST
+  SCRAP
+  PRINT_CONSUME
+  PRINT_OUTPUT
+}
+
+enum PoStatus {
+  DRAFT
+  CONFIRMED
+  SENT
+  PARTIALLY_RECEIVED
+  COMPLETED
+  CANCELLED
+}
+
+enum GrnStatus {
+  DRAFT
+  CONFIRMED
+  APPROVED
+}
+
+enum PutawayStatus {
+  PENDING
+  COMPLETED
+}
+
+enum PrintJobStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+enum GoodsIssueStatus {
+  DRAFT
+  CONFIRMED
+}
+
+enum StockCountStatus {
+  DRAFT
+  IN_PROGRESS
+  COMPLETED
+  APPROVED
+}
+
+enum StockTransferStatus {
+  DRAFT
+  CONFIRMED
+  IN_TRANSIT
+  COMPLETED
+  CANCELLED
+}
+
+enum ScrapNoteStatus {
+  DRAFT
+  APPROVED
+  REJECTED
+}
+
+enum GoodsReturnStatus {
+  DRAFT
+  INSPECTED
+  RESTOCKED
+  CANCELLED
+}
+
+enum ReturnCondition {
+  GOOD
+  DAMAGED
+}
+
+enum SupplierStatus {
+  ACTIVE
+  INACTIVE
+  BLACKLIST
+}
+
+enum CarrierStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum ShipmentStatus {
+  PENDING
+  PICKED_UP
+  IN_TRANSIT
+  DELIVERED
+  FAILED
+  RETURNING
+  RETURNED
+}
+
+enum UserStatus {
+  ACTIVE
+  LOCKED
+}
+
+enum PaymentMethod {
+  COD
+  ONLINE
+}
+
+// ===================== COMPOSITE TYPES =====================
+type AltUnit {
+  unit   String
+  factor Float
+}
+
+type ItemAttribute {
+  name  String
+  value String
+  code  String?
+}
+
+type ShipmentStatusLog {
+  status ShipmentStatus
+  at     DateTime
+  by     String? @db.ObjectId
+  note   String?
+}
+
+// =================== Cấu trúc kho (master) ===================
+model Warehouse {
+  id        String        @id @default(auto()) @map("_id") @db.ObjectId
+  name      String
+  type      WarehouseType
+  address   String?
+  isActive  Boolean       @default(true)
+  createdBy String?       @db.ObjectId
+  updatedBy String?       @db.ObjectId
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+  deletedAt DateTime?
+
+  @@map("warehouses")
+}
+
+model Zone {
+  id          String    @id @default(auto()) @map("_id") @db.ObjectId
+  warehouseId String    @db.ObjectId
+  name        String
+  code        String
+  createdBy   String?   @db.ObjectId
+  updatedBy   String?   @db.ObjectId
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+
+  @@map("zones")
+}
+
+model Rack {
+  id        String    @id @default(auto()) @map("_id") @db.ObjectId
+  zoneId    String    @db.ObjectId
+  name      String
+  code      String
+  createdBy String?   @db.ObjectId
+  updatedBy String?   @db.ObjectId
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  @@map("racks")
+}
+
+model Shelf {
+  id        String    @id @default(auto()) @map("_id") @db.ObjectId
+  rackId    String    @db.ObjectId
+  level     Int
+  code      String    // barcode vị trí
+  isStaging Boolean   @default(false)
+  createdBy String?   @db.ObjectId
+  updatedBy String?   @db.ObjectId
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  @@map("shelves")
+}
+
+// ===================== Hàng hóa & tồn =====================
+model WarehouseItem {
+  id             String          @id @default(auto()) @map("_id") @db.ObjectId
+  sku            String          @unique // khóa liên kết Ecommerce
+  barcode        String?
+  altBarcodes    String[]
+  name           String
+  type           ItemType
+  unit           String // đơn vị cơ sở
+  altUnits       AltUnit[]
+  attributes     ItemAttribute[]
+  isPerishable   Boolean         @default(false)
+  nearExpiryDays Int?
+  isActive       Boolean         @default(true)
+  createdBy      String?         @db.ObjectId
+  updatedBy      String?         @db.ObjectId
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  deletedAt      DateTime?
+
+  @@map("warehouse_items")
+}
+
+// Lớp 1 — tồn tổng. available = onHand - reserved - expired (số đẩy sang Ecom).
+model StockBalance {
+  id          String   @id @default(auto()) @map("_id") @db.ObjectId
+  itemId      String   @db.ObjectId
+  warehouseId String   @db.ObjectId
+  onHand      Int      @default(0)
+  reserved    Int      @default(0)
+  expired     Int      @default(0)
+  minQuantity Int      @default(0)
+  updatedAt   DateTime @updatedAt
+
+  @@unique([itemId, warehouseId])
+  @@map("stock_balances")
+}
+
+// Lớp 2 — tồn theo vị trí.
+model InventoryStock {
+  id          String   @id @default(auto()) @map("_id") @db.ObjectId
+  itemId      String   @db.ObjectId
+  warehouseId String   @db.ObjectId
+  shelfId     String   @db.ObjectId
+  lotId       String?  @db.ObjectId
+  quantity    Int      @default(0)
+  updatedAt   DateTime @updatedAt
+
+  @@map("inventory_stocks")
+}
+
+model Lot {
+  id           String    @id @default(auto()) @map("_id") @db.ObjectId
+  itemId       String    @db.ObjectId
+  lotNumber    String
+  expiryDate   DateTime?
+  receivedDate DateTime?
+  status       LotStatus @default(ACTIVE)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@map("lots")
+}
+
+// SỔ CÁI append-only — BẤT BIẾN: không updatedAt/deletedAt
+model StockMovement {
+  id          String       @id @default(auto()) @map("_id") @db.ObjectId
+  itemId      String       @db.ObjectId
+  warehouseId String       @db.ObjectId
+  shelfId     String?      @db.ObjectId
+  lotId       String?      @db.ObjectId
+  type        MovementType
+  quantity    Int // có dấu (+ nhập / - xuất)
+  refType     String?
+  refId       String?      @db.ObjectId
+  createdBy   String?      @db.ObjectId
+  createdAt   DateTime     @default(now())
+
+  @@map("stock_movements")
+}
+
+// ================ Mua hàng / nhập (chứng từ) ================
+model PurchaseOrder {
+  id           String   @id @default(auto()) @map("_id") @db.ObjectId
+  supplierId   String   @db.ObjectId
+  warehouseId  String   @db.ObjectId
+  orderDate    DateTime?
+  expectedDate DateTime?
+  status       PoStatus @default(DRAFT)
+  note         String?
+  createdBy    String?  @db.ObjectId
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@map("purchase_orders")
+}
+
+model PurchaseOrderItem {
+  id              String  @id @default(auto()) @map("_id") @db.ObjectId
+  purchaseOrderId String  @db.ObjectId
+  itemId          String  @db.ObjectId
+  expectedQty     Int
+  unit            String
+  unitPrice       Float
+
+  @@map("purchase_order_items")
+}
+
+model GoodsReceiveNote {
+  id              String    @id @default(auto()) @map("_id") @db.ObjectId
+  purchaseOrderId String?   @db.ObjectId
+  warehouseId     String    @db.ObjectId
+  receiveDate     DateTime?
+  status          GrnStatus @default(DRAFT)
+  note            String?
+  createdBy       String?   @db.ObjectId // RECEIVER
+  approvedBy      String?   @db.ObjectId // MANAGER
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@map("goods_receive_notes")
+}
+
+model GoodsReceiveItem {
+  id          String    @id @default(auto()) @map("_id") @db.ObjectId
+  grnId       String    @db.ObjectId
+  itemId      String    @db.ObjectId
+  expectedQty Int?
+  actualQty   Int
+  unit        String
+  lotNumber   String?
+  expiryDate  DateTime?
+  note        String?
+
+  @@map("goods_receive_items")
+}
+
+model PutawayTask {
+  id          String        @id @default(auto()) @map("_id") @db.ObjectId
+  grnId       String        @db.ObjectId
+  warehouseId String        @db.ObjectId
+  status      PutawayStatus @default(PENDING)
+  createdBy   String?       @db.ObjectId // RECEIVER
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  @@map("putaway_tasks")
+}
+
+model PutawayItem {
+  id            String  @id @default(auto()) @map("_id") @db.ObjectId
+  putAwayTaskId String  @db.ObjectId
+  itemId        String  @db.ObjectId
+  lotId         String? @db.ObjectId
+  quantity      Int
+  shelfId       String  @db.ObjectId
+
+  @@map("putaway_items")
+}
+
+// ==================== In ly (make-to-order) ====================
+model PrintJob {
+  id          String         @id @default(auto()) @map("_id") @db.ObjectId
+  orderId     String?        @db.ObjectId // CROSS-APP ref → ecom orders.id
+  warehouseId String         @db.ObjectId
+  designFile  String?
+  status      PrintJobStatus @default(PENDING)
+  note        String?
+  createdBy   String?        @db.ObjectId // MANAGER
+  confirmedBy String?        @db.ObjectId // PRINTER
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  @@map("print_jobs")
+}
+
+model PrintJobItem {
+  id           String @id @default(auto()) @map("_id") @db.ObjectId
+  printJobId   String @db.ObjectId
+  inputItemId  String @db.ObjectId // CUP_BLANK
+  outputItemId String @db.ObjectId // CUP_PRINTED (per-design)
+  quantity     Int
+
+  @@map("print_job_items")
+}
+
+// ============= Xuất / kiểm / chuyển / hủy / hoàn =============
+model GoodsIssue {
+  id          String           @id @default(auto()) @map("_id") @db.ObjectId
+  orderId     String?          @db.ObjectId // CROSS-APP ref → ecom orders.id
+  warehouseId String           @db.ObjectId
+  issueDate   DateTime?
+  status      GoodsIssueStatus @default(DRAFT)
+  note        String?
+  createdBy   String?          @db.ObjectId // PICKER
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  @@map("goods_issues")
+}
+
+model GoodsIssueItem {
+  id           String  @id @default(auto()) @map("_id") @db.ObjectId
+  goodsIssueId String  @db.ObjectId
+  itemId       String  @db.ObjectId
+  lotId        String? @db.ObjectId
+  quantity     Int
+  shelfId      String? @db.ObjectId
+  unit         String
+
+  @@map("goods_issue_items")
+}
+
+model StockCount {
+  id          String           @id @default(auto()) @map("_id") @db.ObjectId
+  warehouseId String           @db.ObjectId
+  zoneId      String?          @db.ObjectId
+  countDate   DateTime?
+  status      StockCountStatus @default(DRAFT)
+  note        String?
+  createdBy   String?          @db.ObjectId // MANAGER
+  countedBy   String?          @db.ObjectId // COUNTER
+  approvedBy  String?          @db.ObjectId // MANAGER
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  @@map("stock_counts")
+}
+
+model StockCountItem {
+  id           String  @id @default(auto()) @map("_id") @db.ObjectId
+  stockCountId String  @db.ObjectId
+  itemId       String  @db.ObjectId
+  shelfId      String? @db.ObjectId
+  lotId        String? @db.ObjectId
+  systemQty    Int
+  actualQty    Int
+  delta        Int
+  reason       String?
+
+  @@map("stock_count_items")
+}
+
+model StockTransfer {
+  id              String              @id @default(auto()) @map("_id") @db.ObjectId
+  fromWarehouseId String              @db.ObjectId
+  toWarehouseId   String              @db.ObjectId
+  transferDate    DateTime?
+  status          StockTransferStatus @default(DRAFT)
+  note            String?
+  createdBy       String?             @db.ObjectId // MANAGER
+  approvedBy      String?             @db.ObjectId // MANAGER
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+
+  @@map("stock_transfers")
+}
+
+model StockTransferItem {
+  id              String  @id @default(auto()) @map("_id") @db.ObjectId
+  stockTransferId String  @db.ObjectId
+  itemId          String  @db.ObjectId
+  lotId           String? @db.ObjectId
+  quantity        Int
+  fromShelfId     String? @db.ObjectId
+  toShelfId       String? @db.ObjectId
+
+  @@map("stock_transfer_items")
+}
+
+model ScrapNote {
+  id          String          @id @default(auto()) @map("_id") @db.ObjectId
+  warehouseId String          @db.ObjectId
+  status      ScrapNoteStatus @default(DRAFT)
+  note        String?
+  createdBy   String?         @db.ObjectId // COUNTER/RECEIVER
+  approvedBy  String?         @db.ObjectId // MANAGER
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+
+  @@map("scrap_notes")
+}
+
+model ScrapNoteItem {
+  id          String  @id @default(auto()) @map("_id") @db.ObjectId
+  scrapNoteId String  @db.ObjectId
+  itemId      String  @db.ObjectId
+  lotId       String? @db.ObjectId
+  shelfId     String? @db.ObjectId
+  quantity    Int
+  reason      String?
+
+  @@map("scrap_note_items")
+}
+
+model GoodsReturn {
+  id          String            @id @default(auto()) @map("_id") @db.ObjectId
+  orderId     String?           @db.ObjectId // CROSS-APP ref → ecom orders.id
+  warehouseId String            @db.ObjectId
+  status      GoodsReturnStatus @default(DRAFT)
+  note        String?
+  createdBy   String?           @db.ObjectId // RECEIVER
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+
+  @@map("goods_returns")
+}
+
+model GoodsReturnItem {
+  id            String          @id @default(auto()) @map("_id") @db.ObjectId
+  goodsReturnId String          @db.ObjectId
+  itemId        String          @db.ObjectId
+  quantity      Int
+  condition     ReturnCondition
+  shelfId       String?         @db.ObjectId
+  lotId         String?         @db.ObjectId
+
+  @@map("goods_return_items")
+}
+
+// ====================== Supplier (master) ======================
+model Supplier {
+  id          String         @id @default(auto()) @map("_id") @db.ObjectId
+  code        String         @unique
+  name        String
+  contactName String?
+  phone       String?
+  email       String?
+  address     String?
+  taxCode     String?
+  status      SupplierStatus @default(ACTIVE)
+  note        String?
+  createdBy   String?        @db.ObjectId
+  updatedBy   String?        @db.ObjectId
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+  deletedAt   DateTime?
+
+  @@map("suppliers")
+}
+
+model SupplierItem {
+  id               String    @id @default(auto()) @map("_id") @db.ObjectId
+  itemId           String    @unique @db.ObjectId // 1 SKU ↔ 1 NCC chính
+  supplierId       String    @db.ObjectId
+  supplierItemCode String?
+  purchasePrice    Float?
+  leadTimeDays     Int?
+  minOrderQty      Int?
+  isActive         Boolean   @default(true)
+  createdBy        String?   @db.ObjectId
+  updatedBy        String?   @db.ObjectId
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  deletedAt        DateTime?
+
+  @@map("supplier_items")
+}
+
+// ========================== Shipping ==========================
+model Carrier {
+  id          String        @id @default(auto()) @map("_id") @db.ObjectId
+  name        String
+  code        String        @unique
+  status      CarrierStatus @default(ACTIVE)
+  contactInfo Json?
+  note        String?
+  apiConfig   Json? // optional — chừa cho tích hợp API hãng
+  createdBy   String?       @db.ObjectId
+  updatedBy   String?       @db.ObjectId
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  deletedAt   DateTime?
+
+  @@map("carriers")
+}
+
+model Shipment {
+  id                 String              @id @default(auto()) @map("_id") @db.ObjectId
+  orderId            String?             @db.ObjectId // CROSS-APP ref → ecom orders.id
+  goodsIssueId       String?             @db.ObjectId // 1 đơn = 1 vận đơn
+  fulfillWarehouseId String              @db.ObjectId
+  carrierId          String?             @db.ObjectId
+  trackingNumber     String?
+  shipmentStatus     ShipmentStatus      @default(PENDING)
+  recipient          Json? // snapshot {name,phone,address}
+  paymentMethod      PaymentMethod
+  codAmount          Float?
+  attempts           Int                 @default(0)
+  failReason         String?
+  statusHistory      ShipmentStatusLog[]
+  shippedAt          DateTime?
+  deliveredAt        DateTime?
+  createdBy          String?             @db.ObjectId
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+
+  @@map("shipments")
+}
+
+// ====================== Auth-WMS (master) ======================
+model User {
+  id                 String     @id @default(auto()) @map("_id") @db.ObjectId
+  username           String     @unique
+  email              String?
+  passwordHash       String
+  name               String?
+  roles              String[] // ADMIN/MANAGER/RECEIVER/PICKER/PRINTER/COUNTER
+  status             UserStatus @default(ACTIVE)
+  warehouseId        String?    @db.ObjectId // kho mặc định
+  mustChangePassword Boolean    @default(false)
+  createdBy          String?    @db.ObjectId
+  updatedBy          String?    @db.ObjectId
+  createdAt          DateTime   @default(now())
+  updatedAt          DateTime   @updatedAt
+  deletedAt          DateTime?
+
+  @@map("users")
+}
+
+model UserRefreshToken {
+  id        String    @id @default(auto()) @map("_id") @db.ObjectId
+  userId    String    @db.ObjectId
+  tokenHash String
+  expiresAt DateTime
+  createdAt DateTime  @default(now())
+  revokedAt DateTime?
+
+  @@map("user_refresh_tokens")
+}

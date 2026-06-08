@@ -55,8 +55,5 @@ pids
 # Diagnostic reports (https://nodejs.org/api/report.html)
 report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
 
-/generated/prisma
-
-/generated/prisma
-
-/generated/prisma
+# Prisma generated clients (mỗi app 1 client riêng cho 1 logical DB)
+/apps/*/generated
