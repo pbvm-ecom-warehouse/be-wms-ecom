@@ -52,7 +52,8 @@
       "entryFile": "main",
       "sourceRoot": "apps/ecommerce/src",
       "compilerOptions": {
-        "tsConfigPath": "apps/ecommerce/tsconfig.app.json"
+        "tsConfigPath": "apps/ecommerce/tsconfig.app.json",
+        "plugins": ["@nestjs/swagger"]
       }
     },
     "notification": {
@@ -79,7 +80,8 @@
       "entryFile": "main",
       "sourceRoot": "apps/wms/src",
       "compilerOptions": {
-        "tsConfigPath": "apps/wms/tsconfig.app.json"
+        "tsConfigPath": "apps/wms/tsconfig.app.json",
+        "plugins": ["@nestjs/swagger"]
       }
     }
   }
