@@ -1,6 +1,8 @@
 import { BullModule } from '@nestjs/bullmq';
 import { Module } from '@nestjs/common';
-import { ConfigModule } from '@nestjs/config';
+import { ConfigModule, ConfigService } from '@nestjs/config';
+import { LoggerModule } from 'nestjs-pino';
+import { CommonModule, buildPinoOptions } from '@app/common';
 import { EventsModule, QUEUES } from '@app/events';
 import { validateEnv } from './config/env.validation';
 import { NotificationConsumer } from './notification.consumer';
@@ -10,8 +12,13 @@ import { NotificationService } from './notification.service';
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true, validate: validateEnv }),
+    LoggerModule.forRootAsync({
+      inject: [ConfigService],
+      useFactory: (config: ConfigService) => buildPinoOptions(config),
+    }),
+    CommonModule, // global filter/interceptor/pipe
     EventsModule, // BullMQ + Redis
-    BullModule.registerQueue({ name: QUEUES.NOTIFICATION }), // queue đang consume
+    BullModule.registerQueue({ name: QUEUES.NOTIFICATION }),
   ],
   controllers: [NotificationController],
   providers: [NotificationService, NotificationConsumer],

@@ -1,26 +1,18 @@
-import { ValidationPipe } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { NestFactory } from '@nestjs/core';
-import { AllExceptionsFilter } from '@app/common';
-import helmet from 'helmet';
+import { setupApp } from '@app/common';
 import { Env } from './config/env.validation';
 import { NotificationModule } from './notification.module';
 
 async function bootstrap() {
-  const app = await NestFactory.create(NotificationModule);
+  const app = await NestFactory.create(NotificationModule, { bufferLogs: true });
   const config = app.get(ConfigService<Env, true>);
 
-  app.use(helmet());
-  app.setGlobalPrefix('api/notification');
-  app.useGlobalPipes(
-    new ValidationPipe({
-      whitelist: true,
-      forbidNonWhitelisted: true,
-      transform: true,
-    }),
-  );
-  app.useGlobalFilters(new AllExceptionsFilter());
-  app.enableShutdownHooks(); // đóng kết nối BullMQ sạch khi tắt
+  setupApp(app, {
+    corsOrigins: undefined, // consumer thuần, không có FE gọi CORS
+    isProd: config.get('NODE_ENV', { infer: true }) === 'production',
+    globalPrefix: 'api/notification',
+  });
 
   await app.listen(config.get('NOTIFICATION_PORT', { infer: true }));
 }
