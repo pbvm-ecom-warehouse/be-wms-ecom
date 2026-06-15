@@ -12,3 +12,4 @@ export * from './logging/pino.options';
 export * from './logging/sanitize';
 export * from './throttle/throttler.config';
 export * from './bootstrap/setup-app';
+export * from './bootstrap/setup-swagger';
