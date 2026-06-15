@@ -1,6 +1,7 @@
 import { InjectQueue } from '@nestjs/bullmq';
 import { Controller, Get, ServiceUnavailableException } from '@nestjs/common';
 import { InjectConnection } from '@nestjs/mongoose';
+import { SkipThrottle } from '@app/common';
 import { QUEUES } from '@app/events';
 import { Queue } from 'bullmq';
 import { Connection, ConnectionStates } from 'mongoose';
@@ -8,7 +9,9 @@ import { Connection, ConnectionStates } from 'mongoose';
 /**
  * GET /api/wms/health — kiểm tra nhanh kết nối hạ tầng: Mongoose (wms_db) + Redis.
  * Trả 503 nếu một trong hai down để load balancer/monitor bắt được.
+ * Bỏ throttle: monitor/load balancer gọi liên tục.
  */
+@SkipThrottle()
 @Controller('health')
 export class HealthController {
   constructor(

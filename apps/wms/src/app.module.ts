@@ -1,7 +1,9 @@
 import { Module } from '@nestjs/common';
-import { ConfigModule } from '@nestjs/config';
+import { ConfigModule, ConfigService } from '@nestjs/config';
 import { APP_GUARD } from '@nestjs/core';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
+import { LoggerModule } from 'nestjs-pino';
+import { CommonModule, buildPinoOptions, buildThrottlerOptions } from '@app/common';
 import { DatabaseModule } from '@app/database';
 import { EventsModule } from '@app/events';
 import { AppController } from './app.controller';
@@ -14,8 +16,15 @@ import { validateEnv } from './config/env.validation';
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true, validate: validateEnv }),
-    // Rate limit toàn cục (chống brute-force login, lạm dụng API): 100 req / 60s / IP.
-    ThrottlerModule.forRoot([{ ttl: 60_000, limit: 100 }]),
+    LoggerModule.forRootAsync({
+      inject: [ConfigService],
+      useFactory: (config: ConfigService) => buildPinoOptions(config),
+    }),
+    ThrottlerModule.forRootAsync({
+      inject: [ConfigService],
+      useFactory: (config: ConfigService) => buildThrottlerOptions(config),
+    }),
+    CommonModule, // global filter/interceptor/pipe
     DatabaseModule.forApp('WMS_DATABASE_URL'), // Mongoose → wms_db
     EventsModule, // BullMQ + Redis
     AuthModule, // đăng nhập nhân viên (users) + JWT
