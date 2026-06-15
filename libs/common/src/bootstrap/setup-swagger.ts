@@ -5,7 +5,7 @@ export interface SetupSwaggerOptions {
   title: string;
   description?: string;
   version?: string;
-  /** Path tuyệt đối để serve UI, vd 'api/wms/docs'. */
+  /** Route path để serve UI, vd 'api/wms/docs'. */
   docsPath: string;
   isProd: boolean;
 }
@@ -20,12 +20,14 @@ export function setupSwagger(
 ): void {
   if (opts.isProd) return;
 
-  const config = new DocumentBuilder()
+  const builder = new DocumentBuilder()
     .setTitle(opts.title)
-    .setDescription(opts.description ?? '')
     .setVersion(opts.version ?? '1.0')
-    .addBearerAuth()
-    .build();
+    .addBearerAuth();
+
+  if (opts.description) builder.setDescription(opts.description);
+
+  const config = builder.build();
 
   const document = SwaggerModule.createDocument(app, config);
   SwaggerModule.setup(opts.docsPath, app, document);
