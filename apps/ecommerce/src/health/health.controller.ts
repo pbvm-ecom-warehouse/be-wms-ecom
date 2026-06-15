@@ -1,6 +1,12 @@
 import { InjectQueue } from '@nestjs/bullmq';
 import { Controller, Get, ServiceUnavailableException } from '@nestjs/common';
 import { InjectConnection } from '@nestjs/mongoose';
+import {
+  ApiOkResponse,
+  ApiOperation,
+  ApiServiceUnavailableResponse,
+  ApiTags,
+} from '@nestjs/swagger';
 import { SkipThrottle } from '@app/common';
 import { QUEUES } from '@app/events';
 import { Queue } from 'bullmq';
@@ -11,6 +17,7 @@ import { Connection, ConnectionStates } from 'mongoose';
  * Trả 503 nếu một trong hai down. Đối xứng với health-check bên WMS.
  * Bỏ throttle: monitor/load balancer gọi liên tục.
  */
+@ApiTags('health')
 @SkipThrottle()
 @Controller('health')
 export class HealthController {
@@ -20,6 +27,11 @@ export class HealthController {
   ) {}
 
   @Get()
+  @ApiOperation({ summary: 'Kiểm tra kết nối MongoDB + Redis' })
+  @ApiOkResponse({ description: '{ status: ok, db: up, redis: up }' })
+  @ApiServiceUnavailableResponse({
+    description: '{ status: error, db, redis } — một trong hai down',
+  })
   async check() {
     const db =
       this.conn.readyState === ConnectionStates.connected ? 'up' : 'down';
