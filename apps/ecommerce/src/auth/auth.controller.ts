@@ -7,6 +7,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { CurrentUser, JwtAuthGuard } from '@app/auth';
+import { AuthThrottle } from '@app/common';
 import { AuthService } from './auth.service';
 import { LoginDto, LogoutDto, RefreshDto, RegisterDto } from './dto/auth.dto';
 
@@ -19,18 +20,21 @@ export class AuthController {
   constructor(private readonly auth: AuthService) {}
 
   @Post('register')
+  @AuthThrottle()
   register(@Body() dto: RegisterDto) {
     return this.auth.register(dto);
   }
 
   @Post('login')
   @HttpCode(200)
+  @AuthThrottle()
   login(@Body() dto: LoginDto) {
     return this.auth.login(dto.email, dto.password);
   }
 
   @Post('refresh')
   @HttpCode(200)
+  @AuthThrottle()
   refresh(@Body() dto: RefreshDto) {
     return this.auth.refresh(dto.refreshToken);
   }

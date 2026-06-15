@@ -1,7 +1,9 @@
 import { Module } from '@nestjs/common';
-import { ConfigModule } from '@nestjs/config';
+import { ConfigModule, ConfigService } from '@nestjs/config';
 import { APP_GUARD } from '@nestjs/core';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
+import { LoggerModule } from 'nestjs-pino';
+import { CommonModule, buildPinoOptions, buildThrottlerOptions } from '@app/common';
 import { DatabaseModule } from '@app/database';
 import { EventsModule } from '@app/events';
 import { AuthModule } from './auth/auth.module';
@@ -14,8 +16,15 @@ import { HealthModule } from './health/health.module';
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true, validate: validateEnv }),
-    // Rate limit toàn cục (chống brute-force login khách, lạm dụng API): 100 req / 60s / IP.
-    ThrottlerModule.forRoot([{ ttl: 60_000, limit: 100 }]),
+    LoggerModule.forRootAsync({
+      inject: [ConfigService],
+      useFactory: (config: ConfigService) => buildPinoOptions(config),
+    }),
+    ThrottlerModule.forRootAsync({
+      inject: [ConfigService],
+      useFactory: (config: ConfigService) => buildThrottlerOptions(config),
+    }),
+    CommonModule, // global filter/interceptor/pipe
     DatabaseModule.forApp('ECOM_DATABASE_URL'), // Mongoose → ecom_db
     EventsModule, // BullMQ + Redis
     AuthModule, // đăng ký/đăng nhập khách (customers) + JWT
@@ -25,7 +34,7 @@ import { HealthModule } from './health/health.module';
   controllers: [EcommerceController],
   providers: [
     EcommerceService,
-    { provide: APP_GUARD, useClass: ThrottlerGuard }, // áp throttle cho mọi route
+    { provide: APP_GUARD, useClass: ThrottlerGuard },
   ],
 })
 export class EcommerceModule {}
