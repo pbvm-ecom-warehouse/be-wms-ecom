@@ -10,6 +10,13 @@ const envSchema = z.object({
     .enum(['development', 'test', 'production'])
     .default('development'),
 
+  // ---- Logging & throttle (chuẩn cross-cutting) ----
+  LOG_LEVEL: z
+    .enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace'])
+    .default('info'),
+  THROTTLE_DEFAULT_TTL: z.coerce.number().int().positive().default(60_000),
+  THROTTLE_DEFAULT_LIMIT: z.coerce.number().int().positive().default(100),
+
   ECOM_DATABASE_URL: z.string().min(1),
 
   // ---- Redis (BullMQ) ----
