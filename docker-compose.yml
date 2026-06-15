@@ -1,0 +1,54 @@
+# Hạ tầng dev: MongoDB (replica set rs0) + Redis.
+# Replica set là BẮT BUỘC vì code dùng transaction (idempotency consumer + saga reserve).
+#   docker compose up -d
+# Lần đầu, service `mongo-init` tự chạy rs.initiate() rồi thoát.
+services:
+  mongo:
+    image: mongo:7
+    container_name: wms-ecom-mongo
+    command: ['mongod', '--replSet', 'rs0', '--bind_ip_all']
+    ports:
+      - '27017:27017'
+    volumes:
+      - mongo-data:/data/db
+    healthcheck:
+      test: ['CMD', 'mongosh', '--quiet', '--eval', 'db.runCommand({ ping: 1 })']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Khởi tạo replica set 1 node (chạy 1 lần rồi thoát).
+  mongo-init:
+    image: mongo:7
+    depends_on:
+      mongo:
+        condition: service_healthy
+    restart: 'no'
+    entrypoint:
+      - bash
+      - -c
+      - |
+        mongosh --host mongo:27017 --quiet --eval '
+          try { rs.status(); print("rs0 đã sẵn sàng"); }
+          catch (e) {
+            rs.initiate({ _id: "rs0", members: [{ _id: 0, host: "localhost:27017" }] });
+            print("Đã khởi tạo rs0");
+          }'
+
+  redis:
+    image: redis:7-alpine
+    container_name: wms-ecom-redis
+    # Dev không đặt password; production hãy thêm: command: ['redis-server', '--requirepass', '<pass>']
+    ports:
+      - '6379:6379'
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  mongo-data:
+  redis-data:

@@ -16,6 +16,8 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
         connection: {
           host: config.get<string>('REDIS_HOST', 'localhost'),
           port: parseInt(config.get<string>('REDIS_PORT', '6379'), 10),
+          // Redis production bắt buộc có auth — undefined nếu env trống (dev local).
+          password: config.get<string>('REDIS_PASSWORD') || undefined,
         },
         defaultJobOptions: {
           attempts: 5,
