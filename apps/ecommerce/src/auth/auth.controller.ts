@@ -32,7 +32,9 @@ export class AuthController {
   @Post('register')
   @AuthThrottle()
   @ApiOperation({ summary: 'Đăng ký tài khoản khách mới' })
-  @ApiCreatedResponse({ description: 'Trả accessToken + refreshToken, gửi email xác minh' })
+  @ApiCreatedResponse({
+    description: 'Trả accessToken + refreshToken, gửi email xác minh',
+  })
   @ApiConflictResponse({ description: 'Email đã được đăng ký' })
   register(@Body() dto: RegisterDto) {
     return this.auth.register(dto);
@@ -42,7 +44,9 @@ export class AuthController {
   @HttpCode(200)
   @AuthThrottle()
   @ApiOperation({ summary: 'Đăng nhập khách hàng' })
-  @ApiOkResponse({ description: 'Trả accessToken + refreshToken + emailVerified' })
+  @ApiOkResponse({
+    description: 'Trả accessToken + refreshToken + emailVerified',
+  })
   @ApiUnauthorizedResponse({ description: 'Sai email hoặc mật khẩu' })
   login(@Body() dto: LoginDto) {
     return this.auth.login(dto.email, dto.password);
@@ -53,7 +57,9 @@ export class AuthController {
   @AuthThrottle()
   @ApiOperation({ summary: 'Đổi access token mới bằng refresh token' })
   @ApiOkResponse({ description: 'Trả accessToken + refreshToken mới (rotate)' })
-  @ApiUnauthorizedResponse({ description: 'Refresh token không hợp lệ hoặc hết hạn' })
+  @ApiUnauthorizedResponse({
+    description: 'Refresh token không hợp lệ hoặc hết hạn',
+  })
   refresh(@Body() dto: RefreshDto) {
     return this.auth.refresh(dto.refreshToken);
   }
@@ -64,7 +70,9 @@ export class AuthController {
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Đăng xuất — thu hồi refresh token' })
   @ApiOkResponse({ description: '{ success: true }' })
-  @ApiUnauthorizedResponse({ description: 'Access token thiếu hoặc không hợp lệ' })
+  @ApiUnauthorizedResponse({
+    description: 'Access token thiếu hoặc không hợp lệ',
+  })
   logout(@Body() dto: LogoutDto) {
     return this.auth.logout(dto.refreshToken);
   }
@@ -74,7 +82,9 @@ export class AuthController {
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Thông tin khách đang đăng nhập' })
   @ApiOkResponse({ description: 'Document Customer (không có passwordHash)' })
-  @ApiUnauthorizedResponse({ description: 'Access token thiếu hoặc không hợp lệ' })
+  @ApiUnauthorizedResponse({
+    description: 'Access token thiếu hoặc không hợp lệ',
+  })
   me(@CurrentUser('sub') customerId: string) {
     return this.auth.me(customerId);
   }
