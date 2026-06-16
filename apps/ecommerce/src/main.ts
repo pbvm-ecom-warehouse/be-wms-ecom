@@ -1,17 +1,17 @@
-import { ConfigService } from '@nestjs/config';
+import { ConfigService, ConfigType } from '@nestjs/config';
 import { NestFactory } from '@nestjs/core';
 import { setupApp, setupSwagger } from '@app/common';
-import { Env } from './config/env.validation';
+import { appConfig } from './config/app.config';
 import { EcommerceModule } from './ecommerce.module';
 
 async function bootstrap() {
   const app = await NestFactory.create(EcommerceModule, { bufferLogs: true });
-  const config = app.get(ConfigService<Env, true>);
-  const isProd = config.get('NODE_ENV', { infer: true }) === 'production';
+  const config = app.get(ConfigService);
+  const appCfg = config.get<ConfigType<typeof appConfig>>('app')!;
 
   setupApp(app, {
-    corsOrigins: config.get('ECOM_CORS_ORIGINS', { infer: true }),
-    isProd,
+    corsOrigins: appCfg.corsOrigins,
+    isProd: appCfg.env === 'production',
     globalPrefix: 'api/shop',
   });
 
@@ -19,9 +19,9 @@ async function bootstrap() {
     title: 'Ecommerce API',
     description: 'Bán hàng: auth khách, catalog, đơn hàng, thanh toán',
     docsPath: 'api/shop/docs',
-    isProd,
+    isProd: appCfg.env === 'production',
   });
 
-  await app.listen(config.get('ECOM_PORT', { infer: true }));
+  await app.listen(appCfg.port);
 }
 void bootstrap();

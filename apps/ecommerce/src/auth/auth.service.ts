@@ -1,26 +1,27 @@
 import { InjectQueue } from '@nestjs/bullmq';
 import {
   ConflictException,
+  Inject,
   Injectable,
   UnauthorizedException,
 } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
+import type { ConfigType } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
-import { InjectModel } from '@nestjs/mongoose';
+import type { JwtSignOptions } from '@nestjs/jwt';
 import { JwtPayload } from '@app/auth';
 import { durationToMs, generateOpaqueToken, hashToken } from '@app/common';
 import { EVENTS, QUEUES, type CustomerEmailActionPayload } from '@app/events';
 import * as bcrypt from 'bcryptjs';
 import { Queue } from 'bullmq';
-import { Model, Types } from 'mongoose';
-import { Env } from '../config/env.validation';
+import { Types } from 'mongoose';
+import { authConfig } from '../config/auth.config';
 import { RegisterDto } from './dto/auth.dto';
-import { Customer, CustomerStatus } from './schemas/customer.schema';
-import {
-  AuthTokenType,
-  CustomerAuthToken,
-} from './schemas/customer-auth-token.schema';
-import { CustomerRefreshToken } from './schemas/customer-refresh-token.schema';
+import { AuthTokenType } from './schemas/customer-auth-token.schema';
+import { CustomerAuthTokenRepository } from './repositories/customer-auth-token.repository';
+import { CustomerRefreshTokenRepository } from './repositories/customer-refresh-token.repository';
+import { CustomerRepository } from './repositories/customer.repository';
+
+type MsDuration = Exclude<JwtSignOptions['expiresIn'], number | undefined>;
 
 const BCRYPT_ROUNDS = 12;
 const VERIFY_TOKEN_TTL_MS = 24 * 60 * 60 * 1000; // 24h
@@ -33,26 +34,21 @@ const VERIFY_TOKEN_TTL_MS = 24 * 60 * 60 * 1000; // 24h
 @Injectable()
 export class AuthService {
   constructor(
-    @InjectModel(Customer.name) private readonly customerModel: Model<Customer>,
-    @InjectModel(CustomerRefreshToken.name)
-    private readonly refreshModel: Model<CustomerRefreshToken>,
-    @InjectModel(CustomerAuthToken.name)
-    private readonly authTokenModel: Model<CustomerAuthToken>,
+    private readonly customerRepo: CustomerRepository,
+    private readonly refreshRepo: CustomerRefreshTokenRepository,
+    private readonly authTokenRepo: CustomerAuthTokenRepository,
     @InjectQueue(QUEUES.NOTIFICATION) private readonly notifyQueue: Queue,
     private readonly jwt: JwtService,
-    private readonly config: ConfigService<Env, true>,
+    @Inject(authConfig.KEY)
+    private readonly auth: ConfigType<typeof authConfig>,
   ) {}
 
   async register(dto: RegisterDto) {
-    const exists = await this.customerModel
-      .findOne({ email: dto.email })
-      .select('_id')
-      .lean()
-      .exec();
+    const exists = await this.customerRepo.findByEmail(dto.email);
     if (exists) throw new ConflictException('Email đã được đăng ký');
 
     const passwordHash = await bcrypt.hash(dto.password, BCRYPT_ROUNDS);
-    const customer = await this.customerModel.create({
+    const customer = await this.customerRepo.create({
       email: dto.email,
       passwordHash,
       name: dto.name,
@@ -67,12 +63,12 @@ export class AuthService {
   /** Sinh token xác minh email (lưu hash) và phát event sang Notification. */
   private async sendVerifyEmail(customerId: Types.ObjectId, email: string) {
     const token = generateOpaqueToken();
-    await this.authTokenModel.create({
+    await this.authTokenRepo.create(
       customerId,
-      type: AuthTokenType.VERIFY_EMAIL,
-      tokenHash: hashToken(token),
-      expiresAt: new Date(Date.now() + VERIFY_TOKEN_TTL_MS),
-    });
+      AuthTokenType.VERIFY_EMAIL,
+      hashToken(token),
+      new Date(Date.now() + VERIFY_TOKEN_TTL_MS),
+    );
     const payload: CustomerEmailActionPayload = {
       customerId: customerId.toString(),
       email,
@@ -81,22 +77,14 @@ export class AuthService {
     await this.notifyQueue.add(EVENTS.CUSTOMER_VERIFY_REQUESTED, payload);
   }
 
-  private async validateCustomer(email: string, password: string) {
-    const customer = await this.customerModel
-      .findOne({ email, deletedAt: null, status: CustomerStatus.ACTIVE })
-      .select('+passwordHash')
-      .exec();
+  async login(email: string, password: string) {
+    const customer = await this.customerRepo.findActiveByEmail(email, true);
     const ok = customer
       ? await bcrypt.compare(password, customer.passwordHash)
       : await bcrypt.compare(password, '$2a$12$invalidinvalidinvalidinvalidin');
     if (!customer || !ok) {
       throw new UnauthorizedException('Sai email hoặc mật khẩu');
     }
-    return customer;
-  }
-
-  async login(email: string, password: string) {
-    const customer = await this.validateCustomer(email, password);
     const tokens = await this.issueTokens(customer._id, customer.email);
     return { ...tokens, emailVerified: customer.emailVerified };
   }
@@ -108,39 +96,31 @@ export class AuthService {
       email,
     };
     const accessToken = await this.jwt.signAsync(payload, {
-      secret: this.config.get('ECOM_JWT_SECRET', { infer: true }),
-      expiresIn: this.config.get('ECOM_JWT_EXPIRES_IN', { infer: true }),
+      secret: this.auth.jwtSecret,
+      expiresIn: this.auth.jwtExpiresIn as MsDuration,
     });
 
     const refreshToken = generateOpaqueToken();
-    const ttl = durationToMs(
-      this.config.get('ECOM_REFRESH_EXPIRES_IN', { infer: true }),
-    );
-    await this.refreshModel.create({
+    const ttl = durationToMs(this.auth.refreshExpiresIn);
+    await this.refreshRepo.create(
       customerId,
-      tokenHash: hashToken(refreshToken),
-      expiresAt: new Date(Date.now() + ttl),
-    });
+      hashToken(refreshToken),
+      new Date(Date.now() + ttl),
+    );
 
     return { accessToken, refreshToken };
   }
 
   async refresh(refreshToken: string) {
-    const doc = await this.refreshModel
-      .findOne({ tokenHash: hashToken(refreshToken), revokedAt: null })
-      .exec();
+    const doc = await this.refreshRepo.findValid(hashToken(refreshToken));
     if (!doc || doc.expiresAt.getTime() < Date.now()) {
       throw new UnauthorizedException(
         'Refresh token không hợp lệ hoặc đã hết hạn',
       );
     }
-    const customer = await this.customerModel
-      .findOne({
-        _id: doc.customerId,
-        deletedAt: null,
-        status: CustomerStatus.ACTIVE,
-      })
-      .exec();
+    const customer = await this.customerRepo.findActiveById(
+      doc.customerId.toString(),
+    );
     if (!customer)
       throw new UnauthorizedException('Tài khoản không còn hiệu lực');
 
@@ -150,17 +130,12 @@ export class AuthService {
   }
 
   async logout(refreshToken: string) {
-    await this.refreshModel.updateOne(
-      { tokenHash: hashToken(refreshToken), revokedAt: null },
-      { $set: { revokedAt: new Date() } },
-    );
+    await this.refreshRepo.revoke(hashToken(refreshToken));
     return { success: true };
   }
 
   async me(customerId: string) {
-    const customer = await this.customerModel
-      .findOne({ _id: customerId, deletedAt: null })
-      .exec();
+    const customer = await this.customerRepo.findActiveById(customerId);
     if (!customer) throw new UnauthorizedException();
     return customer;
   }

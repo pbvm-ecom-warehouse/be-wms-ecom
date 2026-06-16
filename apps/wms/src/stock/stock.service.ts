@@ -1,10 +1,8 @@
 import { InjectQueue } from '@nestjs/bullmq';
 import { Injectable, Logger } from '@nestjs/common';
-import { InjectModel } from '@nestjs/mongoose';
 import { EVENTS, QUEUES, type StockChangedPayload } from '@app/events';
 import { Queue } from 'bullmq';
-import { Model } from 'mongoose';
-import { WarehouseItem } from './schemas/warehouse-item.schema';
+import { StockRepository } from './stock.repository';
 
 /**
  * Ví dụ PRODUCER: khi `available` (= onHand - reserved - expired) của 1 SKU đổi
@@ -16,8 +14,7 @@ export class StockService {
   private readonly logger = new Logger(StockService.name);
 
   constructor(
-    @InjectModel(WarehouseItem.name)
-    private readonly itemModel: Model<WarehouseItem>,
+    private readonly stockRepo: StockRepository,
     @InjectQueue(QUEUES.STOCK) private readonly stockQueue: Queue,
   ) {}
 
@@ -33,11 +30,7 @@ export class StockService {
    * Dùng sau khi ghi stock_balances trong các nghiệp vụ WMS.
    */
   async publishAvailableForItem(itemId: string, delta: number): Promise<void> {
-    const item = await this.itemModel
-      .findById(itemId)
-      .select('sku')
-      .lean()
-      .exec();
+    const item = await this.stockRepo.findSkuById(itemId);
     if (!item) return;
     await this.emitStockChanged(item.sku, delta);
   }

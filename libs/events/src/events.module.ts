@@ -1,6 +1,7 @@
 import { BullModule } from '@nestjs/bullmq';
 import { Module } from '@nestjs/common';
-import { ConfigModule, ConfigService } from '@nestjs/config';
+import { ConfigModule, ConfigType } from '@nestjs/config';
+import { redisConfig } from './config/redis.config';
 
 /**
  * Cấu hình kết nối Redis dùng chung cho BullMQ. Import EventsModule ở mỗi app,
@@ -10,14 +11,15 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 @Module({
   imports: [
     BullModule.forRootAsync({
-      imports: [ConfigModule],
-      inject: [ConfigService],
-      useFactory: (config: ConfigService) => ({
+      // forFeature đăng ký namespace 'redis' vào ConfigModule của module này
+      imports: [ConfigModule.forFeature(redisConfig)],
+      inject: [redisConfig.KEY],
+      useFactory: (redis: ConfigType<typeof redisConfig>) => ({
         connection: {
-          host: config.get<string>('REDIS_HOST', 'localhost'),
-          port: parseInt(config.get<string>('REDIS_PORT', '6379'), 10),
+          host: redis.host,
+          port: redis.port,
           // Redis production bắt buộc có auth — undefined nếu env trống (dev local).
-          password: config.get<string>('REDIS_PASSWORD') || undefined,
+          password: redis.password,
         },
         defaultJobOptions: {
           attempts: 5,

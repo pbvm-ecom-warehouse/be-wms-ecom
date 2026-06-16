@@ -28,7 +28,7 @@ export class CustomerAuthToken {
   @Prop({ required: true })
   expiresAt: Date;
 
-  @Prop({ default: null })
+  @Prop({ type: Date, default: null })
   usedAt?: Date | null; // dùng một-lần
 }
 

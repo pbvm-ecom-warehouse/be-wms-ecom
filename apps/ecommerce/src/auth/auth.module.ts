@@ -7,6 +7,9 @@ import { QUEUES } from '@app/events';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { JwtStrategy } from './jwt.strategy';
+import { CustomerAuthTokenRepository } from './repositories/customer-auth-token.repository';
+import { CustomerRefreshTokenRepository } from './repositories/customer-refresh-token.repository';
+import { CustomerRepository } from './repositories/customer.repository';
 import { Customer, CustomerSchema } from './schemas/customer.schema';
 import {
   CustomerAuthToken,
@@ -33,7 +36,13 @@ import {
     ]),
   ],
   controllers: [AuthController],
-  providers: [AuthService, JwtStrategy],
+  providers: [
+    AuthService,
+    JwtStrategy,
+    CustomerRepository,
+    CustomerRefreshTokenRepository,
+    CustomerAuthTokenRepository,
+  ],
   exports: [AuthService],
 })
 export class AuthModule {}

@@ -1,19 +1,22 @@
 import {
   ForbiddenException,
+  Inject,
   Injectable,
   UnauthorizedException,
 } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
+import type { ConfigType } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
-import { InjectModel } from '@nestjs/mongoose';
+import type { JwtSignOptions } from '@nestjs/jwt';
 import { JwtPayload, WmsRole } from '@app/auth';
 import { durationToMs, generateOpaqueToken, hashToken } from '@app/common';
 import * as bcrypt from 'bcryptjs';
-import { Model, Types } from 'mongoose';
-import { Env } from '../config/env.validation';
+import { Types } from 'mongoose';
+import { authConfig } from '../config/auth.config';
 import { CreateUserDto } from './dto/auth.dto';
-import { UserStatus, User } from './schemas/user.schema';
-import { UserRefreshToken } from './schemas/user-refresh-token.schema';
+import { UserRefreshTokenRepository } from './repositories/user-refresh-token.repository';
+import { UserRepository } from './repositories/user.repository';
+
+type MsDuration = Exclude<JwtSignOptions['expiresIn'], number | undefined>;
 
 const BCRYPT_ROUNDS = 12;
 
@@ -24,19 +27,16 @@ const BCRYPT_ROUNDS = 12;
 @Injectable()
 export class AuthService {
   constructor(
-    @InjectModel(User.name) private readonly userModel: Model<User>,
-    @InjectModel(UserRefreshToken.name)
-    private readonly refreshModel: Model<UserRefreshToken>,
+    private readonly userRepo: UserRepository,
+    private readonly refreshRepo: UserRefreshTokenRepository,
     private readonly jwt: JwtService,
-    private readonly config: ConfigService<Env, true>,
+    @Inject(authConfig.KEY)
+    private readonly auth: ConfigType<typeof authConfig>,
   ) {}
 
   /** Xác thực username/password → trả document user (đã loại tài khoản khóa/xóa). */
   private async validateUser(username: string, password: string) {
-    const user = await this.userModel
-      .findOne({ username, deletedAt: null, status: UserStatus.ACTIVE })
-      .select('+passwordHash')
-      .exec();
+    const user = await this.userRepo.findActiveByUsername(username, true);
     // So sánh kể cả khi không tìm thấy user để tránh lộ thời gian (timing attack nhẹ).
     const ok = user
       ? await bcrypt.compare(password, user.passwordHash)
@@ -66,36 +66,30 @@ export class AuthService {
       username,
     };
     const accessToken = await this.jwt.signAsync(payload, {
-      secret: this.config.get('WMS_JWT_SECRET', { infer: true }),
-      expiresIn: this.config.get('WMS_JWT_EXPIRES_IN', { infer: true }),
+      secret: this.auth.jwtSecret,
+      expiresIn: this.auth.jwtExpiresIn as MsDuration,
     });
 
     const refreshToken = generateOpaqueToken();
-    const ttl = durationToMs(
-      this.config.get('WMS_REFRESH_EXPIRES_IN', { infer: true }),
-    );
-    await this.refreshModel.create({
+    const ttl = durationToMs(this.auth.refreshExpiresIn);
+    await this.refreshRepo.create(
       userId,
-      tokenHash: hashToken(refreshToken),
-      expiresAt: new Date(Date.now() + ttl),
-    });
+      hashToken(refreshToken),
+      new Date(Date.now() + ttl),
+    );
 
     return { accessToken, refreshToken };
   }
 
   /** Đổi access token mới + xoay refresh token (revoke cái cũ). */
   async refresh(refreshToken: string) {
-    const doc = await this.refreshModel
-      .findOne({ tokenHash: hashToken(refreshToken), revokedAt: null })
-      .exec();
+    const doc = await this.refreshRepo.findValid(hashToken(refreshToken));
     if (!doc || doc.expiresAt.getTime() < Date.now()) {
       throw new UnauthorizedException(
         'Refresh token không hợp lệ hoặc đã hết hạn',
       );
     }
-    const user = await this.userModel
-      .findOne({ _id: doc.userId, deletedAt: null, status: UserStatus.ACTIVE })
-      .exec();
+    const user = await this.userRepo.findActiveById(doc.userId);
     if (!user) throw new UnauthorizedException('Tài khoản không còn hiệu lực');
 
     doc.revokedAt = new Date(); // xoay: token cũ hết dùng được
@@ -105,18 +99,13 @@ export class AuthService {
 
   /** Đăng xuất: thu hồi refresh token đang giữ. */
   async logout(refreshToken: string) {
-    await this.refreshModel.updateOne(
-      { tokenHash: hashToken(refreshToken), revokedAt: null },
-      { $set: { revokedAt: new Date() } },
-    );
+    await this.refreshRepo.revoke(hashToken(refreshToken));
     return { success: true };
   }
 
   /** Thông tin nhân viên hiện tại (không kèm passwordHash). */
   async me(userId: string) {
-    const user = await this.userModel
-      .findOne({ _id: userId, deletedAt: null })
-      .exec();
+    const user = await this.userRepo.findActiveById(userId);
     if (!user) throw new UnauthorizedException();
     return user;
   }
@@ -126,7 +115,7 @@ export class AuthService {
    * Sau khi có admin, hãy dùng createUser (đã bảo vệ bằng @Roles(ADMIN)).
    */
   async bootstrapAdmin(dto: CreateUserDto) {
-    const count = await this.userModel.estimatedDocumentCount().exec();
+    const count = await this.userRepo.countAll();
     if (count > 0) {
       throw new ForbiddenException(
         'Đã có nhân viên trong hệ thống — dùng endpoint tạo user (ADMIN).',
@@ -138,7 +127,7 @@ export class AuthService {
   /** Tạo nhân viên mới (gọi bởi ADMIN). */
   async createUser(dto: CreateUserDto, createdBy?: string) {
     const passwordHash = await bcrypt.hash(dto.password, BCRYPT_ROUNDS);
-    const user = await this.userModel.create({
+    const user = await this.userRepo.create({
       username: dto.username,
       name: dto.name,
       roles: dto.roles ?? [],

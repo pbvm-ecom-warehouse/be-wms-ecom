@@ -32,7 +32,7 @@ export class Customer {
   @Prop({ enum: CustomerStatus, default: CustomerStatus.ACTIVE })
   status: CustomerStatus;
 
-  @Prop({ default: null })
+  @Prop({ type: Date, default: null })
   deletedAt?: Date | null;
 }
 

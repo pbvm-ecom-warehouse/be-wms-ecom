@@ -6,6 +6,7 @@ import {
   WarehouseItem,
   WarehouseItemSchema,
 } from './schemas/warehouse-item.schema';
+import { StockRepository } from './stock.repository';
 import { StockService } from './stock.service';
 
 @Module({
@@ -15,7 +16,7 @@ import { StockService } from './stock.service';
       { name: WarehouseItem.name, schema: WarehouseItemSchema },
     ]),
   ],
-  providers: [StockService],
+  providers: [StockRepository, StockService],
   exports: [StockService],
 })
 export class StockModule {}

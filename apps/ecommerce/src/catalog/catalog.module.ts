@@ -10,6 +10,7 @@ import {
   ProductVariant,
   ProductVariantSchema,
 } from './schemas/product-variant.schema';
+import { CatalogRepository } from './catalog.repository';
 import { StockConsumer } from './stock.consumer';
 
 @Module({
@@ -20,6 +21,6 @@ import { StockConsumer } from './stock.consumer';
       { name: ProcessedEvent.name, schema: ProcessedEventSchema },
     ]),
   ],
-  providers: [StockConsumer],
+  providers: [CatalogRepository, StockConsumer],
 })
 export class CatalogModule {}

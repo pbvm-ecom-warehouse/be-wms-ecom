@@ -46,7 +46,7 @@ export class User {
   @Prop({ type: SchemaTypes.ObjectId })
   updatedBy?: Types.ObjectId;
 
-  @Prop({ default: null })
+  @Prop({ type: Date, default: null })
   deletedAt?: Date | null; // soft-delete: query luôn lọc deletedAt: null
 }
 

@@ -1,9 +1,9 @@
-import { Injectable, UnauthorizedException } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
+import { Inject, Injectable, UnauthorizedException } from '@nestjs/common';
+import type { ConfigType } from '@nestjs/config';
 import { PassportStrategy } from '@nestjs/passport';
-import { AuthUser, JwtPayload } from '@app/auth';
+import type { AuthUser, JwtPayload } from '@app/auth';
 import { ExtractJwt, Strategy } from 'passport-jwt';
-import { Env } from '../config/env.validation';
+import { authConfig } from '../config/auth.config';
 
 /**
  * Strategy 'jwt' của WMS — verify token bằng WMS_JWT_SECRET (RIÊNG, khác Ecommerce).
@@ -11,11 +11,11 @@ import { Env } from '../config/env.validation';
  */
 @Injectable()
 export class JwtStrategy extends PassportStrategy(Strategy) {
-  constructor(config: ConfigService<Env, true>) {
+  constructor(@Inject(authConfig.KEY) auth: ConfigType<typeof authConfig>) {
     super({
       jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
       ignoreExpiration: false,
-      secretOrKey: config.get('WMS_JWT_SECRET', { infer: true }),
+      secretOrKey: auth.jwtSecret,
     });
   }
 
