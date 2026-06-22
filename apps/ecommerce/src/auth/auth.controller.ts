@@ -27,6 +27,7 @@ import {
   AddressDto,
   ChangePasswordDto,
   ForgotPasswordDto,
+  GoogleLoginDto,
   LoginDto,
   LogoutDto,
   RefreshDto,
@@ -44,8 +45,22 @@ export class AuthController {
   @Post('register')
   @AuthThrottle()
   @ApiOperation({ summary: 'Dang ky tai khoan khach moi' })
-  @ApiBody({ type: RegisterDto, examples: { customer: { value: { email: 'khach@example.com', password: 'P@ssw0rd123!', name: 'Nguyen Thi B', phone: '0901234567' } } } })
-  @ApiCreatedResponse({ description: 'Tra accessToken + refreshToken, gui email xac minh' })
+  @ApiBody({
+    type: RegisterDto,
+    examples: {
+      customer: {
+        value: {
+          email: 'khach@example.com',
+          password: 'P@ssw0rd123!',
+          name: 'Nguyen Thi B',
+          phone: '0901234567',
+        },
+      },
+    },
+  })
+  @ApiCreatedResponse({
+    description: 'Tra accessToken + refreshToken, gui email xac minh',
+  })
   @ApiConflictResponse({ description: 'Email da duoc dang ky' })
   register(@Body() dto: RegisterDto) {
     return this.auth.register(dto);
@@ -55,18 +70,50 @@ export class AuthController {
   @HttpCode(200)
   @AuthThrottle()
   @ApiOperation({ summary: 'Dang nhap khach hang' })
-  @ApiBody({ type: LoginDto, examples: { customer: { value: { email: 'khach@example.com', password: 'P@ssw0rd123!' } } } })
-  @ApiOkResponse({ description: 'Tra accessToken + refreshToken + emailVerified' })
+  @ApiBody({
+    type: LoginDto,
+    examples: {
+      customer: {
+        value: { email: 'khach@example.com', password: 'P@ssw0rd123!' },
+      },
+    },
+  })
+  @ApiOkResponse({
+    description: 'Tra accessToken + refreshToken + emailVerified',
+  })
   @ApiUnauthorizedResponse({ description: 'Sai email hoac mat khau' })
   login(@Body() dto: LoginDto) {
     return this.auth.login(dto.email, dto.password);
+  }
+
+  @Post('google-login')
+  @HttpCode(200)
+  @AuthThrottle()
+  @ApiOperation({ summary: 'Dang nhap bang Google/Firebase' })
+  @ApiBody({
+    type: GoogleLoginDto,
+    examples: {
+      google: { value: { idToken: 'paste-firebase-id-token-here' } },
+    },
+  })
+  @ApiOkResponse({
+    description: 'Tra accessToken + refreshToken + emailVerified',
+  })
+  @ApiUnauthorizedResponse({ description: 'Firebase token khong hop le' })
+  googleLogin(@Body() dto: GoogleLoginDto) {
+    return this.auth.googleLogin(dto.idToken);
   }
 
   @Post('refresh')
   @HttpCode(200)
   @AuthThrottle()
   @ApiOperation({ summary: 'Doi access token moi bang refresh token' })
-  @ApiBody({ type: RefreshDto, examples: { refresh: { value: { refreshToken: 'paste-refresh-token-here' } } } })
+  @ApiBody({
+    type: RefreshDto,
+    examples: {
+      refresh: { value: { refreshToken: 'paste-refresh-token-here' } },
+    },
+  })
   refresh(@Body() dto: RefreshDto) {
     return this.auth.refresh(dto.refreshToken);
   }
@@ -76,7 +123,12 @@ export class AuthController {
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Dang xuat va thu hoi refresh token' })
-  @ApiBody({ type: LogoutDto, examples: { logout: { value: { refreshToken: 'paste-refresh-token-here' } } } })
+  @ApiBody({
+    type: LogoutDto,
+    examples: {
+      logout: { value: { refreshToken: 'paste-refresh-token-here' } },
+    },
+  })
   logout(@Body() dto: LogoutDto) {
     return this.auth.logout(dto.refreshToken);
   }
@@ -93,7 +145,10 @@ export class AuthController {
   @HttpCode(200)
   @AuthThrottle()
   @ApiOperation({ summary: 'Xac minh email bang token mot lan' })
-  @ApiBody({ type: TokenDto, examples: { verify: { value: { token: 'paste-email-token-here' } } } })
+  @ApiBody({
+    type: TokenDto,
+    examples: { verify: { value: { token: 'paste-email-token-here' } } },
+  })
   verifyEmail(@Body() dto: TokenDto) {
     return this.auth.verifyEmail(dto.token);
   }
@@ -112,7 +167,10 @@ export class AuthController {
   @HttpCode(200)
   @AuthThrottle()
   @ApiOperation({ summary: 'Khoi tao luong quen mat khau' })
-  @ApiBody({ type: ForgotPasswordDto, examples: { forgot: { value: { email: 'khach@example.com' } } } })
+  @ApiBody({
+    type: ForgotPasswordDto,
+    examples: { forgot: { value: { email: 'khach@example.com' } } },
+  })
   forgotPassword(@Body() dto: ForgotPasswordDto) {
     return this.auth.forgotPassword(dto.email);
   }
@@ -121,7 +179,17 @@ export class AuthController {
   @HttpCode(200)
   @AuthThrottle()
   @ApiOperation({ summary: 'Dat lai mat khau bang token email' })
-  @ApiBody({ type: ResetPasswordDto, examples: { reset: { value: { token: 'paste-reset-token-here', newPassword: 'NewP@ssw0rd123!' } } } })
+  @ApiBody({
+    type: ResetPasswordDto,
+    examples: {
+      reset: {
+        value: {
+          token: 'paste-reset-token-here',
+          newPassword: 'NewP@ssw0rd123!',
+        },
+      },
+    },
+  })
   resetPassword(@Body() dto: ResetPasswordDto) {
     return this.auth.resetPassword(dto.token, dto.newPassword);
   }
@@ -131,7 +199,14 @@ export class AuthController {
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Khach doi mat khau' })
-  @ApiBody({ type: ChangePasswordDto, examples: { change: { value: { oldPassword: 'P@ssw0rd123!', newPassword: 'NewP@ssw0rd123!' } } } })
+  @ApiBody({
+    type: ChangePasswordDto,
+    examples: {
+      change: {
+        value: { oldPassword: 'P@ssw0rd123!', newPassword: 'NewP@ssw0rd123!' },
+      },
+    },
+  })
   changePassword(
     @CurrentUser('sub') customerId: string,
     @Body() dto: ChangePasswordDto,
@@ -151,7 +226,23 @@ export class AuthController {
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Them dia chi moi' })
-  @ApiBody({ type: AddressDto, examples: { home: { value: { label: 'Home', recipientName: 'Nguyen Thi B', phone: '0901234567', line: '123 Nguyen Trai', ward: 'Ward 1', district: 'District 1', province: 'Ho Chi Minh', isDefault: true } } } })
+  @ApiBody({
+    type: AddressDto,
+    examples: {
+      home: {
+        value: {
+          label: 'Home',
+          recipientName: 'Nguyen Thi B',
+          phone: '0901234567',
+          line: '123 Nguyen Trai',
+          ward: 'Ward 1',
+          district: 'District 1',
+          province: 'Ho Chi Minh',
+          isDefault: true,
+        },
+      },
+    },
+  })
   addAddress(@CurrentUser('sub') customerId: string, @Body() dto: AddressDto) {
     return this.auth.addAddress(customerId, dto);
   }
@@ -161,7 +252,10 @@ export class AuthController {
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Cap nhat dia chi' })
   @ApiParam({ name: 'id', description: 'ObjectId cua address embedded' })
-  @ApiBody({ type: UpdateAddressDto, examples: { patch: { value: { label: 'Office', isDefault: true } } } })
+  @ApiBody({
+    type: UpdateAddressDto,
+    examples: { patch: { value: { label: 'Office', isDefault: true } } },
+  })
   updateAddress(
     @CurrentUser('sub') customerId: string,
     @Param('id') id: string,
@@ -195,5 +289,3 @@ export class AuthController {
     return this.auth.deleteAddress(customerId, id);
   }
 }
-
-

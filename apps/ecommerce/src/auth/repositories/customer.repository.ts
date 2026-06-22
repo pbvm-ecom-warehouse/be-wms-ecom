@@ -9,6 +9,7 @@ import {
 
 export interface CreateCustomerInput {
   email: string;
+  firebaseUid?: string;
   passwordHash: string;
   name?: string;
   phone?: string;
@@ -16,10 +17,26 @@ export interface CreateCustomerInput {
 
 @Injectable()
 export class CustomerRepository {
-  constructor(@InjectModel(Customer.name) private readonly model: Model<Customer>) {}
+  constructor(
+    @InjectModel(Customer.name) private readonly model: Model<Customer>,
+  ) {}
 
   findByEmail(email: string) {
     return this.model.findOne({ email }).select('_id').lean().exec();
+  }
+
+  findByFirebaseUid(firebaseUid: string) {
+    return this.model.findOne({ firebaseUid, deletedAt: null }).exec();
+  }
+
+  linkFirebaseUid(id: string | Types.ObjectId, firebaseUid: string) {
+    return this.model
+      .findOneAndUpdate(
+        { _id: id, deletedAt: null },
+        { $set: { firebaseUid } },
+        { new: true },
+      )
+      .exec();
   }
 
   findActiveByEmail(email: string, includePasswordHash = false) {

@@ -13,3 +13,4 @@ export * from './logging/sanitize';
 export * from './throttle/throttler.config';
 export * from './bootstrap/setup-app';
 export * from './bootstrap/setup-swagger';
+export * from './firebase/firebase-admin.module';

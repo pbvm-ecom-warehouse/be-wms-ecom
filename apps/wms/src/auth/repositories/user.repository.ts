@@ -6,6 +6,7 @@ import { UserStatus, User } from '../schemas/user.schema';
 
 export interface CreateUserInput {
   username: string;
+  firebaseUid?: string;
   passwordHash: string;
   email?: string;
   name?: string;
@@ -25,6 +26,30 @@ export class UserRepository {
       status: UserStatus.ACTIVE,
     });
     return (includePasswordHash ? q.select('+passwordHash') : q).exec();
+  }
+
+  findActiveByEmail(email: string, includePasswordHash = false) {
+    const q = this.model.findOne({
+      email,
+      deletedAt: null,
+      status: UserStatus.ACTIVE,
+    });
+    return (includePasswordHash ? q.select('+passwordHash') : q).exec();
+  }
+
+  findByFirebaseUid(firebaseUid: string, includePasswordHash = false) {
+    const q = this.model.findOne({ firebaseUid, deletedAt: null });
+    return (includePasswordHash ? q.select('+passwordHash') : q).exec();
+  }
+
+  linkFirebaseUid(id: string | Types.ObjectId, firebaseUid: string) {
+    return this.model
+      .findOneAndUpdate(
+        { _id: id, deletedAt: null },
+        { $set: { firebaseUid } },
+        { new: true },
+      )
+      .exec();
   }
 
   findActiveById(id: string | Types.ObjectId) {
@@ -49,7 +74,11 @@ export class UserRepository {
     });
   }
 
-  updateRoles(id: string | Types.ObjectId, roles: string[], updatedBy: Types.ObjectId) {
+  updateRoles(
+    id: string | Types.ObjectId,
+    roles: string[],
+    updatedBy: Types.ObjectId,
+  ) {
     return this.model
       .findOneAndUpdate(
         { _id: id, deletedAt: null },

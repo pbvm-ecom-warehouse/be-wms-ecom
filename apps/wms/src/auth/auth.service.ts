@@ -9,7 +9,12 @@ import type { ConfigType } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import type { JwtSignOptions } from '@nestjs/jwt';
 import { JwtPayload, WmsRole } from '@app/auth';
-import { durationToMs, generateOpaqueToken, hashToken } from '@app/common';
+import {
+  durationToMs,
+  generateOpaqueToken,
+  hashToken,
+  FirebaseAdminService,
+} from '@app/common';
 import * as bcrypt from 'bcryptjs';
 import { Types } from 'mongoose';
 import { authConfig } from '../config/auth.config';
@@ -29,12 +34,14 @@ export class AuthService {
     private readonly userRepo: UserRepository,
     private readonly refreshRepo: UserRefreshTokenRepository,
     private readonly jwt: JwtService,
+    private readonly firebaseAdmin: FirebaseAdminService,
     @Inject(authConfig.KEY)
     private readonly auth: ConfigType<typeof authConfig>,
   ) {}
 
   private objectId(id: string) {
-    if (!Types.ObjectId.isValid(id)) throw new NotFoundException('User not found');
+    if (!Types.ObjectId.isValid(id))
+      throw new NotFoundException('User not found');
     return new Types.ObjectId(id);
   }
 
@@ -51,6 +58,42 @@ export class AuthService {
 
   async login(username: string, password: string) {
     const user = await this.validateUser(username, password);
+    const tokens = await this.issueTokens(user._id, user.roles, user.username);
+    return { ...tokens, mustChangePassword: user.mustChangePassword };
+  }
+
+  async googleLogin(idToken: string) {
+    const decoded = await this.firebaseAdmin.verifyIdToken(idToken);
+    if (!decoded.email) {
+      throw new UnauthorizedException('Firebase token khong chua email');
+    }
+
+    const existingByUid = await this.userRepo.findByFirebaseUid(
+      decoded.uid,
+      true,
+    );
+    const existingByEmail = existingByUid
+      ? existingByUid
+      : await this.userRepo.findActiveByEmail(decoded.email, true);
+
+    if (!existingByEmail) {
+      throw new UnauthorizedException('Nhan vien chua duoc khoi tao trong WMS');
+    }
+
+    let user = existingByEmail.firebaseUid
+      ? existingByEmail.firebaseUid === decoded.uid
+        ? existingByEmail
+        : (() => {
+            throw new UnauthorizedException(
+              'Tai khoan da duoc lien ket Firebase khac',
+            );
+          })()
+      : await this.userRepo.linkFirebaseUid(existingByEmail._id, decoded.uid);
+
+    if (!user) {
+      throw new UnauthorizedException('Nhan vien chua duoc khoi tao trong WMS');
+    }
+
     const tokens = await this.issueTokens(user._id, user.roles, user.username);
     return { ...tokens, mustChangePassword: user.mustChangePassword };
   }
@@ -85,7 +128,9 @@ export class AuthService {
   async refresh(refreshToken: string) {
     const doc = await this.refreshRepo.findValid(hashToken(refreshToken));
     if (!doc || doc.expiresAt.getTime() < Date.now()) {
-      throw new UnauthorizedException('Refresh token khong hop le hoac da het han');
+      throw new UnauthorizedException(
+        'Refresh token khong hop le hoac da het han',
+      );
     }
     const user = await this.userRepo.findActiveById(doc.userId);
     if (!user || user.status !== UserStatus.ACTIVE) {
@@ -104,7 +149,8 @@ export class AuthService {
 
   async me(userId: string) {
     const user = await this.userRepo.findActiveById(userId);
-    if (!user || user.status !== UserStatus.ACTIVE) throw new UnauthorizedException();
+    if (!user || user.status !== UserStatus.ACTIVE)
+      throw new UnauthorizedException();
     return user;
   }
 
@@ -185,7 +231,9 @@ export class AuthService {
   }
 
   async changePassword(userId: string, dto: ChangePasswordDto) {
-    const user = await this.userRepo.findByIdWithPassword(this.objectId(userId));
+    const user = await this.userRepo.findByIdWithPassword(
+      this.objectId(userId),
+    );
     const ok = user
       ? await bcrypt.compare(dto.oldPassword, user.passwordHash)
       : await bcrypt.compare(dto.oldPassword, INVALID_BCRYPT_HASH);

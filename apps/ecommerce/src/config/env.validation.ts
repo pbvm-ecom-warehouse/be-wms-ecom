@@ -24,6 +24,9 @@ const envSchema = z.object({
   REDIS_PORT: z.coerce.number().int().positive(),
   REDIS_PASSWORD: z.string().optional(),
 
+  FIREBASE_ADMIN_CREDENTIALS_PATH: z.string().min(1).optional(),
+  FIREBASE_PROJECT_ID: z.string().min(1).optional(),
+
   // ---- Auth ----
   // Secret RIÊNG của Ecommerce, phải khác WMS_JWT_SECRET (luật #4) và ≥32 ký tự.
   ECOM_JWT_SECRET: z.string().min(32, 'ECOM_JWT_SECRET phải ≥ 32 ký tự'),

@@ -4,6 +4,7 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { LoggerModule } from 'nestjs-pino';
 import { CommonModule, buildPinoOptions } from '@app/common';
 import { EventsModule, QUEUES } from '@app/events';
+import { FirebaseModule } from './firebase/firebase.module';
 import { validateEnv } from './config/env.validation';
 import { NotificationConsumer } from './notification.consumer';
 import { NotificationController } from './notification.controller';
@@ -18,6 +19,7 @@ import { NotificationService } from './notification.service';
     }),
     CommonModule, // global filter/interceptor/pipe
     EventsModule, // BullMQ + Redis
+    FirebaseModule,
     BullModule.registerQueue({ name: QUEUES.NOTIFICATION }),
   ],
   controllers: [NotificationController],

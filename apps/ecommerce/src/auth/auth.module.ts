@@ -3,6 +3,7 @@ import { Module } from '@nestjs/common';
 import { JwtModule } from '@nestjs/jwt';
 import { MongooseModule } from '@nestjs/mongoose';
 import { PassportModule } from '@nestjs/passport';
+import { FirebaseAdminModule } from '@app/common';
 import { QUEUES } from '@app/events';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
@@ -28,6 +29,7 @@ import {
   imports: [
     PassportModule,
     JwtModule.register({}),
+    FirebaseAdminModule,
     BullModule.registerQueue({ name: QUEUES.NOTIFICATION }),
     MongooseModule.forFeature([
       { name: Customer.name, schema: CustomerSchema },

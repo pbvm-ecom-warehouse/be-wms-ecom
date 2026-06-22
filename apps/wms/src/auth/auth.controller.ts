@@ -31,6 +31,7 @@ import { AuthService } from './auth.service';
 import {
   ChangePasswordDto,
   CreateUserDto,
+  GoogleLoginDto,
   LoginDto,
   LogoutDto,
   RefreshDto,
@@ -47,18 +48,53 @@ export class AuthController {
   @HttpCode(200)
   @AuthThrottle()
   @ApiOperation({ summary: 'Dang nhap nhan vien' })
-  @ApiBody({ type: LoginDto, examples: { admin: { summary: 'Admin', value: { username: 'admin', password: 'P@ssw0rd123!' } } } })
-  @ApiOkResponse({ description: 'Tra accessToken + refreshToken + mustChangePassword' })
+  @ApiBody({
+    type: LoginDto,
+    examples: {
+      admin: {
+        summary: 'Admin',
+        value: { username: 'admin', password: 'P@ssw0rd123!' },
+      },
+    },
+  })
+  @ApiOkResponse({
+    description: 'Tra accessToken + refreshToken + mustChangePassword',
+  })
   @ApiUnauthorizedResponse({ description: 'Sai tai khoan hoac mat khau' })
   login(@Body() dto: LoginDto) {
     return this.auth.login(dto.username, dto.password);
+  }
+
+  @Post('google-login')
+  @HttpCode(200)
+  @AuthThrottle()
+  @ApiOperation({ summary: 'Dang nhap bang Google/Firebase' })
+  @ApiBody({
+    type: GoogleLoginDto,
+    examples: {
+      google: { value: { idToken: 'paste-firebase-id-token-here' } },
+    },
+  })
+  @ApiOkResponse({
+    description: 'Tra accessToken + refreshToken + mustChangePassword',
+  })
+  @ApiUnauthorizedResponse({
+    description: 'Firebase token khong hop le hoac user khong ton tai',
+  })
+  googleLogin(@Body() dto: GoogleLoginDto) {
+    return this.auth.googleLogin(dto.idToken);
   }
 
   @Post('refresh')
   @HttpCode(200)
   @AuthThrottle()
   @ApiOperation({ summary: 'Doi access token moi bang refresh token' })
-  @ApiBody({ type: RefreshDto, examples: { refresh: { value: { refreshToken: 'paste-refresh-token-here' } } } })
+  @ApiBody({
+    type: RefreshDto,
+    examples: {
+      refresh: { value: { refreshToken: 'paste-refresh-token-here' } },
+    },
+  })
   @ApiOkResponse({ description: 'Tra accessToken + refreshToken moi (rotate)' })
   refresh(@Body() dto: RefreshDto) {
     return this.auth.refresh(dto.refreshToken);
@@ -69,7 +105,12 @@ export class AuthController {
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Dang xuat va thu hoi refresh token' })
-  @ApiBody({ type: LogoutDto, examples: { logout: { value: { refreshToken: 'paste-refresh-token-here' } } } })
+  @ApiBody({
+    type: LogoutDto,
+    examples: {
+      logout: { value: { refreshToken: 'paste-refresh-token-here' } },
+    },
+  })
   logout(@Body() dto: LogoutDto) {
     return this.auth.logout(dto.refreshToken);
   }
@@ -83,8 +124,22 @@ export class AuthController {
   }
 
   @Post('bootstrap-admin')
-  @ApiOperation({ summary: 'Khoi tao admin dau tien khi he thong chua co user' })
-  @ApiBody({ type: CreateUserDto, examples: { bootstrap: { value: { username: 'admin', password: 'P@ssw0rd123!', email: 'admin@example.com', name: 'System Admin' } } } })
+  @ApiOperation({
+    summary: 'Khoi tao admin dau tien khi he thong chua co user',
+  })
+  @ApiBody({
+    type: CreateUserDto,
+    examples: {
+      bootstrap: {
+        value: {
+          username: 'admin',
+          password: 'P@ssw0rd123!',
+          email: 'admin@example.com',
+          name: 'System Admin',
+        },
+      },
+    },
+  })
   @ApiCreatedResponse({ description: '{ id, username, roles }' })
   @ApiForbiddenResponse({ description: 'Da co nhan vien trong he thong' })
   bootstrapAdmin(@Body() dto: CreateUserDto) {
@@ -96,7 +151,20 @@ export class AuthController {
   @Roles(WmsRole.ADMIN)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Tao nhan vien moi - chi ADMIN' })
-  @ApiBody({ type: CreateUserDto, examples: { receiver: { value: { username: 'receiver01', password: 'TempP@ssw0rd123!', email: 'receiver01@example.com', name: 'Receiver 01', roles: ['RECEIVER'] } } } })
+  @ApiBody({
+    type: CreateUserDto,
+    examples: {
+      receiver: {
+        value: {
+          username: 'receiver01',
+          password: 'TempP@ssw0rd123!',
+          email: 'receiver01@example.com',
+          name: 'Receiver 01',
+          roles: ['RECEIVER'],
+        },
+      },
+    },
+  })
   createUser(@Body() dto: CreateUserDto, @CurrentUser('sub') by: string) {
     return this.auth.createUser(dto, by);
   }
@@ -107,7 +175,10 @@ export class AuthController {
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Gan/sua roles nhan vien - chi ADMIN' })
   @ApiParam({ name: 'id', description: 'Mongo ObjectId cua user' })
-  @ApiBody({ type: UpdateUserRolesDto, examples: { roles: { value: { roles: ['RECEIVER', 'PICKER'] } } } })
+  @ApiBody({
+    type: UpdateUserRolesDto,
+    examples: { roles: { value: { roles: ['RECEIVER', 'PICKER'] } } },
+  })
   updateRoles(
     @Param('id') id: string,
     @Body() dto: UpdateUserRolesDto,
@@ -145,7 +216,10 @@ export class AuthController {
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Reset mat khau tam va bat doi mat khau' })
   @ApiParam({ name: 'id', description: 'Mongo ObjectId cua user' })
-  @ApiBody({ type: ResetUserPasswordDto, examples: { reset: { value: { temporaryPassword: 'TempP@ssw0rd123!' } } } })
+  @ApiBody({
+    type: ResetUserPasswordDto,
+    examples: { reset: { value: { temporaryPassword: 'TempP@ssw0rd123!' } } },
+  })
   resetPassword(
     @Param('id') id: string,
     @Body() dto: ResetUserPasswordDto,
@@ -159,10 +233,21 @@ export class AuthController {
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Nhan vien doi mat khau' })
-  @ApiBody({ type: ChangePasswordDto, examples: { change: { value: { oldPassword: 'TempP@ssw0rd123!', newPassword: 'NewP@ssw0rd123!' } } } })
-  changePassword(@CurrentUser('sub') userId: string, @Body() dto: ChangePasswordDto) {
+  @ApiBody({
+    type: ChangePasswordDto,
+    examples: {
+      change: {
+        value: {
+          oldPassword: 'TempP@ssw0rd123!',
+          newPassword: 'NewP@ssw0rd123!',
+        },
+      },
+    },
+  })
+  changePassword(
+    @CurrentUser('sub') userId: string,
+    @Body() dto: ChangePasswordDto,
+  ) {
     return this.auth.changePassword(userId, dto);
   }
 }
-
-

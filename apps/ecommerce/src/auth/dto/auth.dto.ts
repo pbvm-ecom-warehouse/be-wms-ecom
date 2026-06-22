@@ -39,6 +39,12 @@ export class LoginDto {
   password!: string;
 }
 
+export class GoogleLoginDto {
+  @ApiProperty({ description: 'Firebase ID token lấy từ Google sign-in' })
+  @IsString()
+  idToken!: string;
+}
+
 export class RefreshDto {
   @ApiProperty({ description: 'Refresh token nhan duoc luc login/register' })
   @IsString()

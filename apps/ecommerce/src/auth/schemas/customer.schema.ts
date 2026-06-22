@@ -43,6 +43,9 @@ export class Customer {
   @Prop({ required: true, unique: true })
   email: string;
 
+  @Prop({ unique: true, sparse: true })
+  firebaseUid?: string;
+
   @Prop({ required: true, select: false })
   passwordHash: string;
 

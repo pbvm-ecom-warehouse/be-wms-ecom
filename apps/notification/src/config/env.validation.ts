@@ -20,6 +20,9 @@ const envSchema = z.object({
   REDIS_PORT: z.coerce.number().int().positive(),
   REDIS_PASSWORD: z.string().optional(),
 
+  FIREBASE_ADMIN_CREDENTIALS_PATH: z.string().min(1).optional(),
+  FIREBASE_PROJECT_ID: z.string().min(1).optional(),
+
   NOTIFICATION_PORT: z.coerce.number().int().positive(),
 });
 
