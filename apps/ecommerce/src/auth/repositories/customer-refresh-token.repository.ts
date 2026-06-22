@@ -24,4 +24,11 @@ export class CustomerRefreshTokenRepository {
       { $set: { revokedAt: new Date() } },
     );
   }
+
+  revokeAllForCustomer(customerId: string | Types.ObjectId) {
+    return this.model.updateMany(
+      { customerId, revokedAt: null },
+      { $set: { revokedAt: new Date() } },
+    );
+  }
 }

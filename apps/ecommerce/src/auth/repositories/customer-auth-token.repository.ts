@@ -21,4 +21,8 @@ export class CustomerAuthTokenRepository {
   ) {
     return this.model.create({ customerId, type, tokenHash, expiresAt });
   }
+
+  findValid(type: AuthTokenType, tokenHash: string) {
+    return this.model.findOne({ type, tokenHash, usedAt: null }).exec();
+  }
 }

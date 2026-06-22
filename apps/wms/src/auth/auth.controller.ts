@@ -1,13 +1,17 @@
-import {
+﻿import {
   Body,
   Controller,
   Get,
   HttpCode,
+  Param,
+  Patch,
   Post,
   UseGuards,
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
+  ApiBody,
+  ApiParam,
   ApiCreatedResponse,
   ApiForbiddenResponse,
   ApiOkResponse,
@@ -24,12 +28,16 @@ import {
 } from '@app/auth';
 import { AuthThrottle } from '@app/common';
 import { AuthService } from './auth.service';
-import { CreateUserDto, LoginDto, LogoutDto, RefreshDto } from './dto/auth.dto';
+import {
+  ChangePasswordDto,
+  CreateUserDto,
+  LoginDto,
+  LogoutDto,
+  RefreshDto,
+  ResetUserPasswordDto,
+  UpdateUserRolesDto,
+} from './dto/auth.dto';
 
-/**
- * Auth nhân viên WMS — prefix toàn cục 'api/wms' nên route thực tế là /api/wms/auth/*.
- * login/refresh/bootstrap-admin là public; còn lại cần JWT (+ role khi tạo user).
- */
 @ApiTags('auth')
 @Controller('auth')
 export class AuthController {
@@ -38,9 +46,10 @@ export class AuthController {
   @Post('login')
   @HttpCode(200)
   @AuthThrottle()
-  @ApiOperation({ summary: 'Đăng nhập nhân viên' })
-  @ApiOkResponse({ description: 'Trả accessToken + refreshToken + mustChangePassword' })
-  @ApiUnauthorizedResponse({ description: 'Sai tài khoản hoặc mật khẩu' })
+  @ApiOperation({ summary: 'Dang nhap nhan vien' })
+  @ApiBody({ type: LoginDto, examples: { admin: { summary: 'Admin', value: { username: 'admin', password: 'P@ssw0rd123!' } } } })
+  @ApiOkResponse({ description: 'Tra accessToken + refreshToken + mustChangePassword' })
+  @ApiUnauthorizedResponse({ description: 'Sai tai khoan hoac mat khau' })
   login(@Body() dto: LoginDto) {
     return this.auth.login(dto.username, dto.password);
   }
@@ -48,9 +57,9 @@ export class AuthController {
   @Post('refresh')
   @HttpCode(200)
   @AuthThrottle()
-  @ApiOperation({ summary: 'Đổi access token mới bằng refresh token' })
-  @ApiOkResponse({ description: 'Trả accessToken + refreshToken mới (rotate)' })
-  @ApiUnauthorizedResponse({ description: 'Refresh token không hợp lệ hoặc hết hạn' })
+  @ApiOperation({ summary: 'Doi access token moi bang refresh token' })
+  @ApiBody({ type: RefreshDto, examples: { refresh: { value: { refreshToken: 'paste-refresh-token-here' } } } })
+  @ApiOkResponse({ description: 'Tra accessToken + refreshToken moi (rotate)' })
   refresh(@Body() dto: RefreshDto) {
     return this.auth.refresh(dto.refreshToken);
   }
@@ -59,9 +68,8 @@ export class AuthController {
   @HttpCode(200)
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Đăng xuất — thu hồi refresh token' })
-  @ApiOkResponse({ description: '{ success: true }' })
-  @ApiUnauthorizedResponse({ description: 'Access token thiếu hoặc không hợp lệ' })
+  @ApiOperation({ summary: 'Dang xuat va thu hoi refresh token' })
+  @ApiBody({ type: LogoutDto, examples: { logout: { value: { refreshToken: 'paste-refresh-token-here' } } } })
   logout(@Body() dto: LogoutDto) {
     return this.auth.logout(dto.refreshToken);
   }
@@ -69,17 +77,16 @@ export class AuthController {
   @Get('me')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Thông tin nhân viên đang đăng nhập' })
-  @ApiOkResponse({ description: 'Document User (không có passwordHash)' })
-  @ApiUnauthorizedResponse({ description: 'Access token thiếu hoặc không hợp lệ' })
+  @ApiOperation({ summary: 'Thong tin nhan vien dang dang nhap' })
   me(@CurrentUser('sub') userId: string) {
     return this.auth.me(userId);
   }
 
   @Post('bootstrap-admin')
-  @ApiOperation({ summary: 'Khởi tạo admin đầu tiên — chỉ chạy khi hệ thống chưa có nhân viên nào' })
+  @ApiOperation({ summary: 'Khoi tao admin dau tien khi he thong chua co user' })
+  @ApiBody({ type: CreateUserDto, examples: { bootstrap: { value: { username: 'admin', password: 'P@ssw0rd123!', email: 'admin@example.com', name: 'System Admin' } } } })
   @ApiCreatedResponse({ description: '{ id, username, roles }' })
-  @ApiForbiddenResponse({ description: 'Đã có nhân viên trong hệ thống' })
+  @ApiForbiddenResponse({ description: 'Da co nhan vien trong he thong' })
   bootstrapAdmin(@Body() dto: CreateUserDto) {
     return this.auth.bootstrapAdmin(dto);
   }
@@ -88,11 +95,74 @@ export class AuthController {
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(WmsRole.ADMIN)
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Tạo nhân viên mới — chỉ ADMIN' })
-  @ApiCreatedResponse({ description: '{ id, username, roles }' })
-  @ApiUnauthorizedResponse({ description: 'Access token thiếu hoặc không hợp lệ' })
-  @ApiForbiddenResponse({ description: 'Không đủ quyền ADMIN' })
+  @ApiOperation({ summary: 'Tao nhan vien moi - chi ADMIN' })
+  @ApiBody({ type: CreateUserDto, examples: { receiver: { value: { username: 'receiver01', password: 'TempP@ssw0rd123!', email: 'receiver01@example.com', name: 'Receiver 01', roles: ['RECEIVER'] } } } })
   createUser(@Body() dto: CreateUserDto, @CurrentUser('sub') by: string) {
     return this.auth.createUser(dto, by);
   }
+
+  @Patch('users/:id/roles')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(WmsRole.ADMIN)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Gan/sua roles nhan vien - chi ADMIN' })
+  @ApiParam({ name: 'id', description: 'Mongo ObjectId cua user' })
+  @ApiBody({ type: UpdateUserRolesDto, examples: { roles: { value: { roles: ['RECEIVER', 'PICKER'] } } } })
+  updateRoles(
+    @Param('id') id: string,
+    @Body() dto: UpdateUserRolesDto,
+    @CurrentUser('sub') by: string,
+  ) {
+    return this.auth.updateRoles(id, dto.roles, by);
+  }
+
+  @Post('users/:id/lock')
+  @HttpCode(200)
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(WmsRole.ADMIN)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Khoa tai khoan va revoke tat ca refresh token' })
+  @ApiParam({ name: 'id', description: 'Mongo ObjectId cua user' })
+  lockUser(@Param('id') id: string, @CurrentUser('sub') by: string) {
+    return this.auth.lockUser(id, by);
+  }
+
+  @Post('users/:id/unlock')
+  @HttpCode(200)
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(WmsRole.ADMIN)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Mo khoa tai khoan' })
+  @ApiParam({ name: 'id', description: 'Mongo ObjectId cua user' })
+  unlockUser(@Param('id') id: string, @CurrentUser('sub') by: string) {
+    return this.auth.unlockUser(id, by);
+  }
+
+  @Post('users/:id/reset-password')
+  @HttpCode(200)
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(WmsRole.ADMIN)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Reset mat khau tam va bat doi mat khau' })
+  @ApiParam({ name: 'id', description: 'Mongo ObjectId cua user' })
+  @ApiBody({ type: ResetUserPasswordDto, examples: { reset: { value: { temporaryPassword: 'TempP@ssw0rd123!' } } } })
+  resetPassword(
+    @Param('id') id: string,
+    @Body() dto: ResetUserPasswordDto,
+    @CurrentUser('sub') by: string,
+  ) {
+    return this.auth.resetTemporaryPassword(id, dto.temporaryPassword, by);
+  }
+
+  @Post('change-password')
+  @HttpCode(200)
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Nhan vien doi mat khau' })
+  @ApiBody({ type: ChangePasswordDto, examples: { change: { value: { oldPassword: 'TempP@ssw0rd123!', newPassword: 'NewP@ssw0rd123!' } } } })
+  changePassword(@CurrentUser('sub') userId: string, @Body() dto: ChangePasswordDto) {
+    return this.auth.changePassword(userId, dto);
+  }
 }
+
+

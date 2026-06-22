@@ -2,6 +2,7 @@ import {
   ForbiddenException,
   Inject,
   Injectable,
+  NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
 import type { ConfigType } from '@nestjs/config';
@@ -12,18 +13,16 @@ import { durationToMs, generateOpaqueToken, hashToken } from '@app/common';
 import * as bcrypt from 'bcryptjs';
 import { Types } from 'mongoose';
 import { authConfig } from '../config/auth.config';
-import { CreateUserDto } from './dto/auth.dto';
+import { ChangePasswordDto, CreateUserDto } from './dto/auth.dto';
 import { UserRefreshTokenRepository } from './repositories/user-refresh-token.repository';
 import { UserRepository } from './repositories/user.repository';
+import { UserStatus } from './schemas/user.schema';
 
 type MsDuration = Exclude<JwtSignOptions['expiresIn'], number | undefined>;
 
 const BCRYPT_ROUNDS = 12;
+const INVALID_BCRYPT_HASH = '$2a$12$invalidinvalidinvalidinvalidin';
 
-/**
- * Auth nhân viên WMS: login bằng username/password, cấp access JWT (ngắn) +
- * refresh token (dài, lưu HASH trong DB, rotate khi refresh). Secret RIÊNG của WMS.
- */
 @Injectable()
 export class AuthService {
   constructor(
@@ -34,15 +33,18 @@ export class AuthService {
     private readonly auth: ConfigType<typeof authConfig>,
   ) {}
 
-  /** Xác thực username/password → trả document user (đã loại tài khoản khóa/xóa). */
+  private objectId(id: string) {
+    if (!Types.ObjectId.isValid(id)) throw new NotFoundException('User not found');
+    return new Types.ObjectId(id);
+  }
+
   private async validateUser(username: string, password: string) {
     const user = await this.userRepo.findActiveByUsername(username, true);
-    // So sánh kể cả khi không tìm thấy user để tránh lộ thời gian (timing attack nhẹ).
     const ok = user
       ? await bcrypt.compare(password, user.passwordHash)
-      : await bcrypt.compare(password, '$2a$12$invalidinvalidinvalidinvalidin');
+      : await bcrypt.compare(password, INVALID_BCRYPT_HASH);
     if (!user || !ok) {
-      throw new UnauthorizedException('Sai tài khoản hoặc mật khẩu');
+      throw new UnauthorizedException('Sai tai khoan hoac mat khau');
     }
     return user;
   }
@@ -53,7 +55,6 @@ export class AuthService {
     return { ...tokens, mustChangePassword: user.mustChangePassword };
   }
 
-  /** Cấp cặp access + refresh token; lưu hash refresh vào DB. */
   private async issueTokens(
     userId: Types.ObjectId,
     roles: string[],
@@ -81,60 +82,119 @@ export class AuthService {
     return { accessToken, refreshToken };
   }
 
-  /** Đổi access token mới + xoay refresh token (revoke cái cũ). */
   async refresh(refreshToken: string) {
     const doc = await this.refreshRepo.findValid(hashToken(refreshToken));
     if (!doc || doc.expiresAt.getTime() < Date.now()) {
-      throw new UnauthorizedException(
-        'Refresh token không hợp lệ hoặc đã hết hạn',
-      );
+      throw new UnauthorizedException('Refresh token khong hop le hoac da het han');
     }
     const user = await this.userRepo.findActiveById(doc.userId);
-    if (!user) throw new UnauthorizedException('Tài khoản không còn hiệu lực');
+    if (!user || user.status !== UserStatus.ACTIVE) {
+      throw new UnauthorizedException('Tai khoan khong con hieu luc');
+    }
 
-    doc.revokedAt = new Date(); // xoay: token cũ hết dùng được
+    doc.revokedAt = new Date();
     await doc.save();
     return this.issueTokens(user._id, user.roles, user.username);
   }
 
-  /** Đăng xuất: thu hồi refresh token đang giữ. */
   async logout(refreshToken: string) {
     await this.refreshRepo.revoke(hashToken(refreshToken));
     return { success: true };
   }
 
-  /** Thông tin nhân viên hiện tại (không kèm passwordHash). */
   async me(userId: string) {
     const user = await this.userRepo.findActiveById(userId);
-    if (!user) throw new UnauthorizedException();
+    if (!user || user.status !== UserStatus.ACTIVE) throw new UnauthorizedException();
     return user;
   }
 
-  /**
-   * Khởi tạo ADMIN đầu tiên — CHỈ chạy được khi DB chưa có user nào (chống chiếm quyền).
-   * Sau khi có admin, hãy dùng createUser (đã bảo vệ bằng @Roles(ADMIN)).
-   */
   async bootstrapAdmin(dto: CreateUserDto) {
     const count = await this.userRepo.countAll();
     if (count > 0) {
-      throw new ForbiddenException(
-        'Đã có nhân viên trong hệ thống — dùng endpoint tạo user (ADMIN).',
-      );
+      throw new ForbiddenException('Da co nhan vien trong he thong');
     }
     return this.createUser({ ...dto, roles: [WmsRole.ADMIN] });
   }
 
-  /** Tạo nhân viên mới (gọi bởi ADMIN). */
   async createUser(dto: CreateUserDto, createdBy?: string) {
     const passwordHash = await bcrypt.hash(dto.password, BCRYPT_ROUNDS);
     const user = await this.userRepo.create({
       username: dto.username,
+      email: dto.email,
       name: dto.name,
       roles: dto.roles ?? [],
       passwordHash,
-      createdBy: createdBy ? new Types.ObjectId(createdBy) : undefined,
+      mustChangePassword: true,
+      createdBy: createdBy ? this.objectId(createdBy) : undefined,
     });
-    // Không trả passwordHash (select:false vẫn loại, nhưng trả về object gọn).
-    return { id: user._id, username: user.username, roles: user.roles };
+    return {
+      id: user._id,
+      username: user.username,
+      email: user.email,
+      roles: user.roles,
+      mustChangePassword: user.mustChangePassword,
+    };
+  }
+
+  async updateRoles(userId: string, roles: string[], actorId: string) {
+    const user = await this.userRepo.updateRoles(
+      this.objectId(userId),
+      roles,
+      this.objectId(actorId),
+    );
+    if (!user) throw new NotFoundException('User not found');
+    return user;
+  }
+
+  async lockUser(userId: string, actorId: string) {
+    const user = await this.userRepo.updateStatus(
+      this.objectId(userId),
+      UserStatus.LOCKED,
+      this.objectId(actorId),
+    );
+    if (!user) throw new NotFoundException('User not found');
+    await this.refreshRepo.revokeAllForUser(user._id);
+    return user;
+  }
+
+  async unlockUser(userId: string, actorId: string) {
+    const user = await this.userRepo.updateStatus(
+      this.objectId(userId),
+      UserStatus.ACTIVE,
+      this.objectId(actorId),
+    );
+    if (!user) throw new NotFoundException('User not found');
+    return user;
+  }
+
+  async resetTemporaryPassword(
+    userId: string,
+    temporaryPassword: string,
+    actorId: string,
+  ) {
+    const passwordHash = await bcrypt.hash(temporaryPassword, BCRYPT_ROUNDS);
+    const user = await this.userRepo.updatePassword(
+      this.objectId(userId),
+      passwordHash,
+      true,
+      this.objectId(actorId),
+    );
+    if (!user) throw new NotFoundException('User not found');
+    await this.refreshRepo.revokeAllForUser(user._id);
+    return { success: true, mustChangePassword: user.mustChangePassword };
+  }
+
+  async changePassword(userId: string, dto: ChangePasswordDto) {
+    const user = await this.userRepo.findByIdWithPassword(this.objectId(userId));
+    const ok = user
+      ? await bcrypt.compare(dto.oldPassword, user.passwordHash)
+      : await bcrypt.compare(dto.oldPassword, INVALID_BCRYPT_HASH);
+    if (!user || !ok) {
+      throw new UnauthorizedException('Mat khau cu khong dung');
+    }
+
+    const passwordHash = await bcrypt.hash(dto.newPassword, BCRYPT_ROUNDS);
+    await this.userRepo.updatePassword(user._id, passwordHash, false, user._id);
+    return { success: true, mustChangePassword: false };
   }
 }

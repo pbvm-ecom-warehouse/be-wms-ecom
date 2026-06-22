@@ -1,22 +1,48 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
-import { HydratedDocument } from 'mongoose';
+import { HydratedDocument, SchemaTypes, Types } from 'mongoose';
 
-/** Trạng thái tài khoản khách. */
 export enum CustomerStatus {
   ACTIVE = 'ACTIVE',
   LOCKED = 'LOCKED',
 }
 
-/**
- * Khách hàng Ecommerce. Nhóm MASTER → audit + soft-delete (deletedAt).
- * collection giữ tên 'customers'. KHÔNG dùng chung với users (wms_db).
- */
+@Schema({ _id: true })
+export class CustomerAddress {
+  _id?: Types.ObjectId;
+
+  @Prop({ required: true })
+  label: string;
+
+  @Prop({ required: true })
+  recipientName: string;
+
+  @Prop({ required: true })
+  phone: string;
+
+  @Prop({ required: true })
+  line: string;
+
+  @Prop({ required: true })
+  ward: string;
+
+  @Prop({ required: true })
+  district: string;
+
+  @Prop({ required: true })
+  province: string;
+
+  @Prop({ default: false })
+  isDefault: boolean;
+}
+
+export const CustomerAddressSchema =
+  SchemaFactory.createForClass(CustomerAddress);
+
 @Schema({ collection: 'customers', timestamps: true })
 export class Customer {
   @Prop({ required: true, unique: true })
   email: string;
 
-  // Không trả hash ra ngoài mặc định; login phải .select('+passwordHash').
   @Prop({ required: true, select: false })
   passwordHash: string;
 
@@ -31,6 +57,9 @@ export class Customer {
 
   @Prop({ enum: CustomerStatus, default: CustomerStatus.ACTIVE })
   status: CustomerStatus;
+
+  @Prop({ type: [CustomerAddressSchema], default: [] })
+  addresses: CustomerAddress[];
 
   @Prop({ type: Date, default: null })
   deletedAt?: Date | null;

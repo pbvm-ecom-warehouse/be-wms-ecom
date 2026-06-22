@@ -7,18 +7,17 @@ import { UserStatus, User } from '../schemas/user.schema';
 export interface CreateUserInput {
   username: string;
   passwordHash: string;
+  email?: string;
   name?: string;
   roles?: string[];
+  mustChangePassword?: boolean;
   createdBy?: Types.ObjectId;
 }
 
 @Injectable()
 export class UserRepository {
-  constructor(
-    @InjectModel(User.name) private readonly model: Model<User>,
-  ) {}
+  constructor(@InjectModel(User.name) private readonly model: Model<User>) {}
 
-  /** Tìm nhân viên đang hoạt động theo username. Mặc định không kèm passwordHash. */
   findActiveByUsername(username: string, includePasswordHash = false) {
     const q = this.model.findOne({
       username,
@@ -29,12 +28,16 @@ export class UserRepository {
   }
 
   findActiveById(id: string | Types.ObjectId) {
+    return this.model.findOne({ _id: id, deletedAt: null }).exec();
+  }
+
+  findByIdWithPassword(id: string | Types.ObjectId) {
     return this.model
-      .findOne({ _id: id, deletedAt: null })
+      .findOne({ _id: id, deletedAt: null, status: UserStatus.ACTIVE })
+      .select('+passwordHash')
       .exec();
   }
 
-  /** Dùng cho bootstrapAdmin — kiểm tra DB có nhân viên nào chưa. */
   countAll() {
     return this.model.estimatedDocumentCount().exec();
   }
@@ -44,5 +47,50 @@ export class UserRepository {
       ...data,
       roles: data.roles ?? [WmsRole.RECEIVER],
     });
+  }
+
+  updateRoles(id: string | Types.ObjectId, roles: string[], updatedBy: Types.ObjectId) {
+    return this.model
+      .findOneAndUpdate(
+        { _id: id, deletedAt: null },
+        { $set: { roles, updatedBy } },
+        { new: true },
+      )
+      .exec();
+  }
+
+  updateStatus(
+    id: string | Types.ObjectId,
+    status: UserStatus,
+    updatedBy: Types.ObjectId,
+  ) {
+    return this.model
+      .findOneAndUpdate(
+        { _id: id, deletedAt: null },
+        { $set: { status, updatedBy } },
+        { new: true },
+      )
+      .exec();
+  }
+
+  updatePassword(
+    id: string | Types.ObjectId,
+    passwordHash: string,
+    mustChangePassword: boolean,
+    updatedBy?: Types.ObjectId,
+  ) {
+    return this.model
+      .findOneAndUpdate(
+        { _id: id, deletedAt: null, status: UserStatus.ACTIVE },
+        {
+          $set: {
+            passwordHash,
+            mustChangePassword,
+            ...(updatedBy ? { updatedBy } : {}),
+          },
+        },
+        { new: true },
+      )
+      .exec();
   }
 }

@@ -10,7 +10,6 @@ export class UserRefreshTokenRepository {
     private readonly model: Model<UserRefreshToken>,
   ) {}
 
-  /** Tìm refresh token còn hiệu lực (chưa bị thu hồi). */
   findValid(tokenHash: string) {
     return this.model.findOne({ tokenHash, revokedAt: null }).exec();
   }
@@ -19,10 +18,16 @@ export class UserRefreshTokenRepository {
     return this.model.create({ userId, tokenHash, expiresAt });
   }
 
-  /** Thu hồi token (logout / rotate). */
   revoke(tokenHash: string) {
     return this.model.updateOne(
       { tokenHash, revokedAt: null },
+      { $set: { revokedAt: new Date() } },
+    );
+  }
+
+  revokeAllForUser(userId: string | Types.ObjectId) {
+    return this.model.updateMany(
+      { userId, revokedAt: null },
       { $set: { revokedAt: new Date() } },
     );
   }
