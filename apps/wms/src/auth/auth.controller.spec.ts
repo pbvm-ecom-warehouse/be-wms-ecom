@@ -1,6 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
-import { plainToInstance } from 'class-transformer';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { AuthTokenResponseDto, UserResponseDto } from './dto/auth.dto';
@@ -21,7 +20,7 @@ const mockAuthService = {
 };
 
 const mockConfigService = {
-  get: jest.fn().mockReturnValue({ env: 'development' }),
+  get: jest.fn().mockReturnValue('development'),
 };
 
 const makeMockRes = () => ({
