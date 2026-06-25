@@ -1,3 +1,4 @@
+import cookieParser from 'cookie-parser';
 import { ConfigService, ConfigType } from '@nestjs/config';
 import { NestFactory } from '@nestjs/core';
 import { setupApp, setupSwagger } from '@app/common';
@@ -8,6 +9,9 @@ async function bootstrap() {
   const app = await NestFactory.create(AppModule, { bufferLogs: true });
   const config = app.get(ConfigService);
   const appCfg = config.get<ConfigType<typeof appConfig>>('app')!;
+
+  // cookieParser phải chạy trước mọi guard để req.cookies sẵn sàng cho JwtStrategy.
+  app.use(cookieParser());
 
   setupApp(app, {
     corsOrigins: appCfg.corsOrigins,
