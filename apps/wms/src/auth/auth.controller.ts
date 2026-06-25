@@ -1,4 +1,4 @@
-﻿import {
+import {
   Body,
   Controller,
   Get,
@@ -6,6 +6,8 @@
   Param,
   Patch,
   Post,
+  Req,
+  Res,
   UseGuards,
 } from '@nestjs/common';
 import {
@@ -26,28 +28,65 @@ import {
   RolesGuard,
   WmsRole,
 } from '@app/auth';
-import { AuthThrottle } from '@app/common';
+import { AppException, AuthThrottle } from '@app/common';
+import { ConfigService } from '@nestjs/config';
+import { plainToInstance } from 'class-transformer';
+import type { Request, Response } from 'express';
 import { AuthService } from './auth.service';
 import {
+  AuthTokenResponseDto,
   ChangePasswordDto,
   CreateUserDto,
+  CreateUserResponseDto,
   GoogleLoginDto,
   LoginDto,
   LogoutDto,
   RefreshDto,
   ResetUserPasswordDto,
   UpdateUserRolesDto,
+  UserResponseDto,
 } from './dto/auth.dto';
 
 @ApiTags('auth')
 @Controller('auth')
 export class AuthController {
-  constructor(private readonly auth: AuthService) {}
+  private readonly isProd: boolean;
+
+  constructor(
+    private readonly auth: AuthService,
+    private readonly config: ConfigService,
+  ) {
+    this.isProd = this.config.get<string>('NODE_ENV') === 'production';
+  }
+
+  // Cookie access_token: path rộng để dùng mọi route WMS.
+  // Cookie refresh_token: path hẹp /api/wms/auth để browser chỉ gửi lên auth endpoints.
+  private setAuthCookies(
+    res: Response,
+    tokens: { accessToken: string; refreshToken: string },
+  ): void {
+    const base = { httpOnly: true, sameSite: 'lax' as const, secure: this.isProd };
+    res.cookie('access_token', tokens.accessToken, { ...base, path: '/api/wms' });
+    res.cookie('refresh_token', tokens.refreshToken, { ...base, path: '/api/wms/auth' });
+  }
+
+  private clearAuthCookies(res: Response): void {
+    res.clearCookie('access_token', { path: '/api/wms' });
+    res.clearCookie('refresh_token', { path: '/api/wms/auth' });
+  }
+
+  // Ưu tiên body, fallback cookie — để API client và web browser đều dùng được.
+  private extractRefreshToken(dto: RefreshDto | LogoutDto, req: Request): string {
+    const cookies = req.cookies as Record<string, string> | undefined;
+    const token = dto.refreshToken ?? cookies?.['refresh_token'];
+    if (!token) throw new AppException('AUTH_TOKEN_INVALID');
+    return token;
+  }
 
   @Post('login')
   @HttpCode(200)
   @AuthThrottle()
-  @ApiOperation({ summary: 'Dang nhap nhan vien' })
+  @ApiOperation({ summary: 'Đăng nhập nhân viên' })
   @ApiBody({
     type: LoginDto,
     examples: {
@@ -58,17 +97,23 @@ export class AuthController {
     },
   })
   @ApiOkResponse({
-    description: 'Tra accessToken + refreshToken + mustChangePassword',
+    type: AuthTokenResponseDto,
+    description: 'Trả token trong body VÀ set cookie access_token + refresh_token',
   })
-  @ApiUnauthorizedResponse({ description: 'Sai tai khoan hoac mat khau' })
-  login(@Body() dto: LoginDto) {
-    return this.auth.login(dto.username, dto.password);
+  @ApiUnauthorizedResponse({ description: 'Sai tài khoản hoặc mật khẩu' })
+  async login(
+    @Body() dto: LoginDto,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<AuthTokenResponseDto> {
+    const tokens = await this.auth.login(dto.username, dto.password);
+    this.setAuthCookies(res, tokens);
+    return plainToInstance(AuthTokenResponseDto, tokens, { excludeExtraneousValues: true });
   }
 
   @Post('google-login')
   @HttpCode(200)
   @AuthThrottle()
-  @ApiOperation({ summary: 'Dang nhap bang Google/Firebase' })
+  @ApiOperation({ summary: 'Đăng nhập bằng Google/Firebase' })
   @ApiBody({
     type: GoogleLoginDto,
     examples: {
@@ -76,56 +121,81 @@ export class AuthController {
     },
   })
   @ApiOkResponse({
-    description: 'Tra accessToken + refreshToken + mustChangePassword',
+    type: AuthTokenResponseDto,
+    description: 'Trả token trong body VÀ set cookie access_token + refresh_token',
   })
-  @ApiUnauthorizedResponse({
-    description: 'Firebase token khong hop le hoac user khong ton tai',
-  })
-  googleLogin(@Body() dto: GoogleLoginDto) {
-    return this.auth.googleLogin(dto.idToken);
+  @ApiUnauthorizedResponse({ description: 'Firebase token không hợp lệ hoặc nhân viên chưa khởi tạo' })
+  async googleLogin(
+    @Body() dto: GoogleLoginDto,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<AuthTokenResponseDto> {
+    const tokens = await this.auth.googleLogin(dto.idToken);
+    this.setAuthCookies(res, tokens);
+    return plainToInstance(AuthTokenResponseDto, tokens, { excludeExtraneousValues: true });
   }
 
   @Post('refresh')
   @HttpCode(200)
   @AuthThrottle()
-  @ApiOperation({ summary: 'Doi access token moi bang refresh token' })
+  @ApiOperation({ summary: 'Đổi access token mới bằng refresh token (body hoặc cookie)' })
   @ApiBody({
     type: RefreshDto,
     examples: {
-      refresh: { value: { refreshToken: 'paste-refresh-token-here' } },
+      bearer: { summary: 'Bearer mode', value: { refreshToken: 'paste-refresh-token-here' } },
+      cookie: { summary: 'Cookie mode', value: {} },
     },
   })
-  @ApiOkResponse({ description: 'Tra accessToken + refreshToken moi (rotate)' })
-  refresh(@Body() dto: RefreshDto) {
-    return this.auth.refresh(dto.refreshToken);
+  @ApiOkResponse({
+    type: AuthTokenResponseDto,
+    description: 'Trả token mới trong body VÀ set cookie mới (rotate)',
+  })
+  async refresh(
+    @Body() dto: RefreshDto,
+    @Res({ passthrough: true }) res: Response,
+    @Req() req: Request,
+  ): Promise<AuthTokenResponseDto> {
+    const refreshToken = this.extractRefreshToken(dto, req);
+    const tokens = await this.auth.refresh(refreshToken);
+    this.setAuthCookies(res, tokens);
+    return plainToInstance(AuthTokenResponseDto, tokens, { excludeExtraneousValues: true });
   }
 
   @Post('logout')
   @HttpCode(200)
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Dang xuat va thu hoi refresh token' })
+  @ApiOperation({ summary: 'Đăng xuất và thu hồi refresh token' })
   @ApiBody({
     type: LogoutDto,
     examples: {
-      logout: { value: { refreshToken: 'paste-refresh-token-here' } },
+      bearer: { summary: 'Bearer mode', value: { refreshToken: 'paste-refresh-token-here' } },
+      cookie: { summary: 'Cookie mode', value: {} },
     },
   })
-  logout(@Body() dto: LogoutDto) {
-    return this.auth.logout(dto.refreshToken);
+  async logout(
+    @Body() dto: LogoutDto,
+    @Res({ passthrough: true }) res: Response,
+    @Req() req: Request,
+  ): Promise<{ success: boolean }> {
+    const refreshToken = this.extractRefreshToken(dto, req);
+    const result = await this.auth.logout(refreshToken);
+    this.clearAuthCookies(res);
+    return result;
   }
 
   @Get('me')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Thong tin nhan vien dang dang nhap' })
-  me(@CurrentUser('sub') userId: string) {
-    return this.auth.me(userId);
+  @ApiOperation({ summary: 'Thông tin nhân viên đang đăng nhập' })
+  @ApiOkResponse({ type: UserResponseDto })
+  async me(@CurrentUser('sub') userId: string): Promise<UserResponseDto> {
+    const user = await this.auth.me(userId);
+    return plainToInstance(UserResponseDto, user, { excludeExtraneousValues: true });
   }
 
   @Post('bootstrap-admin')
   @ApiOperation({
-    summary: 'Khoi tao admin dau tien khi he thong chua co user',
+    summary: 'Khởi tạo admin đầu tiên khi hệ thống chưa có user',
   })
   @ApiBody({
     type: CreateUserDto,
@@ -140,17 +210,18 @@ export class AuthController {
       },
     },
   })
-  @ApiCreatedResponse({ description: '{ id, username, roles }' })
-  @ApiForbiddenResponse({ description: 'Da co nhan vien trong he thong' })
-  bootstrapAdmin(@Body() dto: CreateUserDto) {
-    return this.auth.bootstrapAdmin(dto);
+  @ApiCreatedResponse({ type: CreateUserResponseDto })
+  @ApiForbiddenResponse({ description: 'Đã có nhân viên trong hệ thống' })
+  async bootstrapAdmin(@Body() dto: CreateUserDto): Promise<CreateUserResponseDto> {
+    const user = await this.auth.bootstrapAdmin(dto);
+    return plainToInstance(CreateUserResponseDto, user, { excludeExtraneousValues: true });
   }
 
   @Post('users')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(WmsRole.ADMIN)
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Tao nhan vien moi - chi ADMIN' })
+  @ApiOperation({ summary: 'Tạo nhân viên mới — chỉ ADMIN' })
   @ApiBody({
     type: CreateUserDto,
     examples: {
@@ -165,26 +236,33 @@ export class AuthController {
       },
     },
   })
-  createUser(@Body() dto: CreateUserDto, @CurrentUser('sub') by: string) {
-    return this.auth.createUser(dto, by);
+  @ApiCreatedResponse({ type: CreateUserResponseDto })
+  async createUser(
+    @Body() dto: CreateUserDto,
+    @CurrentUser('sub') by: string,
+  ): Promise<CreateUserResponseDto> {
+    const user = await this.auth.createUser(dto, by);
+    return plainToInstance(CreateUserResponseDto, user, { excludeExtraneousValues: true });
   }
 
   @Patch('users/:id/roles')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(WmsRole.ADMIN)
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Gan/sua roles nhan vien - chi ADMIN' })
-  @ApiParam({ name: 'id', description: 'Mongo ObjectId cua user' })
+  @ApiOperation({ summary: 'Gán/sửa roles nhân viên — chỉ ADMIN' })
+  @ApiParam({ name: 'id', description: 'Mongo ObjectId của user' })
   @ApiBody({
     type: UpdateUserRolesDto,
     examples: { roles: { value: { roles: ['RECEIVER', 'PICKER'] } } },
   })
-  updateRoles(
+  @ApiOkResponse({ type: UserResponseDto })
+  async updateRoles(
     @Param('id') id: string,
     @Body() dto: UpdateUserRolesDto,
     @CurrentUser('sub') by: string,
-  ) {
-    return this.auth.updateRoles(id, dto.roles, by);
+  ): Promise<UserResponseDto> {
+    const user = await this.auth.updateRoles(id, dto.roles, by);
+    return plainToInstance(UserResponseDto, user, { excludeExtraneousValues: true });
   }
 
   @Post('users/:id/lock')
@@ -192,10 +270,15 @@ export class AuthController {
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(WmsRole.ADMIN)
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Khoa tai khoan va revoke tat ca refresh token' })
-  @ApiParam({ name: 'id', description: 'Mongo ObjectId cua user' })
-  lockUser(@Param('id') id: string, @CurrentUser('sub') by: string) {
-    return this.auth.lockUser(id, by);
+  @ApiOperation({ summary: 'Khóa tài khoản và revoke tất cả refresh token' })
+  @ApiParam({ name: 'id', description: 'Mongo ObjectId của user' })
+  @ApiOkResponse({ type: UserResponseDto })
+  async lockUser(
+    @Param('id') id: string,
+    @CurrentUser('sub') by: string,
+  ): Promise<UserResponseDto> {
+    const user = await this.auth.lockUser(id, by);
+    return plainToInstance(UserResponseDto, user, { excludeExtraneousValues: true });
   }
 
   @Post('users/:id/unlock')
@@ -203,10 +286,15 @@ export class AuthController {
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(WmsRole.ADMIN)
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Mo khoa tai khoan' })
-  @ApiParam({ name: 'id', description: 'Mongo ObjectId cua user' })
-  unlockUser(@Param('id') id: string, @CurrentUser('sub') by: string) {
-    return this.auth.unlockUser(id, by);
+  @ApiOperation({ summary: 'Mở khóa tài khoản' })
+  @ApiParam({ name: 'id', description: 'Mongo ObjectId của user' })
+  @ApiOkResponse({ type: UserResponseDto })
+  async unlockUser(
+    @Param('id') id: string,
+    @CurrentUser('sub') by: string,
+  ): Promise<UserResponseDto> {
+    const user = await this.auth.unlockUser(id, by);
+    return plainToInstance(UserResponseDto, user, { excludeExtraneousValues: true });
   }
 
   @Post('users/:id/reset-password')
@@ -214,17 +302,18 @@ export class AuthController {
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(WmsRole.ADMIN)
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Reset mat khau tam va bat doi mat khau' })
-  @ApiParam({ name: 'id', description: 'Mongo ObjectId cua user' })
+  @ApiOperation({ summary: 'Reset mật khẩu tạm và bắt đổi mật khẩu' })
+  @ApiParam({ name: 'id', description: 'Mongo ObjectId của user' })
   @ApiBody({
     type: ResetUserPasswordDto,
     examples: { reset: { value: { temporaryPassword: 'TempP@ssw0rd123!' } } },
   })
+  @ApiOkResponse({ description: '{ success: true, mustChangePassword: true }' })
   resetPassword(
     @Param('id') id: string,
     @Body() dto: ResetUserPasswordDto,
     @CurrentUser('sub') by: string,
-  ) {
+  ): Promise<{ success: boolean; mustChangePassword: boolean }> {
     return this.auth.resetTemporaryPassword(id, dto.temporaryPassword, by);
   }
 
@@ -232,7 +321,7 @@ export class AuthController {
   @HttpCode(200)
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Nhan vien doi mat khau' })
+  @ApiOperation({ summary: 'Nhân viên đổi mật khẩu' })
   @ApiBody({
     type: ChangePasswordDto,
     examples: {
@@ -244,10 +333,11 @@ export class AuthController {
       },
     },
   })
+  @ApiOkResponse({ description: '{ success: true, mustChangePassword: false }' })
   changePassword(
     @CurrentUser('sub') userId: string,
     @Body() dto: ChangePasswordDto,
-  ) {
+  ): Promise<{ success: boolean; mustChangePassword: boolean }> {
     return this.auth.changePassword(userId, dto);
   }
 }
