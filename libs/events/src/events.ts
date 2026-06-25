@@ -156,7 +156,7 @@ export interface PaymentSuccessPayload {
 export interface CustomerEmailActionPayload {
   customerId: string;
   email: string;
-  token: string;
+  code: string; // mã OTP 6 số (plaintext, chỉ để notification ghép vào email)
 }
 
 /** Bản đồ event → payload (giúp producer/consumer type-safe). */

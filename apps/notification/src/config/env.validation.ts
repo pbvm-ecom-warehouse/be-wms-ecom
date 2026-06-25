@@ -25,6 +25,10 @@ const envSchema = z.object({
   FIREBASE_CLIENT_EMAIL: z.string().min(1).optional(),
   FIREBASE_PRIVATE_KEY: z.string().min(1).optional(),
 
+  // Email qua Resend. Thiếu RESEND_API_KEY/RESEND_FROM → email tắt mềm.
+  RESEND_API_KEY: z.string().min(1).optional(),
+  RESEND_FROM: z.string().min(1).optional(),
+
   NOTIFICATION_PORT: z.coerce.number().int().positive(),
 });
 

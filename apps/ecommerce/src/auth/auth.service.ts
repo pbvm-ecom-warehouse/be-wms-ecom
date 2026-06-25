@@ -1,3 +1,4 @@
+import { randomInt } from 'node:crypto';
 import { InjectQueue } from '@nestjs/bullmq';
 import {
   BadRequestException,
@@ -28,17 +29,14 @@ import {
   RegisterDto,
   UpdateAddressDto,
 } from './dto/auth.dto';
-import { AuthTokenType } from './schemas/customer-auth-token.schema';
 import { CustomerAddress } from './schemas/customer.schema';
-import { CustomerAuthTokenRepository } from './repositories/customer-auth-token.repository';
 import { CustomerRefreshTokenRepository } from './repositories/customer-refresh-token.repository';
 import { CustomerRepository } from './repositories/customer.repository';
+import { OtpStore, type OtpType } from './otp.store';
 
 type MsDuration = Exclude<JwtSignOptions['expiresIn'], number | undefined>;
 
 const BCRYPT_ROUNDS = 12;
-const VERIFY_TOKEN_TTL_MS = 24 * 60 * 60 * 1000;
-const RESET_TOKEN_TTL_MS = 60 * 60 * 1000;
 const INVALID_BCRYPT_HASH = '$2a$12$invalidinvalidinvalidinvalidin';
 const NEUTRAL_RESET_MESSAGE =
   'Neu email ton tai, chung toi da gui huong dan dat lai mat khau';
@@ -48,12 +46,12 @@ export class AuthService {
   constructor(
     private readonly customerRepo: CustomerRepository,
     private readonly refreshRepo: CustomerRefreshTokenRepository,
-    private readonly authTokenRepo: CustomerAuthTokenRepository,
     @InjectQueue(QUEUES.NOTIFICATION) private readonly notifyQueue: Queue,
     private readonly jwt: JwtService,
     private readonly firebaseAdmin: FirebaseAdminService,
     @Inject(authConfig.KEY)
     private readonly auth: ConfigType<typeof authConfig>,
+    private readonly otpStore: OtpStore,
   ) {}
 
   private objectId(id: string) {
@@ -77,36 +75,34 @@ export class AuthService {
     await this.sendEmailAction(
       customer._id,
       customer.email,
-      AuthTokenType.VERIFY_EMAIL,
+      'verify_email',
       EVENTS.CUSTOMER_VERIFY_REQUESTED,
-      VERIFY_TOKEN_TTL_MS,
     );
     const tokens = await this.issueTokens(customer._id, customer.email);
     return { ...tokens, emailVerified: false };
   }
 
+  private generateOtp(): string {
+    return randomInt(0, 1_000_000).toString().padStart(6, '0');
+  }
+
   private async sendEmailAction(
     customerId: Types.ObjectId,
     email: string,
-    type: AuthTokenType,
+    type: OtpType,
     eventName:
       | typeof EVENTS.CUSTOMER_VERIFY_REQUESTED
       | typeof EVENTS.CUSTOMER_PASSWORD_RESET_REQUESTED,
-    ttlMs: number,
   ) {
-    const token = generateOpaqueToken();
-    await this.authTokenRepo.create(
-      customerId,
-      type,
-      hashToken(token),
-      new Date(Date.now() + ttlMs),
-    );
+    const code = this.generateOtp();
+    await this.otpStore.issue(customerId.toString(), type, code);
     const payload: CustomerEmailActionPayload = {
       customerId: customerId.toString(),
       email,
-      token,
+      code,
     };
-    await this.notifyQueue.add(eventName, payload);
+    // removeOnComplete: xóa mã plaintext khỏi job data (Redis) sau khi gửi xong.
+    await this.notifyQueue.add(eventName, payload, { removeOnComplete: true });
   }
 
   async login(email: string, password: string) {
@@ -216,21 +212,15 @@ export class AuthService {
     return customer;
   }
 
-  async verifyEmail(token: string) {
-    const doc = await this.authTokenRepo.findValid(
-      AuthTokenType.VERIFY_EMAIL,
-      hashToken(token),
-    );
-    if (!doc || doc.expiresAt.getTime() < Date.now()) {
-      throw new BadRequestException(
-        'Token xac minh khong hop le hoac da het han',
-      );
+  async verifyEmail(email: string, code: string) {
+    const customer = await this.customerRepo.findActiveByEmail(email);
+    const ok = customer
+      ? await this.otpStore.verify(customer._id.toString(), 'verify_email', code)
+      : false;
+    if (!customer || !ok) {
+      throw new BadRequestException('Ma khong dung hoac da het han');
     }
-    const customer = await this.customerRepo.markEmailVerified(doc.customerId);
-    if (!customer)
-      throw new BadRequestException('Tai khoan khong con hieu luc');
-    doc.usedAt = new Date();
-    await doc.save();
+    await this.customerRepo.markEmailVerified(customer._id);
     return { success: true, emailVerified: true };
   }
 
@@ -244,9 +234,8 @@ export class AuthService {
     await this.sendEmailAction(
       customer._id,
       customer.email,
-      AuthTokenType.VERIFY_EMAIL,
+      'verify_email',
       EVENTS.CUSTOMER_VERIFY_REQUESTED,
-      VERIFY_TOKEN_TTL_MS,
     );
     return { success: true, emailVerified: false };
   }
@@ -257,35 +246,24 @@ export class AuthService {
       await this.sendEmailAction(
         customer._id,
         customer.email,
-        AuthTokenType.RESET_PASSWORD,
+        'reset_password',
         EVENTS.CUSTOMER_PASSWORD_RESET_REQUESTED,
-        RESET_TOKEN_TTL_MS,
       );
     }
     return { message: NEUTRAL_RESET_MESSAGE };
   }
 
-  async resetPassword(token: string, newPassword: string) {
-    const doc = await this.authTokenRepo.findValid(
-      AuthTokenType.RESET_PASSWORD,
-      hashToken(token),
-    );
-    if (!doc || doc.expiresAt.getTime() < Date.now()) {
-      throw new BadRequestException(
-        'Token dat lai mat khau khong hop le hoac da het han',
-      );
+  async resetPassword(email: string, code: string, newPassword: string) {
+    const customer = await this.customerRepo.findActiveByEmail(email);
+    const ok = customer
+      ? await this.otpStore.verify(customer._id.toString(), 'reset_password', code)
+      : false;
+    if (!customer || !ok) {
+      // Trung lap: khong lo email ton tai / ma sai.
+      throw new BadRequestException('Ma khong dung hoac da het han');
     }
-
     const passwordHash = await bcrypt.hash(newPassword, BCRYPT_ROUNDS);
-    const customer = await this.customerRepo.updatePassword(
-      doc.customerId,
-      passwordHash,
-    );
-    if (!customer)
-      throw new BadRequestException('Tai khoan khong con hieu luc');
-
-    doc.usedAt = new Date();
-    await doc.save();
+    await this.customerRepo.updatePassword(customer._id, passwordHash);
     await this.refreshRepo.revokeAllForCustomer(customer._id);
     return { success: true };
   }
