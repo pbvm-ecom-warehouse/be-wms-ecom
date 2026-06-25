@@ -33,8 +33,8 @@ import {
   RefreshDto,
   RegisterDto,
   ResetPasswordDto,
-  TokenDto,
   UpdateAddressDto,
+  VerifyEmailDto,
 } from './dto/auth.dto';
 
 @ApiTags('auth')
@@ -144,13 +144,13 @@ export class AuthController {
   @Post('verify-email')
   @HttpCode(200)
   @AuthThrottle()
-  @ApiOperation({ summary: 'Xac minh email bang token mot lan' })
+  @ApiOperation({ summary: 'Xac minh email bang ma OTP 6 so' })
   @ApiBody({
-    type: TokenDto,
-    examples: { verify: { value: { token: 'paste-email-token-here' } } },
+    type: VerifyEmailDto,
+    examples: { verify: { value: { email: 'khach@example.com', code: '123456' } } },
   })
-  verifyEmail(@Body() dto: TokenDto) {
-    return this.auth.verifyEmail(dto.token);
+  verifyEmail(@Body() dto: VerifyEmailDto) {
+    return this.auth.verifyEmail(dto.email, dto.code);
   }
 
   @Post('resend-verify-email')
@@ -178,20 +178,17 @@ export class AuthController {
   @Post('reset-password')
   @HttpCode(200)
   @AuthThrottle()
-  @ApiOperation({ summary: 'Dat lai mat khau bang token email' })
+  @ApiOperation({ summary: 'Dat lai mat khau bang ma OTP 6 so' })
   @ApiBody({
     type: ResetPasswordDto,
     examples: {
       reset: {
-        value: {
-          token: 'paste-reset-token-here',
-          newPassword: 'NewP@ssw0rd123!',
-        },
+        value: { email: 'khach@example.com', code: '123456', newPassword: 'NewP@ssw0rd123!' },
       },
     },
   })
   resetPassword(@Body() dto: ResetPasswordDto) {
-    return this.auth.resetPassword(dto.token, dto.newPassword);
+    return this.auth.resetPassword(dto.email, dto.code, dto.newPassword);
   }
 
   @Post('change-password')

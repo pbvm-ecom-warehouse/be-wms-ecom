@@ -7,6 +7,7 @@ import { FirebaseAdminModule } from '@app/common';
 import { QUEUES } from '@app/events';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
+import { OtpStore } from './otp.store';
 import { JwtStrategy } from './jwt.strategy';
 import { CustomerAuthTokenRepository } from './repositories/customer-auth-token.repository';
 import { CustomerRefreshTokenRepository } from './repositories/customer-refresh-token.repository';
@@ -44,6 +45,7 @@ import {
     CustomerRepository,
     CustomerRefreshTokenRepository,
     CustomerAuthTokenRepository,
+    OtpStore,
   ],
   exports: [AuthService],
 })

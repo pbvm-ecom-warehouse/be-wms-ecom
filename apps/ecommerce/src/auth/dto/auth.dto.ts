@@ -3,6 +3,7 @@ import {
   IsEmail,
   IsOptional,
   IsString,
+  Length,
   MinLength,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
@@ -57,10 +58,15 @@ export class LogoutDto {
   refreshToken!: string;
 }
 
-export class TokenDto {
-  @ApiProperty({ description: 'Opaque token trong email link' })
+export class VerifyEmailDto {
+  @ApiProperty({ example: 'khach@example.com' })
+  @IsEmail()
+  email!: string;
+
+  @ApiProperty({ example: '123456', description: 'Mã OTP 6 số' })
   @IsString()
-  token!: string;
+  @Length(6, 6)
+  code!: string;
 }
 
 export class ForgotPasswordDto {
@@ -69,7 +75,16 @@ export class ForgotPasswordDto {
   email!: string;
 }
 
-export class ResetPasswordDto extends TokenDto {
+export class ResetPasswordDto {
+  @ApiProperty({ example: 'khach@example.com' })
+  @IsEmail()
+  email!: string;
+
+  @ApiProperty({ example: '123456', description: 'Mã OTP 6 số' })
+  @IsString()
+  @Length(6, 6)
+  code!: string;
+
   @ApiProperty({ example: 'NewP@ssw0rd123!', minLength: 8 })
   @IsString()
   @MinLength(8)

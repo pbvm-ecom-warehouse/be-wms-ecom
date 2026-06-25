@@ -95,6 +95,9 @@
     "transform": {
       "^.+\\.(t|j)s$": "ts-jest"
     },
+    "transformIgnorePatterns": [
+      "/node_modules/(?!(@firebase|firebase-admin|jose|jwks-rsa)/)"
+    ],
     "collectCoverageFrom": [
       "**/*.(t|j)s"
     ],
