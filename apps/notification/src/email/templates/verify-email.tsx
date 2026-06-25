@@ -1,3 +1,4 @@
+import { ReactElement } from 'react';
 import {
   Body,
   Container,
@@ -8,7 +9,7 @@ import {
 } from '@react-email/components';
 
 // Template xác minh email — hiển thị mã OTP 6 chữ số gửi cho khách hàng.
-export function VerifyEmail({ code }: { code: string }) {
+export function VerifyEmail({ code }: { code: string }): ReactElement {
   return (
     <Html lang="vi">
       <Body>
