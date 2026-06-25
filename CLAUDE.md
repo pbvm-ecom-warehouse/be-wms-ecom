@@ -43,3 +43,5 @@ pnpm lint   # eslint --fix      pnpm test   # jest      pnpm build
 @.claude/rules/data-and-mongoose.md
 @.claude/rules/events.md
 @.claude/rules/auth-and-modules.md
+@.claude/rules/dto-conventions.md
+@.claude/rules/error-handling.md
