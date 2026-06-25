@@ -30,7 +30,8 @@ export class ResponseInterceptor implements NestInterceptor {
     if (raw) return next.handle();
 
     const req = context.switchToHttp().getRequest<Request & { id?: string }>();
-    const requestId = req.id ?? (req.headers['x-request-id'] as string | undefined);
+    const requestId =
+      req.id ?? (req.headers['x-request-id'] as string | undefined);
 
     return next.handle().pipe(
       map((payload) => {

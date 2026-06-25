@@ -2,7 +2,9 @@ import { sanitizeForLog } from './sanitize';
 
 describe('sanitizeForLog', () => {
   it('che field nhạy cảm bất kể hoa/thường', () => {
-    expect(sanitizeForLog({ username: 'a', password: 'secret', refreshToken: 'r' })).toEqual({
+    expect(
+      sanitizeForLog({ username: 'a', password: 'secret', refreshToken: 'r' }),
+    ).toEqual({
       username: 'a',
       password: '[REDACTED]',
       refreshToken: '[REDACTED]',
@@ -10,7 +12,9 @@ describe('sanitizeForLog', () => {
   });
 
   it('che lồng sâu trong object', () => {
-    expect(sanitizeForLog({ data: { user: { token: 'x', name: 'b' } } })).toEqual({
+    expect(
+      sanitizeForLog({ data: { user: { token: 'x', name: 'b' } } }),
+    ).toEqual({
       data: { user: { token: '[REDACTED]', name: 'b' } },
     });
   });

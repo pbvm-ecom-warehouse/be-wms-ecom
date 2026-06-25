@@ -147,7 +147,9 @@ export class AuthController {
   @ApiOperation({ summary: 'Xac minh email bang ma OTP 6 so' })
   @ApiBody({
     type: VerifyEmailDto,
-    examples: { verify: { value: { email: 'khach@example.com', code: '123456' } } },
+    examples: {
+      verify: { value: { email: 'khach@example.com', code: '123456' } },
+    },
   })
   verifyEmail(@Body() dto: VerifyEmailDto) {
     return this.auth.verifyEmail(dto.email, dto.code);
@@ -183,7 +185,11 @@ export class AuthController {
     type: ResetPasswordDto,
     examples: {
       reset: {
-        value: { email: 'khach@example.com', code: '123456', newPassword: 'NewP@ssw0rd123!' },
+        value: {
+          email: 'khach@example.com',
+          code: '123456',
+          newPassword: 'NewP@ssw0rd123!',
+        },
       },
     },
   })

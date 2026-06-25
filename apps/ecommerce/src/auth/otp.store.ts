@@ -46,7 +46,11 @@ export class OtpStore implements OnModuleDestroy {
   }
 
   /** Đúng → xóa key, true. Sai → attempts++, hết lần thì xóa, false. */
-  async verify(customerId: string, type: OtpType, code: string): Promise<boolean> {
+  async verify(
+    customerId: string,
+    type: OtpType,
+    code: string,
+  ): Promise<boolean> {
     const key = this.key(customerId, type);
     const data = await this.redis.hgetall(key);
     if (!data || !data.codeHash) return false;

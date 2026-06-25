@@ -80,7 +80,7 @@ export class AuthService {
       throw new UnauthorizedException('Nhan vien chua duoc khoi tao trong WMS');
     }
 
-    let user = existingByEmail.firebaseUid
+    const user = existingByEmail.firebaseUid
       ? existingByEmail.firebaseUid === decoded.uid
         ? existingByEmail
         : (() => {

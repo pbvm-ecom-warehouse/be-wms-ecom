@@ -17,7 +17,8 @@ async function bootstrap() {
 
   setupSwagger(app, {
     title: 'WMS API',
-    description: 'Quản lý kho: auth nhân viên, tồn kho, xuất nhập, in ly, vận đơn',
+    description:
+      'Quản lý kho: auth nhân viên, tồn kho, xuất nhập, in ly, vận đơn',
     docsPath: 'api/wms/docs',
     isProd: appCfg.env === 'production',
   });

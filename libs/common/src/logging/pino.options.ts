@@ -50,7 +50,10 @@ export function buildPinoOptions(config: ConfigService): Params {
       },
       transport: isProd
         ? undefined
-        : { target: 'pino-pretty', options: { singleLine: true, translateTime: 'SYS:standard' } },
+        : {
+            target: 'pino-pretty',
+            options: { singleLine: true, translateTime: 'SYS:standard' },
+          },
     },
   };
 }

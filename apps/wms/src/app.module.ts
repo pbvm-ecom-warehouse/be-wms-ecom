@@ -3,7 +3,11 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { APP_GUARD } from '@nestjs/core';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { LoggerModule } from 'nestjs-pino';
-import { CommonModule, buildPinoOptions, buildThrottlerOptions } from '@app/common';
+import {
+  CommonModule,
+  buildPinoOptions,
+  buildThrottlerOptions,
+} from '@app/common';
 import { DatabaseModule } from '@app/database';
 import { EventsModule } from '@app/events';
 import { AppController } from './app.controller';

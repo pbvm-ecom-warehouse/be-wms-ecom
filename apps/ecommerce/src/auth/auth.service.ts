@@ -215,7 +215,11 @@ export class AuthService {
   async verifyEmail(email: string, code: string) {
     const customer = await this.customerRepo.findActiveByEmail(email);
     const ok = customer
-      ? await this.otpStore.verify(customer._id.toString(), 'verify_email', code)
+      ? await this.otpStore.verify(
+          customer._id.toString(),
+          'verify_email',
+          code,
+        )
       : false;
     if (!customer || !ok) {
       throw new BadRequestException('Ma khong dung hoac da het han');
@@ -256,7 +260,11 @@ export class AuthService {
   async resetPassword(email: string, code: string, newPassword: string) {
     const customer = await this.customerRepo.findActiveByEmail(email);
     const ok = customer
-      ? await this.otpStore.verify(customer._id.toString(), 'reset_password', code)
+      ? await this.otpStore.verify(
+          customer._id.toString(),
+          'reset_password',
+          code,
+        )
       : false;
     if (!customer || !ok) {
       // Trung lap: khong lo email ton tai / ma sai.

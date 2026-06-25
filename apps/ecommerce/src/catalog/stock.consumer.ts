@@ -38,7 +38,9 @@ export class StockConsumer extends WorkerHost {
         if (applied) {
           this.logger.log(`availableQty[${sku}] += ${delta} (job ${job.id})`);
         } else {
-          this.logger.warn(`Job ${job.id} đã xử lý trước đó → bỏ qua (idempotent).`);
+          this.logger.warn(
+            `Job ${job.id} đã xử lý trước đó → bỏ qua (idempotent).`,
+          );
         }
         break;
       }

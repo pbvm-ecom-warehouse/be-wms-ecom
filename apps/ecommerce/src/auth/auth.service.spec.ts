@@ -18,7 +18,9 @@ function makeService(overrides: Partial<Record<string, any>> = {}) {
     updatePassword: jest.fn().mockResolvedValue(customer),
     ...overrides.customerRepo,
   };
-  const refreshRepo = { revokeAllForCustomer: jest.fn().mockResolvedValue(undefined) };
+  const refreshRepo = {
+    revokeAllForCustomer: jest.fn().mockResolvedValue(undefined),
+  };
   const otpStore = {
     issue: jest.fn().mockResolvedValue(undefined),
     verify: jest.fn().mockResolvedValue(true),
@@ -26,13 +28,13 @@ function makeService(overrides: Partial<Record<string, any>> = {}) {
   };
   const notifyQueue = { add: jest.fn().mockResolvedValue(undefined) };
   const svc = new AuthService(
-    customerRepo as any,
+    customerRepo,
     refreshRepo as any,
     notifyQueue as any,
     {} as any, // jwt
     {} as any, // firebaseAdmin
-    { jwtSecret: 's', jwtExpiresIn: '30d', refreshExpiresIn: '60d' } as any,
-    otpStore as any,
+    { jwtSecret: 's', jwtExpiresIn: '30d', refreshExpiresIn: '60d' },
+    otpStore,
   );
   return { svc, customerRepo, refreshRepo, otpStore };
 }
@@ -41,14 +43,22 @@ describe('AuthService OTP', () => {
   it('verifyEmail mã đúng → markEmailVerified', async () => {
     const { svc, customerRepo, otpStore } = makeService();
     const res = await svc.verifyEmail('a@b.com', '123456');
-    expect(otpStore.verify).toHaveBeenCalledWith('c1', 'verify_email', '123456');
+    expect(otpStore.verify).toHaveBeenCalledWith(
+      'c1',
+      'verify_email',
+      '123456',
+    );
     expect(customerRepo.markEmailVerified).toHaveBeenCalled();
     expect(res).toEqual({ success: true, emailVerified: true });
   });
 
   it('verifyEmail mã sai → BadRequest', async () => {
-    const { svc } = makeService({ otpStore: { verify: jest.fn().mockResolvedValue(false) } });
-    await expect(svc.verifyEmail('a@b.com', '000000')).rejects.toBeInstanceOf(BadRequestException);
+    const { svc } = makeService({
+      otpStore: { verify: jest.fn().mockResolvedValue(false) },
+    });
+    await expect(svc.verifyEmail('a@b.com', '000000')).rejects.toBeInstanceOf(
+      BadRequestException,
+    );
   });
 
   it('resetPassword mã đúng → updatePassword + revoke refresh', async () => {
@@ -60,7 +70,11 @@ describe('AuthService OTP', () => {
   });
 
   it('resetPassword email không tồn tại → BadRequest trung lập (không lộ)', async () => {
-    const { svc } = makeService({ customerRepo: { findActiveByEmail: jest.fn().mockResolvedValue(null) } });
-    await expect(svc.resetPassword('x@y.com', '123456', 'NewP@ssw0rd123!')).rejects.toBeInstanceOf(BadRequestException);
+    const { svc } = makeService({
+      customerRepo: { findActiveByEmail: jest.fn().mockResolvedValue(null) },
+    });
+    await expect(
+      svc.resetPassword('x@y.com', '123456', 'NewP@ssw0rd123!'),
+    ).rejects.toBeInstanceOf(BadRequestException);
   });
 });
