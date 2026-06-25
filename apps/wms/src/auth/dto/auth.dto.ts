@@ -7,10 +7,11 @@ import {
   IsString,
   MinLength,
 } from 'class-validator';
+import { Expose, Transform } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { WmsRole } from '@app/auth';
+import { Types } from 'mongoose';
 
-/** ÄÄƒng nháº­p nhĂ¢n viĂªn báº±ng username + máº­t kháº©u. */
 export class LoginDto {
   @ApiProperty({ example: 'admin' })
   @IsString()
@@ -28,21 +29,20 @@ export class GoogleLoginDto {
   idToken!: string;
 }
 
-/** Äá»•i access token má»›i báº±ng refresh token. */
 export class RefreshDto {
-  @ApiProperty({ description: 'Refresh token nháº­n Ä‘Æ°á»£c lĂºc login' })
+  @ApiPropertyOptional({ description: 'Refresh token nhận được lúc login — bỏ qua nếu dùng cookie mode' })
+  @IsOptional()
   @IsString()
-  refreshToken!: string;
+  refreshToken?: string;
 }
 
-/** ÄÄƒng xuáº¥t: thu há»“i refresh token Ä‘ang giá»¯. */
 export class LogoutDto {
-  @ApiProperty({ description: 'Refresh token cáº§n thu há»“i' })
+  @ApiPropertyOptional({ description: 'Refresh token cần thu hồi — bỏ qua nếu dùng cookie mode' })
+  @IsOptional()
   @IsString()
-  refreshToken!: string;
+  refreshToken?: string;
 }
 
-/** Táº¡o nhĂ¢n viĂªn (ADMIN) hoáº·c khá»Ÿi táº¡o admin Ä‘áº§u tiĂªn (bootstrap). */
 export class CreateUserDto {
   @ApiProperty({ example: 'nguyen.van.a', minLength: 3 })
   @IsString()
@@ -59,7 +59,7 @@ export class CreateUserDto {
   @IsEmail()
   email?: string;
 
-  @ApiPropertyOptional({ example: 'Nguyá»…n VÄƒn A' })
+  @ApiPropertyOptional({ example: 'Nguyễn Văn A' })
   @IsOptional()
   @IsString()
   name?: string;
@@ -101,4 +101,96 @@ export class ChangePasswordDto {
   @IsString()
   @MinLength(8)
   newPassword!: string;
+}
+
+// ─── Response DTOs ────────────────────────────────────────────────────────────
+
+/** Response cho login / google-login / refresh. */
+export class AuthTokenResponseDto {
+  @Expose()
+  @ApiProperty()
+  accessToken!: string;
+
+  @Expose()
+  @ApiProperty()
+  refreshToken!: string;
+
+  @Expose()
+  @ApiProperty()
+  mustChangePassword!: boolean;
+}
+
+/** Response cho GET /me, PATCH /users/:id/roles, POST /users/:id/lock|unlock. */
+export class UserResponseDto {
+  @Expose()
+  @Transform(({ obj }: { obj: { _id?: Types.ObjectId | { toString(): string } } }) =>
+    obj._id?.toString(),
+  )
+  @ApiProperty()
+  id!: string;
+
+  @Expose()
+  @ApiProperty()
+  username!: string;
+
+  @Expose()
+  @ApiPropertyOptional()
+  email?: string;
+
+  @Expose()
+  @ApiPropertyOptional()
+  name?: string;
+
+  @Expose()
+  @ApiProperty({ type: [String] })
+  roles!: string[];
+
+  @Expose()
+  @ApiProperty({ enum: ['ACTIVE', 'LOCKED'] })
+  status!: string;
+
+  @Expose()
+  @ApiProperty()
+  mustChangePassword!: boolean;
+
+  @Expose()
+  @Transform(({ obj }: { obj: { warehouseId?: Types.ObjectId | { toString(): string } | null } }) =>
+    obj.warehouseId?.toString() ?? undefined,
+  )
+  @ApiPropertyOptional()
+  warehouseId?: string;
+
+  @Expose()
+  @ApiProperty()
+  createdAt!: Date;
+
+  @Expose()
+  @ApiProperty()
+  updatedAt!: Date;
+}
+
+/** Response cho POST /users và POST /bootstrap-admin. */
+export class CreateUserResponseDto {
+  @Expose()
+  @Transform(({ obj }: { obj: { _id?: Types.ObjectId | { toString(): string } } }) =>
+    obj._id?.toString(),
+  )
+  @ApiProperty()
+  id!: string;
+
+  @Expose()
+  @ApiProperty()
+  username!: string;
+
+  @Expose()
+  @ApiPropertyOptional()
+  email?: string;
+
+  @Expose()
+  @ApiProperty({ type: [String] })
+  roles!: string[];
+
+  @Expose()
+  @ApiProperty()
+  mustChangePassword!: boolean;
 }
