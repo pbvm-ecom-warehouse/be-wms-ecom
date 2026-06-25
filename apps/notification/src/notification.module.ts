@@ -4,6 +4,7 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { LoggerModule } from 'nestjs-pino';
 import { CommonModule, buildPinoOptions } from '@app/common';
 import { EventsModule, QUEUES } from '@app/events';
+import { EmailModule } from './email/email.module';
 import { FirebaseModule } from './firebase/firebase.module';
 import { validateEnv } from './config/env.validation';
 import { NotificationConsumer } from './notification.consumer';
@@ -19,6 +20,7 @@ import { NotificationService } from './notification.service';
     }),
     CommonModule, // global filter/interceptor/pipe
     EventsModule, // BullMQ + Redis
+    EmailModule, // Resend email service — gửi OTP verify/reset
     FirebaseModule,
     BullModule.registerQueue({ name: QUEUES.NOTIFICATION }),
   ],
