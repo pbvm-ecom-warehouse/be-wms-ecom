@@ -1,7 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { ConfigService } from '@nestjs/config';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
+import { appConfig } from '../config/app.config';
 import { AuthTokenResponseDto, UserResponseDto } from './dto/auth.dto';
 
 const mockAuthService = {
@@ -19,9 +19,7 @@ const mockAuthService = {
   changePassword: jest.fn(),
 };
 
-const mockConfigService = {
-  get: jest.fn().mockReturnValue('development'),
-};
+const mockAppConfig = { env: 'development' };
 
 const makeMockRes = () => ({
   cookie: jest.fn(),
@@ -38,7 +36,7 @@ describe('AuthController', () => {
       controllers: [AuthController],
       providers: [
         { provide: AuthService, useValue: mockAuthService },
-        { provide: ConfigService, useValue: mockConfigService },
+        { provide: appConfig.KEY, useValue: mockAppConfig },
       ],
     }).compile();
     controller = module.get(AuthController);
@@ -52,6 +50,20 @@ describe('AuthController', () => {
       const res = makeMockRes();
 
       const result = await controller.login({ username: 'admin', password: 'pass' }, res as never);
+
+      expect(res.cookie).toHaveBeenCalledWith('access_token', 'at', expect.objectContaining({ httpOnly: true, path: '/api/wms' }));
+      expect(res.cookie).toHaveBeenCalledWith('refresh_token', 'rt', expect.objectContaining({ httpOnly: true, path: '/api/wms/auth' }));
+      expect(result).toMatchObject({ accessToken: 'at', refreshToken: 'rt', mustChangePassword: false });
+    });
+  });
+
+  describe('googleLogin', () => {
+    it('set cookie và trả AuthTokenResponseDto', async () => {
+      const tokens = { accessToken: 'at', refreshToken: 'rt', mustChangePassword: false };
+      mockAuthService.googleLogin.mockResolvedValue(tokens);
+      const res = makeMockRes();
+
+      const result = await controller.googleLogin({ idToken: 'firebase-id-token' }, res as never);
 
       expect(res.cookie).toHaveBeenCalledWith('access_token', 'at', expect.objectContaining({ httpOnly: true, path: '/api/wms' }));
       expect(res.cookie).toHaveBeenCalledWith('refresh_token', 'rt', expect.objectContaining({ httpOnly: true, path: '/api/wms/auth' }));

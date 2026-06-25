@@ -3,6 +3,7 @@ import {
   Controller,
   Get,
   HttpCode,
+  Inject,
   Param,
   Patch,
   Post,
@@ -29,9 +30,10 @@ import {
   WmsRole,
 } from '@app/auth';
 import { AppException, AuthThrottle } from '@app/common';
-import { ConfigService } from '@nestjs/config';
+import type { ConfigType } from '@nestjs/config';
 import { plainToInstance } from 'class-transformer';
 import type { Request, Response } from 'express';
+import { appConfig } from '../config/app.config';
 import { AuthService } from './auth.service';
 import {
   AuthTokenResponseDto,
@@ -54,9 +56,9 @@ export class AuthController {
 
   constructor(
     private readonly auth: AuthService,
-    private readonly config: ConfigService,
+    @Inject(appConfig.KEY) private readonly appCfg: ConfigType<typeof appConfig>,
   ) {
-    this.isProd = this.config.get<string>('NODE_ENV') === 'production';
+    this.isProd = this.appCfg.env === 'production';
   }
 
   // Cookie access_token: path rộng để dùng mọi route WMS.
@@ -65,9 +67,19 @@ export class AuthController {
     res: Response,
     tokens: { accessToken: string; refreshToken: string },
   ): void {
-    const base = { httpOnly: true, sameSite: 'lax' as const, secure: this.isProd };
-    res.cookie('access_token', tokens.accessToken, { ...base, path: '/api/wms' });
-    res.cookie('refresh_token', tokens.refreshToken, { ...base, path: '/api/wms/auth' });
+    const base = {
+      httpOnly: true,
+      sameSite: 'lax' as const,
+      secure: this.isProd,
+    };
+    res.cookie('access_token', tokens.accessToken, {
+      ...base,
+      path: '/api/wms',
+    });
+    res.cookie('refresh_token', tokens.refreshToken, {
+      ...base,
+      path: '/api/wms/auth',
+    });
   }
 
   private clearAuthCookies(res: Response): void {
@@ -76,7 +88,10 @@ export class AuthController {
   }
 
   // Ưu tiên body, fallback cookie — để API client và web browser đều dùng được.
-  private extractRefreshToken(dto: RefreshDto | LogoutDto, req: Request): string {
+  private extractRefreshToken(
+    dto: RefreshDto | LogoutDto,
+    req: Request,
+  ): string {
     const cookies = req.cookies as Record<string, string> | undefined;
     const token = dto.refreshToken ?? cookies?.['refresh_token'];
     if (!token) throw new AppException('AUTH_TOKEN_INVALID');
@@ -98,7 +113,8 @@ export class AuthController {
   })
   @ApiOkResponse({
     type: AuthTokenResponseDto,
-    description: 'Trả token trong body VÀ set cookie access_token + refresh_token',
+    description:
+      'Trả token trong body VÀ set cookie access_token + refresh_token',
   })
   @ApiUnauthorizedResponse({ description: 'Sai tài khoản hoặc mật khẩu' })
   async login(
@@ -107,7 +123,9 @@ export class AuthController {
   ): Promise<AuthTokenResponseDto> {
     const tokens = await this.auth.login(dto.username, dto.password);
     this.setAuthCookies(res, tokens);
-    return plainToInstance(AuthTokenResponseDto, tokens, { excludeExtraneousValues: true });
+    return plainToInstance(AuthTokenResponseDto, tokens, {
+      excludeExtraneousValues: true,
+    });
   }
 
   @Post('google-login')
@@ -122,26 +140,36 @@ export class AuthController {
   })
   @ApiOkResponse({
     type: AuthTokenResponseDto,
-    description: 'Trả token trong body VÀ set cookie access_token + refresh_token',
+    description:
+      'Trả token trong body VÀ set cookie access_token + refresh_token',
   })
-  @ApiUnauthorizedResponse({ description: 'Firebase token không hợp lệ hoặc nhân viên chưa khởi tạo' })
+  @ApiUnauthorizedResponse({
+    description: 'Firebase token không hợp lệ hoặc nhân viên chưa khởi tạo',
+  })
   async googleLogin(
     @Body() dto: GoogleLoginDto,
     @Res({ passthrough: true }) res: Response,
   ): Promise<AuthTokenResponseDto> {
     const tokens = await this.auth.googleLogin(dto.idToken);
     this.setAuthCookies(res, tokens);
-    return plainToInstance(AuthTokenResponseDto, tokens, { excludeExtraneousValues: true });
+    return plainToInstance(AuthTokenResponseDto, tokens, {
+      excludeExtraneousValues: true,
+    });
   }
 
   @Post('refresh')
   @HttpCode(200)
   @AuthThrottle()
-  @ApiOperation({ summary: 'Đổi access token mới bằng refresh token (body hoặc cookie)' })
+  @ApiOperation({
+    summary: 'Đổi access token mới bằng refresh token (body hoặc cookie)',
+  })
   @ApiBody({
     type: RefreshDto,
     examples: {
-      bearer: { summary: 'Bearer mode', value: { refreshToken: 'paste-refresh-token-here' } },
+      bearer: {
+        summary: 'Bearer mode',
+        value: { refreshToken: 'paste-refresh-token-here' },
+      },
       cookie: { summary: 'Cookie mode', value: {} },
     },
   })
@@ -157,7 +185,9 @@ export class AuthController {
     const refreshToken = this.extractRefreshToken(dto, req);
     const tokens = await this.auth.refresh(refreshToken);
     this.setAuthCookies(res, tokens);
-    return plainToInstance(AuthTokenResponseDto, tokens, { excludeExtraneousValues: true });
+    return plainToInstance(AuthTokenResponseDto, tokens, {
+      excludeExtraneousValues: true,
+    });
   }
 
   @Post('logout')
@@ -165,10 +195,14 @@ export class AuthController {
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Đăng xuất và thu hồi refresh token' })
+  @ApiOkResponse({ description: '{ success: true } — cookies cleared, token revoked' })
   @ApiBody({
     type: LogoutDto,
     examples: {
-      bearer: { summary: 'Bearer mode', value: { refreshToken: 'paste-refresh-token-here' } },
+      bearer: {
+        summary: 'Bearer mode',
+        value: { refreshToken: 'paste-refresh-token-here' },
+      },
       cookie: { summary: 'Cookie mode', value: {} },
     },
   })
@@ -190,7 +224,9 @@ export class AuthController {
   @ApiOkResponse({ type: UserResponseDto })
   async me(@CurrentUser('sub') userId: string): Promise<UserResponseDto> {
     const user = await this.auth.me(userId);
-    return plainToInstance(UserResponseDto, user, { excludeExtraneousValues: true });
+    return plainToInstance(UserResponseDto, user, {
+      excludeExtraneousValues: true,
+    });
   }
 
   @Post('bootstrap-admin')
@@ -212,9 +248,13 @@ export class AuthController {
   })
   @ApiCreatedResponse({ type: CreateUserResponseDto })
   @ApiForbiddenResponse({ description: 'Đã có nhân viên trong hệ thống' })
-  async bootstrapAdmin(@Body() dto: CreateUserDto): Promise<CreateUserResponseDto> {
+  async bootstrapAdmin(
+    @Body() dto: CreateUserDto,
+  ): Promise<CreateUserResponseDto> {
     const user = await this.auth.bootstrapAdmin(dto);
-    return plainToInstance(CreateUserResponseDto, user, { excludeExtraneousValues: true });
+    return plainToInstance(CreateUserResponseDto, user, {
+      excludeExtraneousValues: true,
+    });
   }
 
   @Post('users')
@@ -242,7 +282,9 @@ export class AuthController {
     @CurrentUser('sub') by: string,
   ): Promise<CreateUserResponseDto> {
     const user = await this.auth.createUser(dto, by);
-    return plainToInstance(CreateUserResponseDto, user, { excludeExtraneousValues: true });
+    return plainToInstance(CreateUserResponseDto, user, {
+      excludeExtraneousValues: true,
+    });
   }
 
   @Patch('users/:id/roles')
@@ -262,7 +304,9 @@ export class AuthController {
     @CurrentUser('sub') by: string,
   ): Promise<UserResponseDto> {
     const user = await this.auth.updateRoles(id, dto.roles, by);
-    return plainToInstance(UserResponseDto, user, { excludeExtraneousValues: true });
+    return plainToInstance(UserResponseDto, user, {
+      excludeExtraneousValues: true,
+    });
   }
 
   @Post('users/:id/lock')
@@ -278,7 +322,9 @@ export class AuthController {
     @CurrentUser('sub') by: string,
   ): Promise<UserResponseDto> {
     const user = await this.auth.lockUser(id, by);
-    return plainToInstance(UserResponseDto, user, { excludeExtraneousValues: true });
+    return plainToInstance(UserResponseDto, user, {
+      excludeExtraneousValues: true,
+    });
   }
 
   @Post('users/:id/unlock')
@@ -294,7 +340,9 @@ export class AuthController {
     @CurrentUser('sub') by: string,
   ): Promise<UserResponseDto> {
     const user = await this.auth.unlockUser(id, by);
-    return plainToInstance(UserResponseDto, user, { excludeExtraneousValues: true });
+    return plainToInstance(UserResponseDto, user, {
+      excludeExtraneousValues: true,
+    });
   }
 
   @Post('users/:id/reset-password')
@@ -333,7 +381,9 @@ export class AuthController {
       },
     },
   })
-  @ApiOkResponse({ description: '{ success: true, mustChangePassword: false }' })
+  @ApiOkResponse({
+    description: '{ success: true, mustChangePassword: false }',
+  })
   changePassword(
     @CurrentUser('sub') userId: string,
     @Body() dto: ChangePasswordDto,
