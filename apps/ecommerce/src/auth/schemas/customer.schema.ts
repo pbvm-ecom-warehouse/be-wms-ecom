@@ -1,5 +1,5 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
-import { HydratedDocument, SchemaTypes, Types } from 'mongoose';
+import { HydratedDocument, Types } from 'mongoose';
 
 export enum CustomerStatus {
   ACTIVE = 'ACTIVE',

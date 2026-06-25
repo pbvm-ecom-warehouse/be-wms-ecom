@@ -4,7 +4,7 @@ import { lastValueFrom, of } from 'rxjs';
 import { PaginatedResult } from '../pagination/paginated-result';
 import { ResponseInterceptor } from './response.interceptor';
 
-function ctx(handlerMeta = false): ExecutionContext {
+function ctx(): ExecutionContext {
   const req = { id: 'req-9', headers: {} };
   return {
     getType: () => 'http',

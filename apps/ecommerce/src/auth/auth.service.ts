@@ -147,7 +147,7 @@ export class AuthService {
           email: decoded.email,
           firebaseUid: decoded.uid,
           passwordHash: await bcrypt.hash(generateOpaqueToken(), BCRYPT_ROUNDS),
-          name: decoded.name ?? undefined,
+          name: typeof decoded.name === 'string' ? decoded.name : undefined,
           phone: decoded.phone_number ?? undefined,
         });
 
@@ -385,11 +385,12 @@ export class AuthService {
 
   private normalizeAddresses(addresses: CustomerAddress[]) {
     return addresses.map((address) => {
+      const doc = address as CustomerAddress & {
+        toObject?: () => CustomerAddress;
+      };
       const plain =
-        typeof (address as any).toObject === 'function'
-          ? (address as any).toObject()
-          : address;
-      return { ...plain } as CustomerAddress;
+        typeof doc.toObject === 'function' ? doc.toObject() : address;
+      return { ...plain };
     });
   }
 

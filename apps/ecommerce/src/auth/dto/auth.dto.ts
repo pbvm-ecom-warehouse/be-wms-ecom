@@ -6,6 +6,7 @@ import {
   Length,
   MinLength,
 } from 'class-validator';
+import { Expose, Transform, Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class RegisterDto {
@@ -178,4 +179,109 @@ export class UpdateAddressDto {
   @IsOptional()
   @IsBoolean()
   isDefault?: boolean;
+}
+
+// ─── Response DTOs ────────────────────────────────────────────────────────────
+
+export class AuthTokenResponseDto {
+  @Expose()
+  @ApiProperty()
+  accessToken!: string;
+
+  @Expose()
+  @ApiProperty()
+  refreshToken!: string;
+
+  @Expose()
+  @ApiPropertyOptional({ description: 'Email đã xác minh hay chưa' })
+  emailVerified?: boolean;
+}
+
+export class AddressResponseDto {
+  @Expose()
+  @ApiProperty()
+  @Transform(({ obj }: { obj: { _id?: { toString(): string } } }) =>
+    obj._id?.toString(),
+  )
+  id!: string;
+
+  @Expose()
+  @ApiProperty({ example: 'Home' })
+  label!: string;
+
+  @Expose()
+  @ApiProperty({ example: 'Nguyen Thi B' })
+  recipientName!: string;
+
+  @Expose()
+  @ApiProperty({ example: '0901234567' })
+  phone!: string;
+
+  @Expose()
+  @ApiProperty({ example: '123 Nguyen Trai' })
+  line!: string;
+
+  @Expose()
+  @ApiProperty({ example: 'Ward 1' })
+  ward!: string;
+
+  @Expose()
+  @ApiProperty({ example: 'District 1' })
+  district!: string;
+
+  @Expose()
+  @ApiProperty({ example: 'Ho Chi Minh' })
+  province!: string;
+
+  @Expose()
+  @ApiProperty({ example: false })
+  isDefault!: boolean;
+}
+
+export class CustomerResponseDto {
+  @Expose()
+  @ApiProperty()
+  @Transform(({ obj }: { obj: { _id?: { toString(): string } } }) =>
+    obj._id?.toString(),
+  )
+  id!: string;
+
+  @Expose()
+  @ApiProperty({ example: 'khach@example.com' })
+  email!: string;
+
+  @Expose()
+  @ApiPropertyOptional({ example: 'Nguyen Thi B' })
+  name?: string;
+
+  @Expose()
+  @ApiPropertyOptional({ example: '0901234567' })
+  phone?: string;
+
+  @Expose()
+  @ApiProperty({ example: false })
+  emailVerified!: boolean;
+
+  @Expose()
+  @ApiProperty({ enum: ['ACTIVE', 'LOCKED'], example: 'ACTIVE' })
+  status!: string;
+
+  @Expose()
+  @Type(() => AddressResponseDto)
+  @ApiProperty({ type: [AddressResponseDto] })
+  addresses!: AddressResponseDto[];
+}
+
+export class SuccessResponseDto {
+  @Expose()
+  @ApiPropertyOptional({ example: true })
+  success?: boolean;
+
+  @Expose()
+  @ApiPropertyOptional()
+  message?: string;
+
+  @Expose()
+  @ApiPropertyOptional({ example: false })
+  emailVerified?: boolean;
 }

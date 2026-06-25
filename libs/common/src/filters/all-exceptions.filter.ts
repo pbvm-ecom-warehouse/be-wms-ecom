@@ -36,7 +36,7 @@ export class AllExceptionsFilter implements ExceptionFilter {
     const requestId =
       req.id ?? (req.headers['x-request-id'] as string | undefined);
 
-    let status = HttpStatus.INTERNAL_SERVER_ERROR;
+    let status: number = HttpStatus.INTERNAL_SERVER_ERROR;
     let code = 'INTERNAL';
     let message = 'Lỗi hệ thống';
     let details: unknown;

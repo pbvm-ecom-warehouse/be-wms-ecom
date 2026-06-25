@@ -6,6 +6,10 @@ import { EmailService } from './email/email.service';
 import { VerifyEmail } from './email/templates/verify-email';
 import { ResetPasswordEmail } from './email/templates/reset-password';
 
+function toEmailPayload(raw: unknown): CustomerEmailActionPayload {
+  return raw as CustomerEmailActionPayload;
+}
+
 /**
  * CONSUMER thông báo: verify/reset → gửi email OTP qua Resend.
  * Consumer THUẦN: không phát event, không DB. idempotencyKey = job.id chống gửi trùng.
@@ -22,20 +26,22 @@ export class NotificationConsumer extends WorkerHost {
     const key = job.id ?? `${job.name}:${Date.now()}`;
     switch (job.name) {
       case EVENTS.CUSTOMER_VERIFY_REQUESTED: {
-        const { email, code } = job.data as CustomerEmailActionPayload;
+        const { email, code } = toEmailPayload(job.data);
         await this.email.send({
           to: email,
           subject: 'Mã xác minh email',
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
           react: VerifyEmail({ code }),
           idempotencyKey: key,
         });
         break;
       }
       case EVENTS.CUSTOMER_PASSWORD_RESET_REQUESTED: {
-        const { email, code } = job.data as CustomerEmailActionPayload;
+        const { email, code } = toEmailPayload(job.data);
         await this.email.send({
           to: email,
           subject: 'Mã đặt lại mật khẩu',
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
           react: ResetPasswordEmail({ code }),
           idempotencyKey: key,
         });

@@ -1,12 +1,12 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Resend } from 'resend';
-import type { ReactElement } from 'react';
+import type { ReactNode } from 'react';
 
 interface SendArgs {
   to: string;
   subject: string;
-  react: ReactElement;
+  react: ReactNode;
   idempotencyKey: string; // = job.id → Resend dedupe khi BullMQ retry
 }
 
@@ -35,9 +35,14 @@ export class EmailService {
       this.logger.warn(`Bo gui email "${subject}" -> ${to} (email tat).`);
       return;
     }
-    await this.resend.emails.send(
+    const { error } = await this.resend.emails.send(
       { from: this.from, to, subject, react },
       { idempotencyKey },
     );
+    if (error) {
+      this.logger.error(
+        `Gui email "${subject}" -> ${to} that bai: ${error.message}`,
+      );
+    }
   }
 }

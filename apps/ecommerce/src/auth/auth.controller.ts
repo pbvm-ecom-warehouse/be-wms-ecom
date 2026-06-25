@@ -22,10 +22,14 @@ import {
 } from '@nestjs/swagger';
 import { CurrentUser, JwtAuthGuard } from '@app/auth';
 import { AuthThrottle } from '@app/common';
+import { plainToInstance } from 'class-transformer';
 import { AuthService } from './auth.service';
 import {
   AddressDto,
+  AddressResponseDto,
+  AuthTokenResponseDto,
   ChangePasswordDto,
+  CustomerResponseDto,
   ForgotPasswordDto,
   GoogleLoginDto,
   LoginDto,
@@ -33,6 +37,7 @@ import {
   RefreshDto,
   RegisterDto,
   ResetPasswordDto,
+  SuccessResponseDto,
   UpdateAddressDto,
   VerifyEmailDto,
 } from './dto/auth.dto';
@@ -58,12 +63,13 @@ export class AuthController {
       },
     },
   })
-  @ApiCreatedResponse({
-    description: 'Tra accessToken + refreshToken, gui email xac minh',
-  })
+  @ApiCreatedResponse({ type: AuthTokenResponseDto })
   @ApiConflictResponse({ description: 'Email da duoc dang ky' })
-  register(@Body() dto: RegisterDto) {
-    return this.auth.register(dto);
+  async register(@Body() dto: RegisterDto) {
+    const result = await this.auth.register(dto);
+    return plainToInstance(AuthTokenResponseDto, result, {
+      excludeExtraneousValues: true,
+    });
   }
 
   @Post('login')
@@ -78,12 +84,13 @@ export class AuthController {
       },
     },
   })
-  @ApiOkResponse({
-    description: 'Tra accessToken + refreshToken + emailVerified',
-  })
+  @ApiOkResponse({ type: AuthTokenResponseDto })
   @ApiUnauthorizedResponse({ description: 'Sai email hoac mat khau' })
-  login(@Body() dto: LoginDto) {
-    return this.auth.login(dto.email, dto.password);
+  async login(@Body() dto: LoginDto) {
+    const result = await this.auth.login(dto.email, dto.password);
+    return plainToInstance(AuthTokenResponseDto, result, {
+      excludeExtraneousValues: true,
+    });
   }
 
   @Post('google-login')
@@ -96,12 +103,13 @@ export class AuthController {
       google: { value: { idToken: 'paste-firebase-id-token-here' } },
     },
   })
-  @ApiOkResponse({
-    description: 'Tra accessToken + refreshToken + emailVerified',
-  })
+  @ApiOkResponse({ type: AuthTokenResponseDto })
   @ApiUnauthorizedResponse({ description: 'Firebase token khong hop le' })
-  googleLogin(@Body() dto: GoogleLoginDto) {
-    return this.auth.googleLogin(dto.idToken);
+  async googleLogin(@Body() dto: GoogleLoginDto) {
+    const result = await this.auth.googleLogin(dto.idToken);
+    return plainToInstance(AuthTokenResponseDto, result, {
+      excludeExtraneousValues: true,
+    });
   }
 
   @Post('refresh')
@@ -114,8 +122,12 @@ export class AuthController {
       refresh: { value: { refreshToken: 'paste-refresh-token-here' } },
     },
   })
-  refresh(@Body() dto: RefreshDto) {
-    return this.auth.refresh(dto.refreshToken);
+  @ApiOkResponse({ type: AuthTokenResponseDto })
+  async refresh(@Body() dto: RefreshDto) {
+    const result = await this.auth.refresh(dto.refreshToken);
+    return plainToInstance(AuthTokenResponseDto, result, {
+      excludeExtraneousValues: true,
+    });
   }
 
   @Post('logout')
@@ -129,16 +141,24 @@ export class AuthController {
       logout: { value: { refreshToken: 'paste-refresh-token-here' } },
     },
   })
-  logout(@Body() dto: LogoutDto) {
-    return this.auth.logout(dto.refreshToken);
+  @ApiOkResponse({ type: SuccessResponseDto })
+  async logout(@Body() dto: LogoutDto) {
+    const result = await this.auth.logout(dto.refreshToken);
+    return plainToInstance(SuccessResponseDto, result, {
+      excludeExtraneousValues: true,
+    });
   }
 
   @Get('me')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Thong tin khach dang dang nhap' })
-  me(@CurrentUser('sub') customerId: string) {
-    return this.auth.me(customerId);
+  @ApiOkResponse({ type: CustomerResponseDto })
+  async me(@CurrentUser('sub') customerId: string) {
+    const result = await this.auth.me(customerId);
+    return plainToInstance(CustomerResponseDto, result, {
+      excludeExtraneousValues: true,
+    });
   }
 
   @Post('verify-email')
@@ -151,8 +171,12 @@ export class AuthController {
       verify: { value: { email: 'khach@example.com', code: '123456' } },
     },
   })
-  verifyEmail(@Body() dto: VerifyEmailDto) {
-    return this.auth.verifyEmail(dto.email, dto.code);
+  @ApiOkResponse({ type: SuccessResponseDto })
+  async verifyEmail(@Body() dto: VerifyEmailDto) {
+    const result = await this.auth.verifyEmail(dto.email, dto.code);
+    return plainToInstance(SuccessResponseDto, result, {
+      excludeExtraneousValues: true,
+    });
   }
 
   @Post('resend-verify-email')
@@ -161,8 +185,12 @@ export class AuthController {
   @ApiBearerAuth()
   @AuthThrottle()
   @ApiOperation({ summary: 'Gui lai email xac minh cho khach dang dang nhap' })
-  resendVerifyEmail(@CurrentUser('sub') customerId: string) {
-    return this.auth.resendVerifyEmail(customerId);
+  @ApiOkResponse({ type: SuccessResponseDto })
+  async resendVerifyEmail(@CurrentUser('sub') customerId: string) {
+    const result = await this.auth.resendVerifyEmail(customerId);
+    return plainToInstance(SuccessResponseDto, result, {
+      excludeExtraneousValues: true,
+    });
   }
 
   @Post('forgot-password')
@@ -173,8 +201,12 @@ export class AuthController {
     type: ForgotPasswordDto,
     examples: { forgot: { value: { email: 'khach@example.com' } } },
   })
-  forgotPassword(@Body() dto: ForgotPasswordDto) {
-    return this.auth.forgotPassword(dto.email);
+  @ApiOkResponse({ type: SuccessResponseDto })
+  async forgotPassword(@Body() dto: ForgotPasswordDto) {
+    const result = await this.auth.forgotPassword(dto.email);
+    return plainToInstance(SuccessResponseDto, result, {
+      excludeExtraneousValues: true,
+    });
   }
 
   @Post('reset-password')
@@ -193,8 +225,16 @@ export class AuthController {
       },
     },
   })
-  resetPassword(@Body() dto: ResetPasswordDto) {
-    return this.auth.resetPassword(dto.email, dto.code, dto.newPassword);
+  @ApiOkResponse({ type: SuccessResponseDto })
+  async resetPassword(@Body() dto: ResetPasswordDto) {
+    const result = await this.auth.resetPassword(
+      dto.email,
+      dto.code,
+      dto.newPassword,
+    );
+    return plainToInstance(SuccessResponseDto, result, {
+      excludeExtraneousValues: true,
+    });
   }
 
   @Post('change-password')
@@ -210,19 +250,27 @@ export class AuthController {
       },
     },
   })
-  changePassword(
+  @ApiOkResponse({ type: SuccessResponseDto })
+  async changePassword(
     @CurrentUser('sub') customerId: string,
     @Body() dto: ChangePasswordDto,
   ) {
-    return this.auth.changePassword(customerId, dto);
+    const result = await this.auth.changePassword(customerId, dto);
+    return plainToInstance(SuccessResponseDto, result, {
+      excludeExtraneousValues: true,
+    });
   }
 
   @Get('addresses')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Danh sach so dia chi' })
-  listAddresses(@CurrentUser('sub') customerId: string) {
-    return this.auth.listAddresses(customerId);
+  @ApiOkResponse({ type: [AddressResponseDto] })
+  async listAddresses(@CurrentUser('sub') customerId: string) {
+    const result = await this.auth.listAddresses(customerId);
+    return plainToInstance(AddressResponseDto, result, {
+      excludeExtraneousValues: true,
+    });
   }
 
   @Post('addresses')
@@ -246,8 +294,15 @@ export class AuthController {
       },
     },
   })
-  addAddress(@CurrentUser('sub') customerId: string, @Body() dto: AddressDto) {
-    return this.auth.addAddress(customerId, dto);
+  @ApiCreatedResponse({ type: [AddressResponseDto] })
+  async addAddress(
+    @CurrentUser('sub') customerId: string,
+    @Body() dto: AddressDto,
+  ) {
+    const result = await this.auth.addAddress(customerId, dto);
+    return plainToInstance(AddressResponseDto, result, {
+      excludeExtraneousValues: true,
+    });
   }
 
   @Patch('addresses/:id')
@@ -259,12 +314,16 @@ export class AuthController {
     type: UpdateAddressDto,
     examples: { patch: { value: { label: 'Office', isDefault: true } } },
   })
-  updateAddress(
+  @ApiOkResponse({ type: [AddressResponseDto] })
+  async updateAddress(
     @CurrentUser('sub') customerId: string,
     @Param('id') id: string,
     @Body() dto: UpdateAddressDto,
   ) {
-    return this.auth.updateAddress(customerId, id, dto);
+    const result = await this.auth.updateAddress(customerId, id, dto);
+    return plainToInstance(AddressResponseDto, result, {
+      excludeExtraneousValues: true,
+    });
   }
 
   @Post('addresses/:id/default')
@@ -273,11 +332,15 @@ export class AuthController {
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Dat dia chi mac dinh' })
   @ApiParam({ name: 'id', description: 'ObjectId cua address embedded' })
-  setDefaultAddress(
+  @ApiOkResponse({ type: [AddressResponseDto] })
+  async setDefaultAddress(
     @CurrentUser('sub') customerId: string,
     @Param('id') id: string,
   ) {
-    return this.auth.setDefaultAddress(customerId, id);
+    const result = await this.auth.setDefaultAddress(customerId, id);
+    return plainToInstance(AddressResponseDto, result, {
+      excludeExtraneousValues: true,
+    });
   }
 
   @Delete('addresses/:id')
@@ -285,10 +348,14 @@ export class AuthController {
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Xoa dia chi' })
   @ApiParam({ name: 'id', description: 'ObjectId cua address embedded' })
-  deleteAddress(
+  @ApiOkResponse({ type: [AddressResponseDto] })
+  async deleteAddress(
     @CurrentUser('sub') customerId: string,
     @Param('id') id: string,
   ) {
-    return this.auth.deleteAddress(customerId, id);
+    const result = await this.auth.deleteAddress(customerId, id);
+    return plainToInstance(AddressResponseDto, result, {
+      excludeExtraneousValues: true,
+    });
   }
 }
