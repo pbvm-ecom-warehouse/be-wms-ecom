@@ -1,15 +1,10 @@
-import {
-  ForbiddenException,
-  Inject,
-  Injectable,
-  NotFoundException,
-  UnauthorizedException,
-} from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import type { ConfigType } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import type { JwtSignOptions } from '@nestjs/jwt';
 import { JwtPayload, WmsRole } from '@app/auth';
 import {
+  AppException,
   durationToMs,
   generateOpaqueToken,
   hashToken,
@@ -41,7 +36,7 @@ export class AuthService {
 
   private objectId(id: string) {
     if (!Types.ObjectId.isValid(id))
-      throw new NotFoundException('User not found');
+      throw new AppException('NOT_FOUND', 'User not found');
     return new Types.ObjectId(id);
   }
 
@@ -51,7 +46,7 @@ export class AuthService {
       ? await bcrypt.compare(password, user.passwordHash)
       : await bcrypt.compare(password, INVALID_BCRYPT_HASH);
     if (!user || !ok) {
-      throw new UnauthorizedException('Sai tai khoan hoac mat khau');
+      throw new AppException('AUTH_INVALID_CREDENTIALS', 'Sai tài khoản hoặc mật khẩu');
     }
     return user;
   }
@@ -65,7 +60,7 @@ export class AuthService {
   async googleLogin(idToken: string) {
     const decoded = await this.firebaseAdmin.verifyIdToken(idToken);
     if (!decoded.email) {
-      throw new UnauthorizedException('Firebase token khong chua email');
+      throw new AppException('AUTH_FIREBASE_NO_EMAIL');
     }
 
     const existingByUid = await this.userRepo.findByFirebaseUid(
@@ -77,21 +72,19 @@ export class AuthService {
       : await this.userRepo.findActiveByEmail(decoded.email, true);
 
     if (!existingByEmail) {
-      throw new UnauthorizedException('Nhan vien chua duoc khoi tao trong WMS');
+      throw new AppException('AUTH_WMS_NOT_INITIALIZED');
     }
 
     const user = existingByEmail.firebaseUid
       ? existingByEmail.firebaseUid === decoded.uid
         ? existingByEmail
         : (() => {
-            throw new UnauthorizedException(
-              'Tai khoan da duoc lien ket Firebase khac',
-            );
+            throw new AppException('AUTH_FIREBASE_UID_MISMATCH');
           })()
       : await this.userRepo.linkFirebaseUid(existingByEmail._id, decoded.uid);
 
     if (!user) {
-      throw new UnauthorizedException('Nhan vien chua duoc khoi tao trong WMS');
+      throw new AppException('AUTH_WMS_NOT_INITIALIZED');
     }
 
     const tokens = await this.issueTokens(user._id, user.roles, user.username);
@@ -128,13 +121,11 @@ export class AuthService {
   async refresh(refreshToken: string) {
     const doc = await this.refreshRepo.findValid(hashToken(refreshToken));
     if (!doc || doc.expiresAt.getTime() < Date.now()) {
-      throw new UnauthorizedException(
-        'Refresh token khong hop le hoac da het han',
-      );
+      throw new AppException('AUTH_TOKEN_INVALID');
     }
     const user = await this.userRepo.findActiveById(doc.userId);
     if (!user || user.status !== UserStatus.ACTIVE) {
-      throw new UnauthorizedException('Tai khoan khong con hieu luc');
+      throw new AppException('AUTH_ACCOUNT_INACTIVE');
     }
 
     doc.revokedAt = new Date();
@@ -150,14 +141,14 @@ export class AuthService {
   async me(userId: string) {
     const user = await this.userRepo.findActiveById(userId);
     if (!user || user.status !== UserStatus.ACTIVE)
-      throw new UnauthorizedException();
+      throw new AppException('UNAUTHENTICATED');
     return user;
   }
 
   async bootstrapAdmin(dto: CreateUserDto) {
     const count = await this.userRepo.countAll();
     if (count > 0) {
-      throw new ForbiddenException('Da co nhan vien trong he thong');
+      throw new AppException('AUTH_BOOTSTRAP_FORBIDDEN');
     }
     return this.createUser({ ...dto, roles: [WmsRole.ADMIN] });
   }
@@ -188,7 +179,7 @@ export class AuthService {
       roles,
       this.objectId(actorId),
     );
-    if (!user) throw new NotFoundException('User not found');
+    if (!user) throw new AppException('NOT_FOUND', 'User not found');
     return user;
   }
 
@@ -198,7 +189,7 @@ export class AuthService {
       UserStatus.LOCKED,
       this.objectId(actorId),
     );
-    if (!user) throw new NotFoundException('User not found');
+    if (!user) throw new AppException('NOT_FOUND', 'User not found');
     await this.refreshRepo.revokeAllForUser(user._id);
     return user;
   }
@@ -209,7 +200,7 @@ export class AuthService {
       UserStatus.ACTIVE,
       this.objectId(actorId),
     );
-    if (!user) throw new NotFoundException('User not found');
+    if (!user) throw new AppException('NOT_FOUND', 'User not found');
     return user;
   }
 
@@ -225,7 +216,7 @@ export class AuthService {
       true,
       this.objectId(actorId),
     );
-    if (!user) throw new NotFoundException('User not found');
+    if (!user) throw new AppException('NOT_FOUND', 'User not found');
     await this.refreshRepo.revokeAllForUser(user._id);
     return { success: true, mustChangePassword: user.mustChangePassword };
   }
@@ -238,7 +229,7 @@ export class AuthService {
       ? await bcrypt.compare(dto.oldPassword, user.passwordHash)
       : await bcrypt.compare(dto.oldPassword, INVALID_BCRYPT_HASH);
     if (!user || !ok) {
-      throw new UnauthorizedException('Mat khau cu khong dung');
+      throw new AppException('AUTH_INVALID_CREDENTIALS', 'Mật khẩu cũ không đúng');
     }
 
     const passwordHash = await bcrypt.hash(dto.newPassword, BCRYPT_ROUNDS);
