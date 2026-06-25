@@ -3,8 +3,10 @@ import { ConfigService } from '@nestjs/config';
 import { getApp, getApps, initializeApp, type App } from 'firebase-admin/app';
 import { resolveFirebaseAppOptions } from '@app/common';
 import { FirebaseService } from './firebase.service';
+import { FIREBASE_ADMIN_APP } from './firebase.tokens';
 
-export const FIREBASE_ADMIN_APP = Symbol('FIREBASE_ADMIN_APP');
+// Re-export để code cũ import token từ module vẫn chạy.
+export { FIREBASE_ADMIN_APP };
 
 function createFirebaseApp(config: ConfigService): App | null {
   // 1 process chỉ có 1 default app — tránh init lại nếu đã có.

@@ -1,6 +1,6 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { getMessaging, type Messaging } from 'firebase-admin/messaging';
-import { FIREBASE_ADMIN_APP } from './firebase.module';
+import { FIREBASE_ADMIN_APP } from './firebase.tokens';
 import type { App } from 'firebase-admin/app';
 
 @Injectable()
