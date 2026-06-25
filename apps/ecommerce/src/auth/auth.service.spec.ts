@@ -1,13 +1,23 @@
 // Mock @app/common để tránh load firebase-admin/jose (ESM) trong môi trường Jest CJS.
+// AppException được export thật (không phụ thuộc ESM) nên giữ lại trong mock.
 jest.mock('@app/common', () => ({
   durationToMs: jest.fn(),
   generateOpaqueToken: jest.fn(),
   hashToken: jest.fn(),
   FirebaseAdminService: class {},
   AuthThrottle: () => () => {},
+  AppException: class AppException extends Error {
+    constructor(
+      public readonly code: string,
+      public readonly message?: string,
+    ) {
+      super(message ?? code);
+      this.name = 'AppException';
+    }
+  },
 }));
 
-import { BadRequestException } from '@nestjs/common';
+import { AppException } from '@app/common';
 import { AuthService } from './auth.service';
 
 function makeService(overrides: Partial<Record<string, any>> = {}) {
@@ -52,12 +62,12 @@ describe('AuthService OTP', () => {
     expect(res).toEqual({ success: true, emailVerified: true });
   });
 
-  it('verifyEmail mã sai → BadRequest', async () => {
+  it('verifyEmail mã sai → AUTH_OTP_INVALID', async () => {
     const { svc } = makeService({
       otpStore: { verify: jest.fn().mockResolvedValue(false) },
     });
     await expect(svc.verifyEmail('a@b.com', '000000')).rejects.toBeInstanceOf(
-      BadRequestException,
+      AppException,
     );
   });
 
@@ -69,12 +79,12 @@ describe('AuthService OTP', () => {
     expect(res).toEqual({ success: true });
   });
 
-  it('resetPassword email không tồn tại → BadRequest trung lập (không lộ)', async () => {
+  it('resetPassword email không tồn tại → AUTH_OTP_INVALID trung lập (không lộ)', async () => {
     const { svc } = makeService({
       customerRepo: { findActiveByEmail: jest.fn().mockResolvedValue(null) },
     });
     await expect(
       svc.resetPassword('x@y.com', '123456', 'NewP@ssw0rd123!'),
-    ).rejects.toBeInstanceOf(BadRequestException);
+    ).rejects.toBeInstanceOf(AppException);
   });
 });

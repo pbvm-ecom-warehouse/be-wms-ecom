@@ -1,13 +1,7 @@
 import { randomInt } from 'node:crypto';
 import { InjectQueue } from '@nestjs/bullmq';
-import {
-  BadRequestException,
-  ConflictException,
-  Inject,
-  Injectable,
-  NotFoundException,
-  UnauthorizedException,
-} from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
+import { AppException } from '@app/common';
 import type { ConfigType } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import type { JwtSignOptions } from '@nestjs/jwt';
@@ -56,13 +50,13 @@ export class AuthService {
 
   private objectId(id: string) {
     if (!Types.ObjectId.isValid(id))
-      throw new NotFoundException('Customer not found');
+      throw new AppException('NOT_FOUND', 'Customer not found');
     return new Types.ObjectId(id);
   }
 
   async register(dto: RegisterDto) {
     const exists = await this.customerRepo.findByEmail(dto.email);
-    if (exists) throw new ConflictException('Email da duoc dang ky');
+    if (exists) throw new AppException('AUTH_EMAIL_CONFLICT');
 
     const passwordHash = await bcrypt.hash(dto.password, BCRYPT_ROUNDS);
     const customer = await this.customerRepo.create({
@@ -111,7 +105,10 @@ export class AuthService {
       ? await bcrypt.compare(password, customer.passwordHash)
       : await bcrypt.compare(password, INVALID_BCRYPT_HASH);
     if (!customer || !ok) {
-      throw new UnauthorizedException('Sai email hoac mat khau');
+      throw new AppException(
+        'AUTH_INVALID_CREDENTIALS',
+        'Sai email hoặc mật khẩu',
+      );
     }
     const tokens = await this.issueTokens(customer._id, customer.email);
     return { ...tokens, emailVerified: customer.emailVerified };
@@ -120,7 +117,7 @@ export class AuthService {
   async googleLogin(idToken: string) {
     const decoded = await this.firebaseAdmin.verifyIdToken(idToken);
     if (!decoded.email) {
-      throw new UnauthorizedException('Firebase token khong chua email');
+      throw new AppException('AUTH_FIREBASE_NO_EMAIL');
     }
 
     const existingByUid = await this.customerRepo.findByFirebaseUid(
@@ -135,9 +132,7 @@ export class AuthService {
         ? existingByEmail.firebaseUid === decoded.uid
           ? existingByEmail
           : (() => {
-              throw new UnauthorizedException(
-                'Tai khoan da duoc lien ket Firebase khac',
-              );
+              throw new AppException('AUTH_FIREBASE_UID_MISMATCH');
             })()
         : await this.customerRepo.linkFirebaseUid(
             existingByEmail._id,
@@ -152,7 +147,7 @@ export class AuthService {
         });
 
     if (!customer) {
-      throw new UnauthorizedException('Khong the dang nhap bang Firebase');
+      throw new AppException('AUTH_FIREBASE_LOGIN_FAILED');
     }
 
     if (!customer.emailVerified) {
@@ -188,13 +183,10 @@ export class AuthService {
   async refresh(refreshToken: string) {
     const doc = await this.refreshRepo.findValid(hashToken(refreshToken));
     if (!doc || doc.expiresAt.getTime() < Date.now()) {
-      throw new UnauthorizedException(
-        'Refresh token khong hop le hoac da het han',
-      );
+      throw new AppException('AUTH_TOKEN_INVALID');
     }
     const customer = await this.customerRepo.findActiveById(doc.customerId);
-    if (!customer)
-      throw new UnauthorizedException('Tai khoan khong con hieu luc');
+    if (!customer) throw new AppException('AUTH_ACCOUNT_INACTIVE');
 
     doc.revokedAt = new Date();
     await doc.save();
@@ -208,7 +200,7 @@ export class AuthService {
 
   async me(customerId: string) {
     const customer = await this.customerRepo.findActiveById(customerId);
-    if (!customer) throw new UnauthorizedException();
+    if (!customer) throw new AppException('UNAUTHENTICATED');
     return customer;
   }
 
@@ -222,7 +214,7 @@ export class AuthService {
         )
       : false;
     if (!customer || !ok) {
-      throw new BadRequestException('Ma khong dung hoac da het han');
+      throw new AppException('AUTH_OTP_INVALID');
     }
     await this.customerRepo.markEmailVerified(customer._id);
     return { success: true, emailVerified: true };
@@ -232,7 +224,7 @@ export class AuthService {
     const customer = await this.customerRepo.findActiveById(
       this.objectId(customerId),
     );
-    if (!customer) throw new UnauthorizedException();
+    if (!customer) throw new AppException('UNAUTHENTICATED');
     if (customer.emailVerified) return { success: true, emailVerified: true };
 
     await this.sendEmailAction(
@@ -268,7 +260,7 @@ export class AuthService {
       : false;
     if (!customer || !ok) {
       // Trung lap: khong lo email ton tai / ma sai.
-      throw new BadRequestException('Ma khong dung hoac da het han');
+      throw new AppException('AUTH_OTP_INVALID');
     }
     const passwordHash = await bcrypt.hash(newPassword, BCRYPT_ROUNDS);
     await this.customerRepo.updatePassword(customer._id, passwordHash);
@@ -285,7 +277,10 @@ export class AuthService {
       ? await bcrypt.compare(dto.oldPassword, customer.passwordHash)
       : await bcrypt.compare(dto.oldPassword, INVALID_BCRYPT_HASH);
     if (!customer || !ok)
-      throw new UnauthorizedException('Mat khau cu khong dung');
+      throw new AppException(
+        'AUTH_INVALID_CREDENTIALS',
+        'Mật khẩu cũ không đúng',
+      );
 
     const passwordHash = await bcrypt.hash(dto.newPassword, BCRYPT_ROUNDS);
     await this.customerRepo.updatePassword(customer._id, passwordHash);
@@ -296,7 +291,7 @@ export class AuthService {
     const customer = await this.customerRepo.findActiveById(
       this.objectId(customerId),
     );
-    if (!customer) throw new UnauthorizedException();
+    if (!customer) throw new AppException('UNAUTHENTICATED');
     return customer.addresses ?? [];
   }
 
@@ -304,7 +299,7 @@ export class AuthService {
     const customer = await this.customerRepo.findActiveById(
       this.objectId(customerId),
     );
-    if (!customer) throw new UnauthorizedException();
+    if (!customer) throw new AppException('UNAUTHENTICATED');
 
     const addresses = this.normalizeAddresses(customer.addresses ?? []);
     const shouldDefault = dto.isDefault === true || addresses.length === 0;
@@ -326,13 +321,13 @@ export class AuthService {
     const customer = await this.customerRepo.findActiveById(
       this.objectId(customerId),
     );
-    if (!customer) throw new UnauthorizedException();
+    if (!customer) throw new AppException('UNAUTHENTICATED');
 
     const addresses = this.normalizeAddresses(customer.addresses ?? []);
     const exists = addresses.some(
       (address) => address._id?.toString() === addressId,
     );
-    if (!exists) throw new NotFoundException('Address not found');
+    if (!exists) throw new AppException('NOT_FOUND', 'Địa chỉ không tồn tại');
 
     const next = addresses.map((address) => {
       if (address._id?.toString() !== addressId) {
@@ -353,14 +348,14 @@ export class AuthService {
     const customer = await this.customerRepo.findActiveById(
       this.objectId(customerId),
     );
-    if (!customer) throw new UnauthorizedException();
+    if (!customer) throw new AppException('UNAUTHENTICATED');
 
     const addresses = this.normalizeAddresses(customer.addresses ?? []);
     const next = addresses.filter(
       (address) => address._id?.toString() !== addressId,
     );
     if (next.length === addresses.length)
-      throw new NotFoundException('Address not found');
+      throw new AppException('NOT_FOUND', 'Địa chỉ không tồn tại');
     return this.saveAddresses(customer._id, this.ensureOneDefault(next));
   }
 
@@ -368,13 +363,13 @@ export class AuthService {
     const customer = await this.customerRepo.findActiveById(
       this.objectId(customerId),
     );
-    if (!customer) throw new UnauthorizedException();
+    if (!customer) throw new AppException('UNAUTHENTICATED');
 
     const addresses = this.normalizeAddresses(customer.addresses ?? []);
     const exists = addresses.some(
       (address) => address._id?.toString() === addressId,
     );
-    if (!exists) throw new NotFoundException('Address not found');
+    if (!exists) throw new AppException('NOT_FOUND', 'Địa chỉ không tồn tại');
 
     const next = addresses.map((address) => ({
       ...address,
@@ -419,7 +414,7 @@ export class AuthService {
       customerId,
       this.ensureOneDefault(addresses),
     );
-    if (!customer) throw new UnauthorizedException();
+    if (!customer) throw new AppException('UNAUTHENTICATED');
     return customer.addresses;
   }
 }
