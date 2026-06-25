@@ -1,19 +1,11 @@
-import { existsSync, readFileSync } from 'node:fs';
-import { Global, Injectable, Logger, Module } from '@nestjs/common';
+import { Global, Injectable, Module } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import type { ServiceAccount } from 'firebase-admin';
-import {
-  cert,
-  getApp,
-  getApps,
-  initializeApp,
-  type App,
-} from 'firebase-admin/app';
+import { getApp, getApps, initializeApp, type App } from 'firebase-admin/app';
 import { getAuth, type DecodedIdToken } from 'firebase-admin/auth';
+import { resolveFirebaseAppOptions } from './firebase-credential';
 
 @Injectable()
 export class FirebaseAdminService {
-  private readonly logger = new Logger(FirebaseAdminService.name);
   private readonly app: App | null;
 
   constructor(private readonly config: ConfigService) {
@@ -21,36 +13,18 @@ export class FirebaseAdminService {
   }
 
   private initialize(): App | null {
-    const credentialsPath = this.config.get<string>(
-      'FIREBASE_ADMIN_CREDENTIALS_PATH',
-    );
-    if (!credentialsPath) {
-      this.logger.warn(
-        'Firebase Admin is disabled. Set FIREBASE_ADMIN_CREDENTIALS_PATH to enable Google login.',
-      );
-      return null;
-    }
-
-    if (!existsSync(credentialsPath)) {
-      throw new Error(
-        `Firebase Admin credentials file not found at: ${credentialsPath}`,
-      );
-    }
-
+    // 1 process chỉ có 1 default app — tránh init lại nếu đã có.
     if (getApps().length > 0) {
       return getApp();
     }
 
-    const serviceAccount = JSON.parse(
-      readFileSync(credentialsPath, 'utf8'),
-    ) as ServiceAccount;
+    const options = resolveFirebaseAppOptions(
+      this.config,
+      FirebaseAdminService.name,
+    );
+    if (!options) return null;
 
-    return initializeApp({
-      credential: cert(serviceAccount),
-      projectId:
-        serviceAccount.projectId ??
-        this.config.get<string>('FIREBASE_PROJECT_ID'),
-    });
+    return initializeApp(options);
   }
 
   isEnabled() {
@@ -60,7 +34,7 @@ export class FirebaseAdminService {
   async verifyIdToken(idToken: string): Promise<DecodedIdToken> {
     if (!this.app) {
       throw new Error(
-        'Firebase Admin is not configured. Set FIREBASE_ADMIN_CREDENTIALS_PATH first.',
+        'Firebase Admin chưa cấu hình — đặt FIREBASE_PROJECT_ID + FIREBASE_CLIENT_EMAIL + FIREBASE_PRIVATE_KEY.',
       );
     }
 

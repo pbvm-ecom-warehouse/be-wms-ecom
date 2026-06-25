@@ -17,7 +17,7 @@ export class FirebaseService {
   getMessaging(): Messaging {
     if (!this.firebaseApp) {
       throw new Error(
-        'Firebase Admin is not configured. Set FIREBASE_ADMIN_CREDENTIALS_PATH first.',
+        'Firebase Admin chưa cấu hình — đặt FIREBASE_PROJECT_ID + FIREBASE_CLIENT_EMAIL + FIREBASE_PRIVATE_KEY.',
       );
     }
 
