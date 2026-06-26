@@ -6,14 +6,13 @@
 #   location /api/shop/ { proxy_pass http://ecommerce:3002; ... }  # Ecommerce
 #   (kèm header: Host / X-Real-IP / X-Forwarded-For / X-Forwarded-Proto)
 #
-#   docker compose --env-file .env.production -f docker-compose.prod.yml up -d --build
+#   docker compose --env-file .env.production -f docker-compose.prod.yml up -d
 #
 # --env-file .env.production: 1 nguồn duy nhất cho cả ${...} (redis password)
 # lẫn env_file của app. Yêu cầu REDIS_PASSWORD trong .env.production.
 services:
   wms:
-    build: .
-    image: wms-ecom-be:latest # build 1 lần, 3 container tái dùng
+    image: ghcr.io/pbvm-ecom-warehouse/be-wms-ecom:latest
     command: node dist/apps/wms/main
     env_file: .env.production
     environment:
@@ -26,7 +25,7 @@ services:
     # KHÔNG publish ports: nginx vào qua network, app không lộ ra host/internet
 
   ecommerce:
-    image: wms-ecom-be:latest
+    image: ghcr.io/pbvm-ecom-warehouse/be-wms-ecom:latest
     command: node dist/apps/ecommerce/main
     env_file: .env.production
     environment:
@@ -38,7 +37,7 @@ services:
     networks: [internal, proxy] # nginx gọi http://ecommerce:3002
 
   notification:
-    image: wms-ecom-be:latest
+    image: ghcr.io/pbvm-ecom-warehouse/be-wms-ecom:latest
     command: node dist/apps/notification/main
     env_file: .env.production
     environment:
