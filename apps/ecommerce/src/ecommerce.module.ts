@@ -12,6 +12,8 @@ import { DatabaseModule } from '@app/database';
 import { EventsModule } from '@app/events';
 import { AuthModule } from './auth/auth.module';
 import { CatalogModule } from './catalog/catalog.module';
+import { CartModule } from './cart/cart.module';
+import { OrderModule } from './order/order.module';
 import { appConfig } from './config/app.config';
 import { authConfig } from './config/auth.config';
 import { validateEnv } from './config/env.validation';
@@ -40,6 +42,8 @@ import { HealthModule } from './health/health.module';
     AuthModule, // đăng ký/đăng nhập khách (customers) + JWT
     HealthModule, // GET /api/shop/health
     CatalogModule, // consumer mẫu: stock.changed → availableQty
+    CartModule,
+    OrderModule,
   ],
   controllers: [EcommerceController],
   providers: [

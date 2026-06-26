@@ -20,8 +20,8 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
   }
 
   validate(payload: JwtPayload): AuthUser {
-    if (payload.type !== 'customer') {
-      throw new UnauthorizedException('Token không phải của khách hàng');
+    if (payload.type !== 'customer' && payload.type !== 'admin') {
+      throw new UnauthorizedException('Token không hợp lệ');
     }
     return payload;
   }

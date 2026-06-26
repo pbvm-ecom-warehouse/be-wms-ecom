@@ -10,3 +10,8 @@ export enum WmsRole {
   PRINTER = 'PRINTER', // in ly
   COUNTER = 'COUNTER', // kiểm kho
 }
+
+export enum EcomRole {
+  ECOM_MANAGER = 'ECOM_MANAGER',
+}
+
