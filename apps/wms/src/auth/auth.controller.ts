@@ -194,7 +194,7 @@ export class AuthController {
   @HttpCode(200)
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Đăng xuất và thu hồi refresh token' })
+  @ApiOperation({ summary: 'Đăng xuất và thu hồi refresh token — [ALL_ROLES]' })
   @ApiOkResponse({ description: '{ success: true } — cookies cleared, token revoked' })
   @ApiBody({
     type: LogoutDto,
@@ -220,7 +220,7 @@ export class AuthController {
   @Get('me')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Thông tin nhân viên đang đăng nhập' })
+  @ApiOperation({ summary: 'Thông tin nhân viên đang đăng nhập — [ALL_ROLES]' })
   @ApiOkResponse({ type: UserResponseDto })
   async me(@CurrentUser('sub') userId: string): Promise<UserResponseDto> {
     const user = await this.auth.me(userId);
@@ -261,7 +261,7 @@ export class AuthController {
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(WmsRole.ADMIN)
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Tạo nhân viên mới — chỉ ADMIN' })
+  @ApiOperation({ summary: 'Tạo nhân viên mới — [ADMIN]' })
   @ApiBody({
     type: CreateUserDto,
     examples: {
@@ -291,7 +291,7 @@ export class AuthController {
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(WmsRole.ADMIN)
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Gán/sửa roles nhân viên — chỉ ADMIN' })
+  @ApiOperation({ summary: 'Gán/sửa roles nhân viên — [ADMIN]' })
   @ApiParam({ name: 'id', description: 'Mongo ObjectId của user' })
   @ApiBody({
     type: UpdateUserRolesDto,
@@ -314,7 +314,7 @@ export class AuthController {
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(WmsRole.ADMIN)
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Khóa tài khoản và revoke tất cả refresh token' })
+  @ApiOperation({ summary: 'Khóa tài khoản và revoke tất cả refresh token — [ADMIN]' })
   @ApiParam({ name: 'id', description: 'Mongo ObjectId của user' })
   @ApiOkResponse({ type: UserResponseDto })
   async lockUser(
@@ -332,7 +332,7 @@ export class AuthController {
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(WmsRole.ADMIN)
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Mở khóa tài khoản' })
+  @ApiOperation({ summary: 'Mở khóa tài khoản — [ADMIN]' })
   @ApiParam({ name: 'id', description: 'Mongo ObjectId của user' })
   @ApiOkResponse({ type: UserResponseDto })
   async unlockUser(
@@ -350,7 +350,7 @@ export class AuthController {
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(WmsRole.ADMIN)
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Reset mật khẩu tạm và bắt đổi mật khẩu' })
+  @ApiOperation({ summary: 'Reset mật khẩu tạm và bắt đổi mật khẩu — [ADMIN]' })
   @ApiParam({ name: 'id', description: 'Mongo ObjectId của user' })
   @ApiBody({
     type: ResetUserPasswordDto,
@@ -369,7 +369,7 @@ export class AuthController {
   @HttpCode(200)
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Nhân viên đổi mật khẩu' })
+  @ApiOperation({ summary: 'Nhân viên đổi mật khẩu — [ALL_ROLES]' })
   @ApiBody({
     type: ChangePasswordDto,
     examples: {

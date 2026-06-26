@@ -142,7 +142,7 @@ export class UserResponseDto {
   name?: string;
 
   @Expose()
-  @ApiProperty({ type: [String] })
+  @ApiProperty({ enum: WmsRole, isArray: true })
   roles!: string[];
 
   @Expose()
@@ -187,7 +187,7 @@ export class CreateUserResponseDto {
   email?: string;
 
   @Expose()
-  @ApiProperty({ type: [String] })
+  @ApiProperty({ enum: WmsRole, isArray: true })
   roles!: string[];
 
   @Expose()

@@ -109,6 +109,65 @@ id!: string;
 
 **ESLint rules liên quan** (đã bật trong project): `@typescript-eslint/no-explicit-any`, `@typescript-eslint/no-unsafe-member-access`, `@typescript-eslint/no-unsafe-return`. Build sẽ fail nếu vi phạm.
 
+## Swagger — Roles & Enum (BẮT BUỘC)
+
+### Hiển thị roles trong `@ApiOperation`
+
+Mọi endpoint có `@Roles(...)` **phải** ghi roles vào `summary` của `@ApiOperation` theo format: `'<Mô tả ngắn> — [ROLE1, ROLE2]'`
+
+```ts
+// ❌ Sai — không biết ai được gọi
+@Roles(WmsRole.ADMIN, WmsRole.MANAGER)
+@ApiOperation({ summary: 'Danh sách nhân viên' })
+
+// ✅ Đúng
+@Roles(WmsRole.ADMIN, WmsRole.MANAGER)
+@ApiOperation({ summary: 'Danh sách nhân viên — [ADMIN, MANAGER]' })
+```
+
+Endpoint **không có** `@Roles` (public hoặc chỉ cần đăng nhập):
+```ts
+// Public — không ghi gì thêm
+@ApiOperation({ summary: 'Đăng nhập nhân viên' })
+
+// Cần đăng nhập nhưng không giới hạn role
+@ApiBearerAuth()
+@ApiOperation({ summary: 'Thông tin nhân viên đang đăng nhập — [ALL_ROLES]' })
+```
+
+### Liệt kê enum trong `@ApiProperty`
+
+Mọi field DTO (request hoặc response) có kiểu enum **phải** khai báo `enum:` trong `@ApiProperty` để Swagger hiển thị dropdown:
+
+```ts
+// ❌ Sai — Swagger không biết giá trị hợp lệ
+@ApiProperty()
+roles: WmsRole[];
+
+// ✅ Đúng — Swagger hiển thị dropdown với các giá trị enum
+@ApiProperty({ enum: WmsRole, isArray: true, example: [WmsRole.RECEIVER] })
+roles: WmsRole[];
+
+// ✅ Đúng — field đơn
+@ApiProperty({ enum: WmsRole, example: WmsRole.ADMIN })
+role: WmsRole;
+```
+
+Các enum hiện có trong project:
+- `WmsRole` (`ADMIN | MANAGER | RECEIVER | PICKER | PRINTER | COUNTER`) — từ `@app/auth`
+- `EcomRole` (`ECOM_MANAGER`) — từ `@app/auth`
+- Enum domain-specific: khai báo trong schema/dto của từng app, import thẳng vào `@ApiProperty({ enum: XxxEnum })`
+
+### Query DTO với enum
+
+```ts
+// ✅ Query param có enum
+@ApiProperty({ enum: OrderStatus, required: false })
+@IsEnum(OrderStatus)
+@IsOptional()
+status?: OrderStatus;
+```
+
 ## Khi thêm domain mới
 
 1. Xác định shape response (đừng để lọt field nhạy cảm).
@@ -116,3 +175,5 @@ id!: string;
 3. Controller wrap bằng `plainToInstance(..., { excludeExtraneousValues: true })`.
 4. Gắn `@ApiOkResponse({ type: XxxResponseDto })` vào endpoint.
 5. Mảng: `plainToInstance(XxxResponseDto, arr, { excludeExtraneousValues: true })` — tự xử lý array.
+6. Mọi `@Roles(...)` → thêm `— [ROLE1, ROLE2]` vào `@ApiOperation({ summary })`.
+7. Mọi field enum trong DTO → thêm `enum: XxxEnum` vào `@ApiProperty`.
