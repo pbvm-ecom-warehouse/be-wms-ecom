@@ -3,7 +3,6 @@ import {
   Body,
   Column,
   Container,
-  Font,
   Head,
   Hr,
   Html,
@@ -14,22 +13,25 @@ import {
   Text,
 } from '@react-email/components';
 
-// ─── Tokens (giống verify-email — cùng design system) ──────────────────────
+// ─── Tokens (cùng design system với verify-email) ──────────────────────────
 const INK = '#0F172A';
 const ACCENT = '#2563EB';
-const ACCENT_LIGHT = '#DBEAFE';
 const SLATE = '#64748B';
 const SURFACE = '#F8FAFC';
 const BORDER = '#E2E8F0';
 const WHITE = '#FFFFFF';
 const WARN = '#DC2626';
-const WARN_LIGHT = '#FEF2F2';
+const WARN_LIGHT = '#FFF5F5';
+const WARN_BORDER = '#FECACA';
+
+const FONT =
+  "-apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif";
 
 // ─── Styles ────────────────────────────────────────────────────────────────
 const S = {
   body: {
     backgroundColor: SURFACE,
-    fontFamily: "'Inter', Arial, sans-serif",
+    fontFamily: FONT,
     margin: '0',
     padding: '32px 16px',
   },
@@ -42,22 +44,26 @@ const S = {
     overflow: 'hidden' as const,
   },
   header: {
-    padding: '24px 40px 20px',
+    padding: '22px 36px 18px',
+    backgroundColor: WHITE,
   },
-  brandMark: {
-    display: 'inline',
+  brandDot: {
     color: ACCENT,
-    fontSize: '20px',
-    margin: '0 6px 0 0',
+    fontSize: '22px',
+    fontWeight: '900',
+    display: 'inline',
+    margin: '0 5px 0 0',
     lineHeight: '1',
+    verticalAlign: 'middle',
   },
   brandName: {
-    display: 'inline',
     color: INK,
-    fontSize: '18px',
-    fontWeight: '800',
-    letterSpacing: '-0.5px',
+    fontSize: '17px',
+    fontWeight: '700',
+    display: 'inline',
     margin: '0',
+    letterSpacing: '-0.3px',
+    verticalAlign: 'middle',
   },
   divider: {
     borderColor: BORDER,
@@ -65,62 +71,64 @@ const S = {
     margin: '0',
   },
   content: {
-    padding: '36px 40px 32px',
+    padding: '32px 36px 28px',
   },
   eyebrow: {
     color: WARN,
     fontSize: '11px',
     fontWeight: '600',
-    letterSpacing: '1.5px',
+    letterSpacing: '1.2px',
     textTransform: 'uppercase' as const,
-    margin: '0 0 12px',
+    margin: '0 0 14px',
   },
   headline: {
     color: INK,
-    fontSize: '26px',
-    fontWeight: '800',
-    letterSpacing: '-0.5px',
+    fontSize: '24px',
+    fontWeight: '700',
+    letterSpacing: '-0.4px',
     margin: '0 0 8px',
-    lineHeight: '1.2',
+    lineHeight: '1.25',
   },
   subtext: {
     color: SLATE,
     fontSize: '15px',
     lineHeight: '1.6',
-    margin: '0 0 32px',
+    margin: '0 0 28px',
   },
-  otpWrapper: {
-    marginBottom: '28px',
+  digitRow: {
+    marginBottom: '20px',
   },
-  otpCell: {
-    width: '60px',
-    height: '64px',
-    border: `2px solid ${WARN}`,
-    borderRadius: '8px',
-    backgroundColor: WARN_LIGHT,
-    textAlign: 'center' as const,
-    verticalAlign: 'middle' as const,
+  digitCell: {
+    width: '56px',
     padding: '0 4px',
+    textAlign: 'center' as const,
   },
-  otpDigit: {
+  digitBox: {
+    backgroundColor: WARN_LIGHT,
+    border: `1.5px solid ${WARN}`,
+    borderRadius: '8px',
+    padding: '14px 0',
+    display: 'block',
+  },
+  digitChar: {
     color: INK,
-    fontSize: '28px',
-    fontWeight: '800',
-    letterSpacing: '0',
-    margin: '14px 0',
+    fontSize: '26px',
+    fontWeight: '700',
+    fontFamily: "'Courier New', Courier, monospace",
+    margin: '0',
     lineHeight: '1',
   },
   expiry: {
     color: SLATE,
     fontSize: '13px',
-    margin: '0 0 24px',
+    margin: '0 0 20px',
+    lineHeight: '1.5',
   },
   warningBox: {
     backgroundColor: WARN_LIGHT,
-    border: `1px solid #FECACA`,
+    border: `1px solid ${WARN_BORDER}`,
     borderRadius: '8px',
     padding: '12px 16px',
-    marginTop: '8px',
   },
   warningText: {
     color: WARN,
@@ -129,14 +137,14 @@ const S = {
     margin: '0',
   },
   footer: {
-    padding: '20px 40px 28px',
+    padding: '18px 36px 26px',
     backgroundColor: SURFACE,
   },
   footerText: {
     color: SLATE,
     fontSize: '13px',
     lineHeight: '1.6',
-    margin: '0 0 12px',
+    margin: '0 0 10px',
   },
   footerMeta: {
     color: '#94A3B8',
@@ -149,48 +157,25 @@ const S = {
   },
 } as const;
 
-// Template đặt lại mật khẩu — ô OTP đỏ để phân biệt rõ với verify-email.
+// Template đặt lại mật khẩu — ô OTP đỏ phân biệt với verify-email.
 export function ResetPasswordEmail({ code }: { code: string }): ReactElement {
   const digits = code.split('');
 
   return (
     <Html lang="vi">
-      <Head>
-        <Font
-          fontFamily="Inter"
-          fallbackFontFamily="Arial"
-          webFont={{
-            url: 'https://fonts.gstatic.com/s/inter/v13/UcCO3FwrK3iLTeHuS_fvQtMwCp50KnMw2boKoduKmMEVuLyfAZ9hiJ-Ek-_EeA.woff2',
-            format: 'woff2',
-          }}
-          fontWeight={400}
-          fontStyle="normal"
-        />
-        <Font
-          fontFamily="Inter"
-          fallbackFontFamily="Arial"
-          webFont={{
-            url: 'https://fonts.gstatic.com/s/inter/v13/UcCO3FwrK3iLTeHuS_fvQtMwCp50KnMw2boKoduKmMEVuI6fAZ9hiJ-Ek-_EeA.woff2',
-            format: 'woff2',
-          }}
-          fontWeight={800}
-          fontStyle="normal"
-        />
-      </Head>
-      <Preview>
-        Đặt lại mật khẩu MateStock: {code} — hết hạn sau 10 phút
-      </Preview>
+      <Head />
+      <Preview>Đặt lại mật khẩu MateStock: {code} — hết hạn sau 10 phút</Preview>
       <Body style={S.body}>
         <Container style={S.wrapper}>
           {/* Header */}
           <Section style={S.header}>
-            <Text style={S.brandMark}>●</Text>
+            <Text style={S.brandDot}>●</Text>
             <Text style={S.brandName}>MateStock</Text>
           </Section>
 
           <Hr style={S.divider} />
 
-          {/* Nội dung chính */}
+          {/* Nội dung */}
           <Section style={S.content}>
             <Text style={S.eyebrow}>Đặt lại mật khẩu</Text>
             <Text style={S.headline}>Mã xác nhận bảo mật</Text>
@@ -198,19 +183,22 @@ export function ResetPasswordEmail({ code }: { code: string }): ReactElement {
               Bạn vừa yêu cầu đặt lại mật khẩu. Nhập mã bên dưới để tiếp tục.
             </Text>
 
-            {/* Ô OTP — màu đỏ phân biệt với email xác minh */}
-            <Section style={S.otpWrapper}>
+            {/* Ô OTP đỏ — phân biệt với email xác minh */}
+            <Section style={S.digitRow}>
               <Row>
                 {digits.map((digit, i) => (
-                  <Column key={i} style={S.otpCell}>
-                    <Text style={S.otpDigit}>{digit}</Text>
+                  <Column key={i} style={S.digitCell}>
+                    <Section style={S.digitBox}>
+                      <Text style={S.digitChar}>{digit}</Text>
+                    </Section>
                   </Column>
                 ))}
               </Row>
             </Section>
 
             <Text style={S.expiry}>
-              Hết hạn sau <strong style={{ color: INK }}>10 phút</strong>.
+              Hết hạn sau <strong style={{ color: INK }}>10 phút</strong>. Mã
+              chỉ dùng được một lần.
             </Text>
 
             {/* Cảnh báo bảo mật */}
@@ -226,22 +214,16 @@ export function ResetPasswordEmail({ code }: { code: string }): ReactElement {
           {/* Footer */}
           <Section style={S.footer}>
             <Text style={S.footerText}>
-              Nếu bạn không yêu cầu đặt lại mật khẩu, hãy bỏ qua email này và
+              Nếu bạn không yêu cầu đặt lại mật khẩu, hãy bỏ qua email này —
               tài khoản của bạn vẫn an toàn. Nếu lo ngại,{' '}
-              <Link
-                href="mailto:support@hoaiphuong.io.vn"
-                style={S.footerLink}
-              >
+              <Link href="mailto:support@hoaiphuong.io.vn" style={S.footerLink}>
                 liên hệ hỗ trợ
               </Link>{' '}
               ngay.
             </Text>
             <Text style={S.footerMeta}>
               © {new Date().getFullYear()} MateStock ·{' '}
-              <Link
-                href="mailto:support@hoaiphuong.io.vn"
-                style={S.footerLink}
-              >
+              <Link href="mailto:support@hoaiphuong.io.vn" style={S.footerLink}>
                 Liên hệ hỗ trợ
               </Link>
             </Text>
