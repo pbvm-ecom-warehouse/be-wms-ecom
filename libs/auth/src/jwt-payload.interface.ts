@@ -5,7 +5,7 @@
  * - `user`     : nhân viên WMS (collection `users`), có `roles`.
  * - `customer` : khách Ecommerce (collection `customers`), không có roles.
  */
-export type UserType = 'user' | 'customer';
+export type UserType = 'user' | 'customer' | 'admin';
 
 export interface JwtPayload {
   sub: string; // id (_id) của user/customer

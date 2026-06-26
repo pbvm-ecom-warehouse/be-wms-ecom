@@ -40,6 +40,6 @@ import {
     CustomerRefreshTokenRepository,
     OtpStore,
   ],
-  exports: [AuthService],
+  exports: [AuthService, CustomerRepository],
 })
 export class AuthModule {}
