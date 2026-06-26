@@ -1,12 +1,15 @@
-﻿import {
+import {
   Body,
   Controller,
   Delete,
   Get,
   HttpCode,
+  Inject,
   Param,
   Patch,
   Post,
+  Req,
+  Res,
   UseGuards,
 } from '@nestjs/common';
 import {
@@ -21,8 +24,11 @@ import {
   ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
 import { CurrentUser, JwtAuthGuard } from '@app/auth';
-import { AuthThrottle } from '@app/common';
+import { AppException, AuthThrottle } from '@app/common';
+import type { ConfigType } from '@nestjs/config';
 import { plainToInstance } from 'class-transformer';
+import type { Request, Response } from 'express';
+import { appConfig } from '../config/app.config';
 import { AuthService } from './auth.service';
 import {
   AddressDto,
@@ -45,7 +51,52 @@ import {
 @ApiTags('auth')
 @Controller('auth')
 export class AuthController {
-  constructor(private readonly auth: AuthService) {}
+  private readonly isProd: boolean;
+
+  constructor(
+    private readonly auth: AuthService,
+    @Inject(appConfig.KEY)
+    private readonly appCfg: ConfigType<typeof appConfig>,
+  ) {
+    this.isProd = this.appCfg.env === 'production';
+  }
+
+  // Cookie access_token: path rộng để dùng mọi route Ecommerce.
+  // Cookie refresh_token: path hẹp /api/shop/auth để browser chỉ gửi lên auth endpoints.
+  private setAuthCookies(
+    res: Response,
+    tokens: { accessToken: string; refreshToken: string },
+  ): void {
+    const base = {
+      httpOnly: true,
+      sameSite: 'lax' as const,
+      secure: this.isProd,
+    };
+    res.cookie('access_token', tokens.accessToken, {
+      ...base,
+      path: '/api/shop',
+    });
+    res.cookie('refresh_token', tokens.refreshToken, {
+      ...base,
+      path: '/api/shop/auth',
+    });
+  }
+
+  private clearAuthCookies(res: Response): void {
+    res.clearCookie('access_token', { path: '/api/shop' });
+    res.clearCookie('refresh_token', { path: '/api/shop/auth' });
+  }
+
+  // Ưu tiên body, fallback cookie — để API client và web browser đều dùng được.
+  private extractRefreshToken(
+    dto: RefreshDto | LogoutDto,
+    req: Request,
+  ): string {
+    const cookies = req.cookies as Record<string, string> | undefined;
+    const token = dto.refreshToken ?? cookies?.['refresh_token'];
+    if (!token) throw new AppException('AUTH_TOKEN_INVALID');
+    return token;
+  }
 
   @Post('register')
   @AuthThrottle()
@@ -65,8 +116,12 @@ export class AuthController {
   })
   @ApiCreatedResponse({ type: AuthTokenResponseDto })
   @ApiConflictResponse({ description: 'Email da duoc dang ky' })
-  async register(@Body() dto: RegisterDto) {
+  async register(
+    @Body() dto: RegisterDto,
+    @Res({ passthrough: true }) res: Response,
+  ) {
     const result = await this.auth.register(dto);
+    this.setAuthCookies(res, result);
     return plainToInstance(AuthTokenResponseDto, result, {
       excludeExtraneousValues: true,
     });
@@ -84,10 +139,18 @@ export class AuthController {
       },
     },
   })
-  @ApiOkResponse({ type: AuthTokenResponseDto })
+  @ApiOkResponse({
+    type: AuthTokenResponseDto,
+    description:
+      'Trả token trong body VÀ set cookie access_token + refresh_token',
+  })
   @ApiUnauthorizedResponse({ description: 'Sai email hoac mat khau' })
-  async login(@Body() dto: LoginDto) {
+  async login(
+    @Body() dto: LoginDto,
+    @Res({ passthrough: true }) res: Response,
+  ) {
     const result = await this.auth.login(dto.email, dto.password);
+    this.setAuthCookies(res, result);
     return plainToInstance(AuthTokenResponseDto, result, {
       excludeExtraneousValues: true,
     });
@@ -103,10 +166,18 @@ export class AuthController {
       google: { value: { idToken: 'paste-firebase-id-token-here' } },
     },
   })
-  @ApiOkResponse({ type: AuthTokenResponseDto })
+  @ApiOkResponse({
+    type: AuthTokenResponseDto,
+    description:
+      'Trả token trong body VÀ set cookie access_token + refresh_token',
+  })
   @ApiUnauthorizedResponse({ description: 'Firebase token khong hop le' })
-  async googleLogin(@Body() dto: GoogleLoginDto) {
+  async googleLogin(
+    @Body() dto: GoogleLoginDto,
+    @Res({ passthrough: true }) res: Response,
+  ) {
     const result = await this.auth.googleLogin(dto.idToken);
+    this.setAuthCookies(res, result);
     return plainToInstance(AuthTokenResponseDto, result, {
       excludeExtraneousValues: true,
     });
@@ -115,16 +186,31 @@ export class AuthController {
   @Post('refresh')
   @HttpCode(200)
   @AuthThrottle()
-  @ApiOperation({ summary: 'Doi access token moi bang refresh token' })
+  @ApiOperation({
+    summary: 'Doi access token moi bang refresh token (body hoac cookie)',
+  })
   @ApiBody({
     type: RefreshDto,
     examples: {
-      refresh: { value: { refreshToken: 'paste-refresh-token-here' } },
+      bearer: {
+        summary: 'Bearer mode',
+        value: { refreshToken: 'paste-refresh-token-here' },
+      },
+      cookie: { summary: 'Cookie mode', value: {} },
     },
   })
-  @ApiOkResponse({ type: AuthTokenResponseDto })
-  async refresh(@Body() dto: RefreshDto) {
-    const result = await this.auth.refresh(dto.refreshToken);
+  @ApiOkResponse({
+    type: AuthTokenResponseDto,
+    description: 'Trả token mới trong body VÀ set cookie mới (rotate)',
+  })
+  async refresh(
+    @Body() dto: RefreshDto,
+    @Res({ passthrough: true }) res: Response,
+    @Req() req: Request,
+  ) {
+    const refreshToken = this.extractRefreshToken(dto, req);
+    const result = await this.auth.refresh(refreshToken);
+    this.setAuthCookies(res, result);
     return plainToInstance(AuthTokenResponseDto, result, {
       excludeExtraneousValues: true,
     });
@@ -138,12 +224,22 @@ export class AuthController {
   @ApiBody({
     type: LogoutDto,
     examples: {
-      logout: { value: { refreshToken: 'paste-refresh-token-here' } },
+      bearer: {
+        summary: 'Bearer mode',
+        value: { refreshToken: 'paste-refresh-token-here' },
+      },
+      cookie: { summary: 'Cookie mode', value: {} },
     },
   })
   @ApiOkResponse({ type: SuccessResponseDto })
-  async logout(@Body() dto: LogoutDto) {
-    const result = await this.auth.logout(dto.refreshToken);
+  async logout(
+    @Body() dto: LogoutDto,
+    @Res({ passthrough: true }) res: Response,
+    @Req() req: Request,
+  ) {
+    const refreshToken = this.extractRefreshToken(dto, req);
+    const result = await this.auth.logout(refreshToken);
+    this.clearAuthCookies(res);
     return plainToInstance(SuccessResponseDto, result, {
       excludeExtraneousValues: true,
     });
