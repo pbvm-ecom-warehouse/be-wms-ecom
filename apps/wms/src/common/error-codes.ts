@@ -1,4 +1,4 @@
-import { HttpStatus } from '@nestjs/common';
+import { type HttpStatus } from '@nestjs/common';
 
 /**
  * Mã lỗi nghiệp vụ của WMS app.
@@ -12,6 +12,6 @@ import { HttpStatus } from '@nestjs/common';
  */
 export const WMS_ERRORS = {
   // domain codes sẽ thêm vào đây khi implement từng module
-} as const satisfies Record<string, { status: number; message: string }>;
+} as const satisfies Record<string, { status: HttpStatus; message: string }>;
 
 export type WmsErrorCode = keyof typeof WMS_ERRORS;
