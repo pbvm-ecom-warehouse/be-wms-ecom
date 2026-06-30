@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { ClientSession, Model, Types } from 'mongoose';
 import { InventoryStock, InventoryStockDocument } from './schemas/inventory-stock.schema';
-import { Lot, LotDocument } from './schemas/lot.schema';
+import { Lot, LotDocument, LotStatus } from './schemas/lot.schema';
 import { MovementType, StockMovement } from './schemas/stock-movement.schema';
 import { StockBalance, StockBalanceDocument } from './schemas/stock-balance.schema';
 import { WarehouseItem } from './schemas/warehouse-item.schema';
@@ -106,7 +106,7 @@ export class StockRepository {
     session?: ClientSession,
   ): Promise<LotDocument | null> {
     return this.lotModel
-      .findOne({ itemId, lotNumber, status: 'ACTIVE' }, null, { session })
+      .findOne({ itemId, lotNumber, status: LotStatus.ACTIVE }, null, { session })
       .exec();
   }
 
