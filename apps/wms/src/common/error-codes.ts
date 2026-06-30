@@ -23,30 +23,6 @@ export const WMS_ERRORS = {
     status: HttpStatus.NOT_FOUND,
     message: 'Không tìm thấy lô hàng',
   },
-  SUPPLIER_NOT_FOUND: {
-    status: HttpStatus.NOT_FOUND,
-    message: 'Không tìm thấy nhà cung cấp',
-  },
-  SUPPLIER_CODE_EXISTS: {
-    status: HttpStatus.CONFLICT,
-    message: 'Mã nhà cung cấp đã tồn tại',
-  },
-  SUPPLIER_BLACKLISTED: {
-    status: HttpStatus.FORBIDDEN,
-    message: 'Nhà cung cấp đang bị blacklist — chỉ ADMIN mới gỡ được',
-  },
-  SUPPLIER_NOT_ACTIVE: {
-    status: HttpStatus.FORBIDDEN,
-    message: 'Nhà cung cấp không ở trạng thái ACTIVE — không thể xác nhận PO',
-  },
-  SUPPLIER_ITEM_NOT_FOUND: {
-    status: HttpStatus.NOT_FOUND,
-    message: 'Không tìm thấy thông tin giá của SKU này',
-  },
-  SUPPLIER_ITEM_SKU_EXISTS: {
-    status: HttpStatus.CONFLICT,
-    message: 'SKU này đã có NCC chính — cập nhật thay vì tạo mới',
-  },
 } as const satisfies Record<
   string,
   { status: HttpStatusType; message: string }

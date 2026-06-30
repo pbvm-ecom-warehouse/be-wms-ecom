@@ -20,7 +20,13 @@ import {
   ApiOperation,
   ApiTags,
 } from '@nestjs/swagger';
-import { CurrentUser, JwtAuthGuard, Roles, RolesGuard, WmsRole } from '@app/auth';
+import {
+  CurrentUser,
+  JwtAuthGuard,
+  Roles,
+  RolesGuard,
+  WmsRole,
+} from '@app/auth';
 import { plainToInstance } from 'class-transformer';
 import { SupplierService } from './supplier.service';
 import {
@@ -49,7 +55,10 @@ export class SupplierController {
 
   @Post('items')
   @Roles(WmsRole.MANAGER, WmsRole.ADMIN)
-  @ApiOperation({ summary: 'Upsert danh mục giá SKU — [MANAGER, ADMIN]' })
+  @ApiOperation({
+    summary:
+      'Upsert danh mục giá SKU — tạo mới nếu chưa có, cập nhật nếu đã có — [MANAGER, ADMIN]',
+  })
   @ApiCreatedResponse({ type: SupplierItemResponseDto })
   async upsertSupplierItem(
     @Body() dto: CreateSupplierItemDto,
@@ -69,11 +78,30 @@ export class SupplierController {
     return plainToInstance(SupplierItemResponseDto, doc.toObject(), TO_OPTS);
   }
 
+  @Get('items/by-supplier/:supplierId')
+  @Roles(WmsRole.MANAGER, WmsRole.ADMIN)
+  @ApiOperation({
+    summary: 'Danh sách danh mục giá theo NCC — [MANAGER, ADMIN]',
+  })
+  @ApiOkResponse({ type: [SupplierItemResponseDto] })
+  async listSupplierItemsBySupplierId(
+    @Param('supplierId') supplierId: string,
+  ): Promise<SupplierItemResponseDto[]> {
+    const docs = await this.svc.listSupplierItemsBySupplierId(supplierId);
+    return plainToInstance(
+      SupplierItemResponseDto,
+      docs.map((d) => d.toObject()),
+      TO_OPTS,
+    );
+  }
+
   @Get('items/:id')
   @Roles(WmsRole.MANAGER, WmsRole.ADMIN)
   @ApiOperation({ summary: 'Chi tiết SupplierItem — [MANAGER, ADMIN]' })
   @ApiOkResponse({ type: SupplierItemResponseDto })
-  async getSupplierItem(@Param('id') id: string): Promise<SupplierItemResponseDto> {
+  async getSupplierItem(
+    @Param('id') id: string,
+  ): Promise<SupplierItemResponseDto> {
     const doc = await this.svc.getSupplierItem(id);
     return plainToInstance(SupplierItemResponseDto, doc.toObject(), TO_OPTS);
   }
@@ -151,7 +179,9 @@ export class SupplierController {
 
   @Patch(':id/status')
   @Roles(WmsRole.MANAGER, WmsRole.ADMIN)
-  @ApiOperation({ summary: 'Đổi trạng thái NCC — [MANAGER, ADMIN] (gỡ BLACKLIST: chỉ ADMIN)' })
+  @ApiOperation({
+    summary: 'Đổi trạng thái NCC — [MANAGER, ADMIN] (gỡ BLACKLIST: chỉ ADMIN)',
+  })
   @ApiOkResponse({ type: SupplierResponseDto })
   async changeStatus(
     @Param('id') id: string,

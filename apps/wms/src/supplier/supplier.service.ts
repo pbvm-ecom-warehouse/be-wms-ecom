@@ -101,9 +101,12 @@ export class SupplierService {
     if (!existing) {
       return this.repo.createSupplierItem(dto);
     }
+    // Không truyền itemId vào update — field này bất biến sau khi tạo
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { itemId: _itemId, ...updateFields } = dto;
     const updated = await this.repo.updateSupplierItem(
       existing._id.toString(),
-      dto,
+      updateFields,
     );
     if (!updated) throw new AppException('SUPPLIER_ITEM_NOT_FOUND');
     return updated;
@@ -113,6 +116,12 @@ export class SupplierService {
     const doc = await this.repo.findSupplierItemById(id);
     if (!doc) throw new AppException('SUPPLIER_ITEM_NOT_FOUND');
     return doc;
+  }
+
+  async listSupplierItemsBySupplierId(
+    supplierId: string,
+  ): Promise<SupplierItemDocument[]> {
+    return this.repo.findSupplierItemsBySupplierId(supplierId);
   }
 
   async getSupplierItemByItemId(itemId: string): Promise<SupplierItemDocument> {

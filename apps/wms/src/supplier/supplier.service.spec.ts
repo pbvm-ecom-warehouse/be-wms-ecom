@@ -1,5 +1,4 @@
 // apps/wms/src/supplier/supplier.service.spec.ts
-import { AppException } from '@app/common/errors/app.exception';
 import { SupplierService } from './supplier.service';
 import { SupplierStatus } from './schemas/supplier.schema';
 
@@ -70,11 +69,15 @@ describe('SupplierService', () => {
 
     it('ADMIN có thể gỡ BLACKLIST', async () => {
       repo.findSupplierById.mockResolvedValue(blacklistedDoc);
-      repo.changeSupplierStatus.mockResolvedValue({ status: SupplierStatus.ACTIVE });
+      repo.changeSupplierStatus.mockResolvedValue({
+        status: SupplierStatus.ACTIVE,
+      });
       await expect(
         svc.changeStatus(
           supplierId,
-          { status: SupplierStatus.ACTIVE },
+          {
+            status: SupplierStatus.ACTIVE,
+          },
           actorId,
           ['ADMIN'],
         ),
@@ -92,23 +95,43 @@ describe('SupplierService', () => {
       });
     });
 
+    it('SUPPLIER_NOT_FOUND trả về HTTP 404', async () => {
+      repo.findSupplierById.mockResolvedValue(null);
+      try {
+        await svc.assertSupplierActive(supplierId);
+        fail('should have thrown');
+      } catch (err) {
+        const ex = err as { getStatus?: () => number };
+        expect(typeof ex.getStatus).toBe('function');
+        expect(ex.getStatus!()).toBe(404);
+      }
+    });
+
     it('throw SUPPLIER_NOT_ACTIVE khi status INACTIVE', async () => {
-      repo.findSupplierById.mockResolvedValue({ status: SupplierStatus.INACTIVE });
+      repo.findSupplierById.mockResolvedValue({
+        status: SupplierStatus.INACTIVE,
+      });
       await expect(svc.assertSupplierActive(supplierId)).rejects.toMatchObject({
         code: 'SUPPLIER_NOT_ACTIVE',
       });
     });
 
     it('throw SUPPLIER_NOT_ACTIVE khi status BLACKLIST', async () => {
-      repo.findSupplierById.mockResolvedValue({ status: SupplierStatus.BLACKLIST });
+      repo.findSupplierById.mockResolvedValue({
+        status: SupplierStatus.BLACKLIST,
+      });
       await expect(svc.assertSupplierActive(supplierId)).rejects.toMatchObject({
         code: 'SUPPLIER_NOT_ACTIVE',
       });
     });
 
     it('không throw khi status ACTIVE', async () => {
-      repo.findSupplierById.mockResolvedValue({ status: SupplierStatus.ACTIVE });
-      await expect(svc.assertSupplierActive(supplierId)).resolves.toBeUndefined();
+      repo.findSupplierById.mockResolvedValue({
+        status: SupplierStatus.ACTIVE,
+      });
+      await expect(
+        svc.assertSupplierActive(supplierId),
+      ).resolves.toBeUndefined();
     });
   });
 
@@ -128,12 +151,17 @@ describe('SupplierService', () => {
       expect(repo.createSupplierItem).toHaveBeenCalledWith(dto);
     });
 
-    it('update khi SKU đã có NCC chính', async () => {
+    it('update khi SKU đã có NCC chính (không truyền itemId vào update)', async () => {
       const existing = { _id: { toString: () => 'existingId' }, itemId };
       repo.findSupplierItemByItemId.mockResolvedValue(existing);
       repo.updateSupplierItem.mockResolvedValue({ itemId });
       await svc.upsertSupplierItem(dto);
-      expect(repo.updateSupplierItem).toHaveBeenCalledWith('existingId', dto);
+      // itemId bị loại khỏi payload update — field bất biến sau khi tạo
+      const { supplierId: s, purchasePrice: p } = dto;
+      expect(repo.updateSupplierItem).toHaveBeenCalledWith('existingId', {
+        supplierId: s,
+        purchasePrice: p,
+      });
     });
   });
 });
