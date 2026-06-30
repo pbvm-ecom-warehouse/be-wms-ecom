@@ -1,4 +1,4 @@
-import { ItemType, WarehouseItem, WarehouseItemSchema } from './warehouse-item.schema';
+import { ItemType, WarehouseItemSchema } from './warehouse-item.schema';
 
 describe('WarehouseItem schema', () => {
   it('ItemType enum có đủ 4 giá trị', () => {

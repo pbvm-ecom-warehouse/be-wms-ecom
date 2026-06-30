@@ -29,6 +29,7 @@ class ItemAttribute {
   @Prop({ required: true })
   value!: string;
 
+  /** Mã định danh thuộc tính — dùng khi map với hệ thống ngoài hoặc filter theo loại */
   @Prop({ required: true })
   code!: string;
 }
@@ -91,6 +92,5 @@ export class WarehouseItem {
 export type WarehouseItemDocument = HydratedDocument<WarehouseItem>;
 export const WarehouseItemSchema = SchemaFactory.createForClass(WarehouseItem);
 
-WarehouseItemSchema.index({ sku: 1 }, { unique: true });
 WarehouseItemSchema.index({ deletedAt: 1 });
 WarehouseItemSchema.index({ barcode: 1 }, { sparse: true });
