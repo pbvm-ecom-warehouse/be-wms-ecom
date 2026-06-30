@@ -3,7 +3,7 @@ import { Test } from '@nestjs/testing';
 import { Types } from 'mongoose';
 import { StockRepository } from './stock.repository';
 import { InventoryStock } from './schemas/inventory-stock.schema';
-import { Lot, LotStatus } from './schemas/lot.schema';
+import { Lot } from './schemas/lot.schema';
 import { StockBalance } from './schemas/stock-balance.schema';
 import { StockMovement } from './schemas/stock-movement.schema';
 import { WarehouseItem } from './schemas/warehouse-item.schema';
@@ -115,6 +115,3 @@ describe('StockRepository', () => {
     });
   });
 });
-
-// Suppress unused import warning — LotStatus is referenced in the schema test context
-void LotStatus;
