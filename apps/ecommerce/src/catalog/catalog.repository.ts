@@ -107,7 +107,10 @@ export class CatalogRepository {
       if (query.minPrice !== undefined)
         variantFilter.price = { $gte: query.minPrice };
       if (query.maxPrice !== undefined) {
-        variantFilter.price = { ...variantFilter.price, $lte: query.maxPrice };
+        variantFilter.price = {
+          ...(variantFilter.price as Record<string, unknown>),
+          $lte: query.maxPrice,
+        };
       }
       if (query.inStock === true || query.inStock === 'true') {
         variantFilter.availableQty = { $gt: 0 };
