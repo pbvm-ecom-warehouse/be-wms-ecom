@@ -10,7 +10,7 @@ export class Shelf {
   level!: number;
 
   /** Giá trị barcode vị trí — dán tem ở mỗi shelf, quét khi put-away/pick */
-  @Prop({ required: true, unique: true })
+  @Prop({ required: true })
   code!: string;
 
   @Prop()
