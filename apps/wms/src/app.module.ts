@@ -16,6 +16,7 @@ import { AuthModule } from './auth/auth.module';
 import { HealthModule } from './health/health.module';
 import { StockModule } from './stock/stock.module';
 import { WarehouseModule } from './warehouse/warehouse.module';
+import { SupplierModule } from './supplier/supplier.module';
 import { appConfig } from './config/app.config';
 import { authConfig } from './config/auth.config';
 import { validateEnv } from './config/env.validation';
@@ -42,6 +43,7 @@ import { validateEnv } from './config/env.validation';
     HealthModule, // GET /api/wms/health
     StockModule, // producer mẫu: stock.changed
     WarehouseModule, // CRUD cấu trúc kho: Warehouse/Zone/Rack/Shelf
+    SupplierModule, // CRUD NCC + bảng giá SupplierItem
   ],
   controllers: [AppController],
   providers: [
