@@ -15,7 +15,8 @@ const SOFT_DELETE_FILTER = { deletedAt: null } as const;
 @Injectable()
 export class WarehouseRepository {
   constructor(
-    @InjectModel(Warehouse.name) private readonly warehouseModel: Model<WarehouseDocument>,
+    @InjectModel(Warehouse.name)
+    private readonly warehouseModel: Model<WarehouseDocument>,
     @InjectModel(Zone.name) private readonly zoneModel: Model<ZoneDocument>,
     @InjectModel(Rack.name) private readonly rackModel: Model<RackDocument>,
     @InjectModel(Shelf.name) private readonly shelfModel: Model<ShelfDocument>,
@@ -23,7 +24,10 @@ export class WarehouseRepository {
 
   // ─── Warehouse ────────────────────────────────────────────────────────────
 
-  async createWarehouse(dto: CreateWarehouseDto, actorId: string): Promise<WarehouseDocument> {
+  async createWarehouse(
+    dto: CreateWarehouseDto,
+    actorId: string,
+  ): Promise<WarehouseDocument> {
     return this.warehouseModel.create({
       ...dto,
       createdBy: new Types.ObjectId(actorId),
@@ -32,11 +36,16 @@ export class WarehouseRepository {
   }
 
   async findAllWarehouses(): Promise<WarehouseDocument[]> {
-    return this.warehouseModel.find(SOFT_DELETE_FILTER).sort({ createdAt: 1 }).exec();
+    return this.warehouseModel
+      .find(SOFT_DELETE_FILTER)
+      .sort({ createdAt: 1 })
+      .exec();
   }
 
   async findWarehouseById(id: string): Promise<WarehouseDocument | null> {
-    return this.warehouseModel.findOne({ _id: id, ...SOFT_DELETE_FILTER }).exec();
+    return this.warehouseModel
+      .findOne({ _id: id, ...SOFT_DELETE_FILTER })
+      .exec();
   }
 
   async updateWarehouse(
@@ -76,7 +85,10 @@ export class WarehouseRepository {
 
   async findZonesByWarehouse(warehouseId: string): Promise<ZoneDocument[]> {
     return this.zoneModel
-      .find({ warehouseId: new Types.ObjectId(warehouseId), ...SOFT_DELETE_FILTER })
+      .find({
+        warehouseId: new Types.ObjectId(warehouseId),
+        ...SOFT_DELETE_FILTER,
+      })
       .sort({ code: 1 })
       .exec();
   }
@@ -85,17 +97,34 @@ export class WarehouseRepository {
     return this.zoneModel.findOne({ _id: id, ...SOFT_DELETE_FILTER }).exec();
   }
 
-  async findZoneByCode(warehouseId: string, code: string): Promise<ZoneDocument | null> {
+  async findZoneByCode(
+    warehouseId: string,
+    code: string,
+  ): Promise<ZoneDocument | null> {
     return this.zoneModel
-      .findOne({ warehouseId: new Types.ObjectId(warehouseId), code, ...SOFT_DELETE_FILTER })
+      .findOne({
+        warehouseId: new Types.ObjectId(warehouseId),
+        code,
+        ...SOFT_DELETE_FILTER,
+      })
       .exec();
   }
 
-  async updateZone(id: string, dto: UpdateZoneDto, actorId: string): Promise<ZoneDocument | null> {
-    const update: Record<string, unknown> = { ...dto, updatedBy: new Types.ObjectId(actorId) };
-    if (dto.warehouseId) update['warehouseId'] = new Types.ObjectId(dto.warehouseId);
+  async updateZone(
+    id: string,
+    dto: UpdateZoneDto,
+    actorId: string,
+  ): Promise<ZoneDocument | null> {
+    const update: Record<string, unknown> = {
+      ...dto,
+      updatedBy: new Types.ObjectId(actorId),
+    };
+    if (dto.warehouseId)
+      update['warehouseId'] = new Types.ObjectId(dto.warehouseId);
     return this.zoneModel
-      .findOneAndUpdate({ _id: id, ...SOFT_DELETE_FILTER }, update, { new: true })
+      .findOneAndUpdate({ _id: id, ...SOFT_DELETE_FILTER }, update, {
+        new: true,
+      })
       .exec();
   }
 
@@ -131,17 +160,33 @@ export class WarehouseRepository {
     return this.rackModel.findOne({ _id: id, ...SOFT_DELETE_FILTER }).exec();
   }
 
-  async findRackByCode(zoneId: string, code: string): Promise<RackDocument | null> {
+  async findRackByCode(
+    zoneId: string,
+    code: string,
+  ): Promise<RackDocument | null> {
     return this.rackModel
-      .findOne({ zoneId: new Types.ObjectId(zoneId), code, ...SOFT_DELETE_FILTER })
+      .findOne({
+        zoneId: new Types.ObjectId(zoneId),
+        code,
+        ...SOFT_DELETE_FILTER,
+      })
       .exec();
   }
 
-  async updateRack(id: string, dto: UpdateRackDto, actorId: string): Promise<RackDocument | null> {
-    const update: Record<string, unknown> = { ...dto, updatedBy: new Types.ObjectId(actorId) };
+  async updateRack(
+    id: string,
+    dto: UpdateRackDto,
+    actorId: string,
+  ): Promise<RackDocument | null> {
+    const update: Record<string, unknown> = {
+      ...dto,
+      updatedBy: new Types.ObjectId(actorId),
+    };
     if (dto.zoneId) update['zoneId'] = new Types.ObjectId(dto.zoneId);
     return this.rackModel
-      .findOneAndUpdate({ _id: id, ...SOFT_DELETE_FILTER }, update, { new: true })
+      .findOneAndUpdate({ _id: id, ...SOFT_DELETE_FILTER }, update, {
+        new: true,
+      })
       .exec();
   }
 
@@ -157,7 +202,10 @@ export class WarehouseRepository {
 
   // ─── Shelf ────────────────────────────────────────────────────────────────
 
-  async createShelf(dto: CreateShelfDto, actorId: string): Promise<ShelfDocument> {
+  async createShelf(
+    dto: CreateShelfDto,
+    actorId: string,
+  ): Promise<ShelfDocument> {
     return this.shelfModel.create({
       ...dto,
       rackId: new Types.ObjectId(dto.rackId),
@@ -186,10 +234,15 @@ export class WarehouseRepository {
     dto: UpdateShelfDto,
     actorId: string,
   ): Promise<ShelfDocument | null> {
-    const update: Record<string, unknown> = { ...dto, updatedBy: new Types.ObjectId(actorId) };
+    const update: Record<string, unknown> = {
+      ...dto,
+      updatedBy: new Types.ObjectId(actorId),
+    };
     if (dto.rackId) update['rackId'] = new Types.ObjectId(dto.rackId);
     return this.shelfModel
-      .findOneAndUpdate({ _id: id, ...SOFT_DELETE_FILTER }, update, { new: true })
+      .findOneAndUpdate({ _id: id, ...SOFT_DELETE_FILTER }, update, {
+        new: true,
+      })
       .exec();
   }
 
