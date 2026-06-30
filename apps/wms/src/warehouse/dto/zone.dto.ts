@@ -23,12 +23,16 @@ export class UpdateZoneDto extends PartialType(CreateZoneDto) {}
 
 export class ZoneResponseDto {
   @Expose()
-  @Transform(({ obj }: { obj: { _id?: Types.ObjectId } }) => obj._id?.toString())
+  @Transform(({ obj }: { obj: { _id?: Types.ObjectId } }) =>
+    obj._id?.toString(),
+  )
   @ApiProperty()
   id!: string;
 
   @Expose()
-  @Transform(({ obj }: { obj: { warehouseId?: Types.ObjectId } }) => obj.warehouseId?.toString())
+  @Transform(({ obj }: { obj: { warehouseId?: Types.ObjectId } }) =>
+    obj.warehouseId?.toString(),
+  )
   @ApiProperty()
   warehouseId!: string;
 

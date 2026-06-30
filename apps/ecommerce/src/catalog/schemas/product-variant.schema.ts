@@ -40,8 +40,8 @@ export class ProductVariant {
 }
 
 export type ProductVariantDocument = HydratedDocument<ProductVariant>;
-export const ProductVariantSchema = SchemaFactory.createForClass(ProductVariant);
+export const ProductVariantSchema =
+  SchemaFactory.createForClass(ProductVariant);
 
 // Index cho search: productId + isActive thường query cùng nhau
 ProductVariantSchema.index({ productId: 1, isActive: 1 });
-

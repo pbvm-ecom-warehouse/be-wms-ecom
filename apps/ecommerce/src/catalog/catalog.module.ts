@@ -42,4 +42,3 @@ import { StockConsumer } from './stock.consumer';
   exports: [CatalogService],
 })
 export class CatalogModule {}
-

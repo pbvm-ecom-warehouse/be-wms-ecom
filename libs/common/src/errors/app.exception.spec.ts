@@ -52,7 +52,10 @@ describe('auth error codes', () => {
   });
 
   it('override message giữ nguyên status từ catalog', () => {
-    const ex = new AppException('AUTH_INVALID_CREDENTIALS', 'Mật khẩu cũ không đúng');
+    const ex = new AppException(
+      'AUTH_INVALID_CREDENTIALS',
+      'Mật khẩu cũ không đúng',
+    );
     expect(ex.getStatus()).toBe(401);
     const body = ex.getResponse() as { code: string; message: string };
     expect(body.message).toBe('Mật khẩu cũ không đúng');

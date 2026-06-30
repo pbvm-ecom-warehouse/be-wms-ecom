@@ -6,25 +6,32 @@ import { CartStatus } from '../schemas/cart.schema';
 
 export class AddCartItemDto {
   @ApiProperty({ example: 'CUP-PP-350ML' })
-  @IsString() @IsNotEmpty()
+  @IsString()
+  @IsNotEmpty()
   sku: string;
 
   @ApiProperty({ example: 2 })
-  @IsInt() @Min(1)
+  @IsInt()
+  @Min(1)
   quantity: number;
 
   @ApiPropertyOptional({ example: '64abc...' })
-  @IsString() @IsOptional()
+  @IsString()
+  @IsOptional()
   designId?: string;
 
-  @ApiPropertyOptional({ example: 'https://storage.com/designs/marriage-cup.png' })
-  @IsString() @IsOptional()
+  @ApiPropertyOptional({
+    example: 'https://storage.com/designs/marriage-cup.png',
+  })
+  @IsString()
+  @IsOptional()
   designFile?: string;
 }
 
 export class UpdateCartItemDto {
   @ApiProperty({ example: 5 })
-  @IsInt() @Min(1)
+  @IsInt()
+  @Min(1)
   quantity: number;
 }
 
@@ -50,11 +57,15 @@ export class CartItemResponseDto {
 
 export class CartResponseDto {
   @Expose()
-  @Transform(({ obj }: { obj: { _id?: Types.ObjectId } }) => obj._id?.toString())
+  @Transform(({ obj }: { obj: { _id?: Types.ObjectId } }) =>
+    obj._id?.toString(),
+  )
   id!: string;
 
   @Expose()
-  @Transform(({ obj }: { obj: { customerId?: Types.ObjectId } }) => obj.customerId?.toString())
+  @Transform(({ obj }: { obj: { customerId?: Types.ObjectId } }) =>
+    obj.customerId?.toString(),
+  )
   customerId!: string;
 
   @Expose()

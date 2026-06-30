@@ -156,11 +156,7 @@ export function ResetPasswordEmail({ code }: { code: string }): ReactElement {
             </Text>
 
             {/* Cảnh báo bảo mật */}
-            <table
-              cellPadding="0"
-              cellSpacing="0"
-              style={{ width: '100%' }}
-            >
+            <table cellPadding="0" cellSpacing="0" style={{ width: '100%' }}>
               <tbody>
                 <tr>
                   <td
@@ -198,8 +194,8 @@ export function ResetPasswordEmail({ code }: { code: string }): ReactElement {
                 fontFamily: SANS,
               }}
             >
-              Nếu bạn không yêu cầu đặt lại mật khẩu, hãy bỏ qua email này —
-              tài khoản của bạn vẫn an toàn. Nếu lo ngại,{' '}
+              Nếu bạn không yêu cầu đặt lại mật khẩu, hãy bỏ qua email này — tài
+              khoản của bạn vẫn an toàn. Nếu lo ngại,{' '}
               <Link
                 href="mailto:support@hoaiphuong.io.vn"
                 style={{ color: ACCENT, textDecoration: 'none' }}

@@ -56,7 +56,8 @@ export const ECOM_ERRORS = {
   },
   CART_PRINT_ITEM_REQUIRES_DESIGN: {
     status: HttpStatus.BAD_REQUEST,
-    message: 'Sản phẩm in ấn theo yêu cầu bắt buộc phải kèm thiết kế (designFile)',
+    message:
+      'Sản phẩm in ấn theo yêu cầu bắt buộc phải kèm thiết kế (designFile)',
   },
 
   // Order & Payment
@@ -91,4 +92,3 @@ export const ECOM_ERRORS = {
 } as const satisfies Record<string, { status: number; message: string }>;
 
 export type EcomErrorCode = keyof typeof ECOM_ERRORS;
-

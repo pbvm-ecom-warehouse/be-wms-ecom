@@ -30,7 +30,7 @@ export class NotificationConsumer extends WorkerHost {
         await this.email.send({
           to: email,
           subject: 'Mã xác minh email',
-          // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+
           react: VerifyEmail({ code }),
           idempotencyKey: key,
         });
@@ -41,7 +41,7 @@ export class NotificationConsumer extends WorkerHost {
         await this.email.send({
           to: email,
           subject: 'Mã đặt lại mật khẩu',
-          // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+
           react: ResetPasswordEmail({ code }),
           idempotencyKey: key,
         });

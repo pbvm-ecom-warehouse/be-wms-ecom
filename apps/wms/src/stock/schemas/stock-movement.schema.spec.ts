@@ -1,4 +1,4 @@
-import { MovementType, StockMovement, StockMovementSchema } from './stock-movement.schema';
+import { MovementType, StockMovementSchema } from './stock-movement.schema';
 
 describe('StockMovement schema', () => {
   it('MovementType enum có 7 giá trị theo DBML', () => {
@@ -30,7 +30,7 @@ describe('StockMovement schema', () => {
   });
 
   it('collection name là stock_movements', () => {
-    const col = StockMovementSchema.get('collection') as string | undefined;
+    const col = StockMovementSchema.get('collection');
     // collection được set qua @Schema({ collection: ... })
     expect(col ?? 'stock_movements').toBe('stock_movements');
   });

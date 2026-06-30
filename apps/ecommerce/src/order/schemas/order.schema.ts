@@ -35,10 +35,10 @@ export class OrderItem {
   sku: string;
 
   @Prop({ required: true })
-  name: string;         // snapshot tại thời điểm đặt
+  name: string; // snapshot tại thời điểm đặt
 
   @Prop({ required: true, min: 0 })
-  unitPrice: number;    // snapshot giá lúc đặt
+  unitPrice: number; // snapshot giá lúc đặt
 
   @Prop({ required: true, min: 1 })
   quantity: number;
@@ -47,13 +47,13 @@ export class OrderItem {
   isPrintItem: boolean;
 
   @Prop({ default: null })
-  designFile?: string;  // snapshot URL thiết kế
+  designFile?: string; // snapshot URL thiết kế
 
   @Prop({ default: null })
-  designId?: string;    // ID thiết kế gốc
+  designId?: string; // ID thiết kế gốc
 
   @Prop({ default: null })
-  printJobId?: string;  // mã lệnh in WMS gán sau
+  printJobId?: string; // mã lệnh in WMS gán sau
 }
 
 export class ShippingAddress {
@@ -108,7 +108,11 @@ export class Order {
   @Prop({ enum: OrderStatus, default: OrderStatus.PLACED, index: true })
   orderStatus: OrderStatus;
 
-  @Prop({ enum: FulfillmentStatus, default: FulfillmentStatus.NONE, index: true })
+  @Prop({
+    enum: FulfillmentStatus,
+    default: FulfillmentStatus.NONE,
+    index: true,
+  })
   fulfillmentStatus: FulfillmentStatus;
 
   /** WMS kho đã giữ tồn */

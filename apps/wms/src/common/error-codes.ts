@@ -23,6 +23,9 @@ export const WMS_ERRORS = {
     status: HttpStatus.NOT_FOUND,
     message: 'Không tìm thấy lô hàng',
   },
-} as const satisfies Record<string, { status: HttpStatusType; message: string }>;
+} as const satisfies Record<
+  string,
+  { status: HttpStatusType; message: string }
+>;
 
 export type WmsErrorCode = keyof typeof WMS_ERRORS;

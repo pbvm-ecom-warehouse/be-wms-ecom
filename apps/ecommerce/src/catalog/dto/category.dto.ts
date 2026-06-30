@@ -1,5 +1,11 @@
 import { ApiProperty, ApiPropertyOptional, PartialType } from '@nestjs/swagger';
-import { IsNotEmpty, IsNumber, IsOptional, IsString, Matches } from 'class-validator';
+import {
+  IsNotEmpty,
+  IsNumber,
+  IsOptional,
+  IsString,
+  Matches,
+} from 'class-validator';
 import { Expose, Transform } from 'class-transformer';
 import { Types } from 'mongoose';
 
@@ -12,7 +18,9 @@ export class CreateCategoryDto {
   /** slug phải là lowercase-kebab, dùng cho URL */
   @ApiProperty({ example: 'ly-nhua' })
   @IsString()
-  @Matches(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, { message: 'slug phải là lowercase-kebab-case' })
+  @Matches(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, {
+    message: 'slug phải là lowercase-kebab-case',
+  })
   slug: string;
 
   @ApiPropertyOptional({ example: null, description: 'null = root category' })
@@ -30,7 +38,9 @@ export class UpdateCategoryDto extends PartialType(CreateCategoryDto) {}
 
 export class CategoryResponseDto {
   @Expose()
-  @Transform(({ obj }: { obj: { _id?: Types.ObjectId } }) => obj._id?.toString())
+  @Transform(({ obj }: { obj: { _id?: Types.ObjectId } }) =>
+    obj._id?.toString(),
+  )
   id!: string;
 
   @Expose()
@@ -40,7 +50,10 @@ export class CategoryResponseDto {
   slug!: string;
 
   @Expose()
-  @Transform(({ obj }: { obj: { parentId?: Types.ObjectId | null } }) => obj.parentId?.toString() ?? null)
+  @Transform(
+    ({ obj }: { obj: { parentId?: Types.ObjectId | null } }) =>
+      obj.parentId?.toString() ?? null,
+  )
   parentId!: string | null;
 
   @Expose()

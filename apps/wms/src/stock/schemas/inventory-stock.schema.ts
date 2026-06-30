@@ -30,7 +30,8 @@ export class InventoryStock {
 }
 
 export type InventoryStockDocument = HydratedDocument<InventoryStock>;
-export const InventoryStockSchema = SchemaFactory.createForClass(InventoryStock);
+export const InventoryStockSchema =
+  SchemaFactory.createForClass(InventoryStock);
 
 // 1 bản ghi per (item, warehouse, shelf, lot) — lotId có thể null nên dùng compound 4 chiều
 InventoryStockSchema.index(

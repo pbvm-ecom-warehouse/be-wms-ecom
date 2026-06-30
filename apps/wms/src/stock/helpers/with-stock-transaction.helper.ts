@@ -11,7 +11,9 @@ import { ClientSession, Connection } from 'mongoose';
 export class StockTransactionHelper {
   constructor(@InjectConnection() private readonly connection: Connection) {}
 
-  async withStockTransaction<T>(fn: (session: ClientSession) => Promise<T>): Promise<T> {
+  async withStockTransaction<T>(
+    fn: (session: ClientSession) => Promise<T>,
+  ): Promise<T> {
     const session = await this.connection.startSession();
     try {
       return await session.withTransaction(fn);

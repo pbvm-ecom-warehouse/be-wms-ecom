@@ -5,26 +5,35 @@ import { Types } from 'mongoose';
 
 export class CreateDesignDto {
   @ApiProperty({ example: 'Logo công ty ABC' })
-  @IsString() @IsNotEmpty()
+  @IsString()
+  @IsNotEmpty()
   name: string;
 
   /** URL file artwork sau khi đã upload lên storage */
   @ApiProperty({ example: 'https://storage.example.com/designs/abc.png' })
-  @IsString() @IsNotEmpty()
+  @IsString()
+  @IsNotEmpty()
   file: string;
 
-  @ApiPropertyOptional({ example: 'https://storage.example.com/thumbnails/abc.jpg' })
-  @IsString() @IsOptional()
+  @ApiPropertyOptional({
+    example: 'https://storage.example.com/thumbnails/abc.jpg',
+  })
+  @IsString()
+  @IsOptional()
   thumbnail?: string;
 }
 
 export class DesignResponseDto {
   @Expose()
-  @Transform(({ obj }: { obj: { _id?: Types.ObjectId } }) => obj._id?.toString())
+  @Transform(({ obj }: { obj: { _id?: Types.ObjectId } }) =>
+    obj._id?.toString(),
+  )
   id!: string;
 
   @Expose()
-  @Transform(({ obj }: { obj: { customerId?: Types.ObjectId } }) => obj.customerId?.toString())
+  @Transform(({ obj }: { obj: { customerId?: Types.ObjectId } }) =>
+    obj.customerId?.toString(),
+  )
   customerId!: string;
 
   @Expose()

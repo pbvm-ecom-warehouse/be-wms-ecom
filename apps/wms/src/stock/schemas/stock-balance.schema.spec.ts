@@ -1,4 +1,4 @@
-import { StockBalance, StockBalanceSchema } from './stock-balance.schema';
+import { StockBalanceSchema } from './stock-balance.schema';
 
 describe('StockBalance schema', () => {
   it('schema có đủ field tồn tổng', () => {
@@ -16,7 +16,7 @@ describe('StockBalance schema', () => {
   });
 
   it('collection name là stock_balances', () => {
-    const col = StockBalanceSchema.get('collection') as string | undefined;
+    const col = StockBalanceSchema.get('collection');
     // collection được set qua @Schema({ collection: ... })
     expect(col ?? 'stock_balances').toBe('stock_balances');
   });

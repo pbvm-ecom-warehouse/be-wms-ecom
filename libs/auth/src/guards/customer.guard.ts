@@ -17,11 +17,11 @@ export class CustomerGuard implements CanActivate {
     const req = context
       .switchToHttp()
       .getRequest<Request & { user?: AuthUser }>();
-    
+
     if (req.user?.type !== 'customer') {
       throw new ForbiddenException('Chỉ khách hàng mới có quyền truy cập');
     }
-    
+
     return true;
   }
 }

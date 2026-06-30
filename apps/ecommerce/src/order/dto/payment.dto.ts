@@ -3,7 +3,10 @@ import { Expose } from 'class-transformer';
 
 export class PaymentUrlResponseDto {
   @Expose()
-  @ApiProperty({ example: 'https://sandbox.vnpayment.vn/paymentv2/vpcpay.html?vnp_Amount=...' })
+  @ApiProperty({
+    example:
+      'https://sandbox.vnpayment.vn/paymentv2/vpcpay.html?vnp_Amount=...',
+  })
   payUrl!: string;
 }
 

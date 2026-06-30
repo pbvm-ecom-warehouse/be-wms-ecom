@@ -45,7 +45,11 @@ export class PaymentTransaction {
 }
 
 export type PaymentTransactionDocument = HydratedDocument<PaymentTransaction>;
-export const PaymentTransactionSchema = SchemaFactory.createForClass(PaymentTransaction);
+export const PaymentTransactionSchema =
+  SchemaFactory.createForClass(PaymentTransaction);
 
 // Tạo unique sparse index cho providerTxnId
-PaymentTransactionSchema.index({ providerTxnId: 1 }, { unique: true, sparse: true });
+PaymentTransactionSchema.index(
+  { providerTxnId: 1 },
+  { unique: true, sparse: true },
+);

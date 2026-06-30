@@ -41,9 +41,15 @@ describe('StockRepository', () => {
     const module = await Test.createTestingModule({
       providers: [
         StockRepository,
-        { provide: getModelToken(WarehouseItem.name), useValue: warehouseItemModel },
+        {
+          provide: getModelToken(WarehouseItem.name),
+          useValue: warehouseItemModel,
+        },
         { provide: getModelToken(StockBalance.name), useValue: balanceModel },
-        { provide: getModelToken(InventoryStock.name), useValue: inventoryModel },
+        {
+          provide: getModelToken(InventoryStock.name),
+          useValue: inventoryModel,
+        },
         { provide: getModelToken(Lot.name), useValue: lotModel },
         { provide: getModelToken(StockMovement.name), useValue: movementModel },
       ],
@@ -58,7 +64,9 @@ describe('StockRepository', () => {
       warehouseItemModel.exec.mockResolvedValueOnce({ sku: 'LY-500ML' });
       const result = await repo.findSkuById(itemId.toString());
       expect(result).toEqual({ sku: 'LY-500ML' });
-      expect(warehouseItemModel.findById).toHaveBeenCalledWith(itemId.toString());
+      expect(warehouseItemModel.findById).toHaveBeenCalledWith(
+        itemId.toString(),
+      );
     });
 
     it('trả về null khi không tìm thấy', async () => {
@@ -70,8 +78,15 @@ describe('StockRepository', () => {
 
   describe('findBalanceByItemAndWarehouse', () => {
     it('gọi findOne với đúng filter', async () => {
-      balanceModel.exec.mockResolvedValueOnce({ onHand: 10, reserved: 2, expired: 0 });
-      const result = await repo.findBalanceByItemAndWarehouse(itemId, warehouseId);
+      balanceModel.exec.mockResolvedValueOnce({
+        onHand: 10,
+        reserved: 2,
+        expired: 0,
+      });
+      const result = await repo.findBalanceByItemAndWarehouse(
+        itemId,
+        warehouseId,
+      );
       expect(result).toEqual({ onHand: 10, reserved: 2, expired: 0 });
       expect(balanceModel.findOne).toHaveBeenCalledWith(
         { itemId, warehouseId },
@@ -109,9 +124,13 @@ describe('StockRepository', () => {
         createdBy: new Types.ObjectId(),
       };
       const mockSession = {} as never;
-      movementModel.create.mockResolvedValueOnce([{ _id: new Types.ObjectId() }]);
+      movementModel.create.mockResolvedValueOnce([
+        { _id: new Types.ObjectId() },
+      ]);
       await repo.insertMovement(data, mockSession);
-      expect(movementModel.create).toHaveBeenCalledWith([data], { session: mockSession });
+      expect(movementModel.create).toHaveBeenCalledWith([data], {
+        session: mockSession,
+      });
     });
   });
 });

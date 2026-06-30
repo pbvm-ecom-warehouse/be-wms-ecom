@@ -24,7 +24,9 @@ export class UpdateWarehouseDto extends PartialType(CreateWarehouseDto) {}
 
 export class WarehouseResponseDto {
   @Expose()
-  @Transform(({ obj }: { obj: { _id?: Types.ObjectId } }) => obj._id?.toString())
+  @Transform(({ obj }: { obj: { _id?: Types.ObjectId } }) =>
+    obj._id?.toString(),
+  )
   @ApiProperty()
   id!: string;
 

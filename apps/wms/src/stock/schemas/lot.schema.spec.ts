@@ -1,4 +1,4 @@
-import { Lot, LotSchema, LotStatus } from './lot.schema';
+import { LotSchema, LotStatus } from './lot.schema';
 
 describe('Lot schema', () => {
   it('LotStatus enum có ACTIVE và EXPIRED', () => {

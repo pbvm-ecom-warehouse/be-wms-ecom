@@ -36,15 +36,23 @@ export class PaymentService {
     const returnUrl = this.config.get<string>('VNPAY_RETURN_URL');
 
     if (!tmnCode || !secretKey || !returnUrl) {
-      throw new AppException('INTERNAL', 'Cấu hình VNPay trên máy chủ chưa hoàn tất');
+      throw new AppException(
+        'INTERNAL',
+        'Cấu hình VNPay trên máy chủ chưa hoàn tất',
+      );
     }
 
     const vnpUrl = 'https://sandbox.vnpayment.vn/paymentv2/vpcpay.html';
     const now = new Date();
-    const createDate = now.toISOString().replace(/[-T:.Z]/g, '').slice(0, 14);
+    const createDate = now
+      .toISOString()
+      .replace(/[-T:.Z]/g, '')
+      .slice(0, 14);
     // Hạn thanh toán sau 30 phút khớp với auto-cancel job
     const expireDate = new Date(now.getTime() + 30 * 60 * 1000)
-      .toISOString().replace(/[-T:.Z]/g, '').slice(0, 14);
+      .toISOString()
+      .replace(/[-T:.Z]/g, '')
+      .slice(0, 14);
 
     const params: Record<string, string> = {
       vnp_Version: '2.1.0',
@@ -65,10 +73,16 @@ export class PaymentService {
     // Sắp xếp các tham số theo bảng chữ cái để tạo chữ ký
     const sortedParams = Object.keys(params)
       .sort()
-      .reduce((acc, k) => ({ ...acc, [k]: params[k] }), {} as Record<string, string>);
+      .reduce(
+        (acc, k) => ({ ...acc, [k]: params[k] }),
+        {} as Record<string, string>,
+      );
 
     const signData = Object.keys(sortedParams)
-      .map((key) => `${encodeURIComponent(key)}=${encodeURIComponent(sortedParams[key]).replace(/%20/g, '+')}`)
+      .map(
+        (key) =>
+          `${encodeURIComponent(key)}=${encodeURIComponent(sortedParams[key]).replace(/%20/g, '+')}`,
+      )
       .join('&');
 
     const hmac = crypto.createHmac('sha512', secretKey);
@@ -77,7 +91,10 @@ export class PaymentService {
     sortedParams['vnp_SecureHash'] = signed;
 
     const queryParams = Object.keys(sortedParams)
-      .map((key) => `${encodeURIComponent(key)}=${encodeURIComponent(sortedParams[key]).replace(/%20/g, '+')}`)
+      .map(
+        (key) =>
+          `${encodeURIComponent(key)}=${encodeURIComponent(sortedParams[key]).replace(/%20/g, '+')}`,
+      )
       .join('&');
 
     return `${vnpUrl}?${queryParams}`;
@@ -86,7 +103,9 @@ export class PaymentService {
   /**
    * Xử lý IPN (Instant Payment Notification) từ VNPay.
    */
-  async handleVnpayIpn(query: Record<string, string>): Promise<{ RspCode: string; Message: string }> {
+  async handleVnpayIpn(
+    query: Record<string, string>,
+  ): Promise<{ RspCode: string; Message: string }> {
     const secretKey = this.config.get<string>('VNPAY_SECRET_KEY');
     if (!secretKey) {
       this.logger.error('Chưa cấu hình VNPAY_SECRET_KEY');
@@ -94,22 +113,34 @@ export class PaymentService {
     }
 
     const secureHash = query['vnp_SecureHash'];
-    const { vnp_SecureHash, vnp_SecureHashType, ...params } = query;
+    const params = Object.fromEntries(
+      Object.entries(query).filter(
+        ([k]) => k !== 'vnp_SecureHash' && k !== 'vnp_SecureHashType',
+      ),
+    ) as Record<string, string>;
 
     // Sắp xếp
     const sortedParams = Object.keys(params)
       .sort()
-      .reduce((acc, k) => ({ ...acc, [k]: params[k] }), {} as Record<string, string>);
+      .reduce(
+        (acc, k) => ({ ...acc, [k]: params[k] }),
+        {} as Record<string, string>,
+      );
 
     const signData = Object.keys(sortedParams)
-      .map((key) => `${encodeURIComponent(key)}=${encodeURIComponent(sortedParams[key]).replace(/%20/g, '+')}`)
+      .map(
+        (key) =>
+          `${encodeURIComponent(key)}=${encodeURIComponent(sortedParams[key]).replace(/%20/g, '+')}`,
+      )
       .join('&');
 
     const hmac = crypto.createHmac('sha512', secretKey);
     const signed = hmac.update(Buffer.from(signData, 'utf-8')).digest('hex');
 
     if (signed !== secureHash) {
-      this.logger.warn('Giao dịch IPN VNPay bị từ chối do chữ ký số không khớp');
+      this.logger.warn(
+        'Giao dịch IPN VNPay bị từ chối do chữ ký số không khớp',
+      );
       return { RspCode: '97', Message: 'Invalid signature' };
     }
 
@@ -134,11 +165,16 @@ export class PaymentService {
         );
         return { RspCode: '00', Message: 'Confirm success' };
       } catch (err) {
-        this.logger.error(`Lỗi xử lý xác nhận thanh toán đơn hàng ${order._id}:`, err);
+        this.logger.error(
+          `Lỗi xử lý xác nhận thanh toán đơn hàng ${order._id.toString()}:`,
+          err,
+        );
         return { RspCode: '99', Message: 'Confirm failed' };
       }
     } else {
-      this.logger.warn(`VNPay báo lỗi giao dịch thanh toán: Mã phản hồi = ${responseCode}`);
+      this.logger.warn(
+        `VNPay báo lỗi giao dịch thanh toán: Mã phản hồi = ${responseCode}`,
+      );
       return { RspCode: '00', Message: 'Transaction failed confirmed' };
     }
   }

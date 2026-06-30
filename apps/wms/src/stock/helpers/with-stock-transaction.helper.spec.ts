@@ -12,7 +12,10 @@ describe('StockTransactionHelper', () => {
   beforeEach(async () => {
     withTransactionMock = jest.fn();
     endSessionMock = jest.fn().mockResolvedValue(undefined);
-    mockSession = { withTransaction: withTransactionMock, endSession: endSessionMock };
+    mockSession = {
+      withTransaction: withTransactionMock,
+      endSession: endSessionMock,
+    };
 
     const mockConnection = {
       startSession: jest.fn().mockResolvedValue(mockSession),
@@ -31,9 +34,11 @@ describe('StockTransactionHelper', () => {
 
   it('gọi fn bên trong withTransaction và trả về kết quả', async () => {
     const expected = { ok: true };
-    withTransactionMock.mockImplementation(async (fn: (s: ClientSession) => Promise<unknown>) => {
-      return fn(mockSession as ClientSession);
-    });
+    withTransactionMock.mockImplementation(
+      async (fn: (s: ClientSession) => Promise<unknown>) => {
+        return fn(mockSession as ClientSession);
+      },
+    );
 
     const fn = jest.fn().mockResolvedValue(expected);
     const result = await helper.withStockTransaction(fn);
@@ -43,9 +48,11 @@ describe('StockTransactionHelper', () => {
   });
 
   it('luôn gọi endSession dù fn throw', async () => {
-    withTransactionMock.mockImplementation(async (fn: (s: ClientSession) => Promise<unknown>) => {
-      return fn(mockSession as ClientSession);
-    });
+    withTransactionMock.mockImplementation(
+      async (fn: (s: ClientSession) => Promise<unknown>) => {
+        return fn(mockSession as ClientSession);
+      },
+    );
 
     const fn = jest.fn().mockRejectedValue(new Error('db error'));
     await expect(helper.withStockTransaction(fn)).rejects.toThrow('db error');
@@ -53,9 +60,11 @@ describe('StockTransactionHelper', () => {
   });
 
   it('endSession luôn được gọi sau khi fn thành công', async () => {
-    withTransactionMock.mockImplementation(async (fn: (s: ClientSession) => Promise<unknown>) => {
-      return fn(mockSession as ClientSession);
-    });
+    withTransactionMock.mockImplementation(
+      async (fn: (s: ClientSession) => Promise<unknown>) => {
+        return fn(mockSession as ClientSession);
+      },
+    );
 
     await helper.withStockTransaction(jest.fn().mockResolvedValue(null));
     expect(endSessionMock).toHaveBeenCalled();

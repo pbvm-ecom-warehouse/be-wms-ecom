@@ -21,7 +21,13 @@ import {
   ApiQuery,
   ApiTags,
 } from '@nestjs/swagger';
-import { CurrentUser, JwtAuthGuard, Roles, RolesGuard, WmsRole } from '@app/auth';
+import {
+  CurrentUser,
+  JwtAuthGuard,
+  Roles,
+  RolesGuard,
+  WmsRole,
+} from '@app/auth';
 import { plainToInstance } from 'class-transformer';
 import { WarehouseService } from './warehouse.service';
 import {
@@ -57,7 +63,11 @@ export class WarehouseController {
     @CurrentUser('sub') actorId: string,
   ): Promise<WarehouseResponseDto> {
     const doc = await this.svc.createWarehouse(dto, actorId);
-    return plainToInstance(WarehouseResponseDto, doc.toObject(), TO_INSTANCE_OPTS);
+    return plainToInstance(
+      WarehouseResponseDto,
+      doc.toObject(),
+      TO_INSTANCE_OPTS,
+    );
   }
 
   @Get()
@@ -92,7 +102,9 @@ export class WarehouseController {
   @ApiOperation({ summary: 'Danh sách zone theo kho — [MANAGER]' })
   @ApiQuery({ name: 'warehouseId', required: true })
   @ApiOkResponse({ type: [ZoneResponseDto] })
-  async listZones(@Query('warehouseId') warehouseId: string): Promise<ZoneResponseDto[]> {
+  async listZones(
+    @Query('warehouseId') warehouseId: string,
+  ): Promise<ZoneResponseDto[]> {
     const docs = await this.svc.listZones(warehouseId);
     return plainToInstance(
       ZoneResponseDto,
@@ -148,7 +160,9 @@ export class WarehouseController {
   @ApiOperation({ summary: 'Danh sách shelf theo rack — [MANAGER]' })
   @ApiQuery({ name: 'rackId', required: true })
   @ApiOkResponse({ type: [ShelfResponseDto] })
-  async listShelves(@Query('rackId') rackId: string): Promise<ShelfResponseDto[]> {
+  async listShelves(
+    @Query('rackId') rackId: string,
+  ): Promise<ShelfResponseDto[]> {
     const docs = await this.svc.listShelves(rackId);
     return plainToInstance(
       ShelfResponseDto,
@@ -165,7 +179,11 @@ export class WarehouseController {
   @ApiOkResponse({ type: WarehouseResponseDto })
   async getWarehouse(@Param('id') id: string): Promise<WarehouseResponseDto> {
     const doc = await this.svc.getWarehouse(id);
-    return plainToInstance(WarehouseResponseDto, doc.toObject(), TO_INSTANCE_OPTS);
+    return plainToInstance(
+      WarehouseResponseDto,
+      doc.toObject(),
+      TO_INSTANCE_OPTS,
+    );
   }
 
   @Patch(':id')
@@ -178,7 +196,11 @@ export class WarehouseController {
     @CurrentUser('sub') actorId: string,
   ): Promise<WarehouseResponseDto> {
     const doc = await this.svc.updateWarehouse(id, dto, actorId);
-    return plainToInstance(WarehouseResponseDto, doc.toObject(), TO_INSTANCE_OPTS);
+    return plainToInstance(
+      WarehouseResponseDto,
+      doc.toObject(),
+      TO_INSTANCE_OPTS,
+    );
   }
 
   @Delete(':id')

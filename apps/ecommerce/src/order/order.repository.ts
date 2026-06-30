@@ -8,12 +8,15 @@ import { PaymentTransaction } from './schemas/payment-transaction.schema';
 export class OrderRepository {
   constructor(
     @InjectModel(Order.name) private readonly orderModel: Model<Order>,
-    @InjectModel(PaymentTransaction.name) private readonly txnModel: Model<PaymentTransaction>,
+    @InjectModel(PaymentTransaction.name)
+    private readonly txnModel: Model<PaymentTransaction>,
   ) {}
 
-  async createOrder(data: Partial<Order>): Promise<Order & { _id: Types.ObjectId }> {
+  async createOrder(
+    data: Partial<Order>,
+  ): Promise<Order & { _id: Types.ObjectId }> {
     const created = await this.orderModel.create(data);
-    return created.toObject() as unknown as Order & { _id: Types.ObjectId };
+    return created.toObject();
   }
 
   async findById(id: string) {
@@ -49,7 +52,10 @@ export class OrderRepository {
   }
 
   async listTransactions(orderId: string) {
-    return this.txnModel.find({ orderId: new Types.ObjectId(orderId) }).sort({ createdAt: 1 }).lean();
+    return this.txnModel
+      .find({ orderId: new Types.ObjectId(orderId) })
+      .sort({ createdAt: 1 })
+      .lean();
   }
 
   /** Sinh mã đơn theo format ORD-YYYYMMDD-NNN */

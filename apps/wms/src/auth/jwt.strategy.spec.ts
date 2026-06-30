@@ -20,7 +20,12 @@ describe('JwtStrategy', () => {
   });
 
   it('validate trả payload khi type=user', () => {
-    const payload = { sub: 'id1', type: 'user' as const, roles: ['ADMIN'], username: 'admin' };
+    const payload = {
+      sub: 'id1',
+      type: 'user' as const,
+      roles: ['ADMIN'],
+      username: 'admin',
+    };
     expect(strategy.validate(payload)).toEqual(payload);
   });
 

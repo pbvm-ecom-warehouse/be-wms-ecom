@@ -2,11 +2,17 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { IsOptional, IsString } from 'class-validator';
 import { Expose, Transform, Type } from 'class-transformer';
 import { Types } from 'mongoose';
-import { PaymentMethod, PaymentStatus, OrderStatus, FulfillmentStatus } from '../schemas/order.schema';
+import {
+  PaymentMethod,
+  PaymentStatus,
+  OrderStatus,
+  FulfillmentStatus,
+} from '../schemas/order.schema';
 
 export class CancelOrderDto {
   @ApiPropertyOptional({ example: 'Đặt nhầm sản phẩm' })
-  @IsString() @IsOptional()
+  @IsString()
+  @IsOptional()
   reason?: string;
 }
 
@@ -73,7 +79,9 @@ export class ShippingAddressResponseDto {
 export class OrderResponseDto {
   @Expose()
   @ApiProperty({ example: '64abc123e4b0...' })
-  @Transform(({ obj }: { obj: { _id?: Types.ObjectId } }) => obj._id?.toString())
+  @Transform(({ obj }: { obj: { _id?: Types.ObjectId } }) =>
+    obj._id?.toString(),
+  )
   id!: string;
 
   @Expose()
@@ -82,7 +90,9 @@ export class OrderResponseDto {
 
   @Expose()
   @ApiProperty({ example: '64def456e4b0...' })
-  @Transform(({ obj }: { obj: { customerId?: Types.ObjectId } }) => obj.customerId?.toString())
+  @Transform(({ obj }: { obj: { customerId?: Types.ObjectId } }) =>
+    obj.customerId?.toString(),
+  )
   customerId!: string;
 
   @Expose()

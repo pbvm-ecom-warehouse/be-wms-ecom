@@ -1,10 +1,16 @@
 import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { ClientSession, Model, Types } from 'mongoose';
-import { InventoryStock, InventoryStockDocument } from './schemas/inventory-stock.schema';
+import {
+  InventoryStock,
+  InventoryStockDocument,
+} from './schemas/inventory-stock.schema';
 import { Lot, LotDocument, LotStatus } from './schemas/lot.schema';
 import { MovementType, StockMovement } from './schemas/stock-movement.schema';
-import { StockBalance, StockBalanceDocument } from './schemas/stock-balance.schema';
+import {
+  StockBalance,
+  StockBalanceDocument,
+} from './schemas/stock-balance.schema';
 import { WarehouseItem } from './schemas/warehouse-item.schema';
 
 type InsertMovementData = {
@@ -64,7 +70,13 @@ export class StockRepository {
     return this.balanceModel
       .findOneAndUpdate(
         { itemId, warehouseId },
-        { $inc: { onHand: onHandDelta, reserved: reservedDelta, expired: expiredDelta } },
+        {
+          $inc: {
+            onHand: onHandDelta,
+            reserved: reservedDelta,
+            expired: expiredDelta,
+          },
+        },
         { upsert: true, new: true, session },
       )
       .exec();
@@ -106,7 +118,9 @@ export class StockRepository {
     session?: ClientSession,
   ): Promise<LotDocument | null> {
     return this.lotModel
-      .findOne({ itemId, lotNumber, status: LotStatus.ACTIVE }, null, { session })
+      .findOne({ itemId, lotNumber, status: LotStatus.ACTIVE }, null, {
+        session,
+      })
       .exec();
   }
 

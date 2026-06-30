@@ -30,14 +30,19 @@ export class GoogleLoginDto {
 }
 
 export class RefreshDto {
-  @ApiPropertyOptional({ description: 'Refresh token nhận được lúc login — bỏ qua nếu dùng cookie mode' })
+  @ApiPropertyOptional({
+    description:
+      'Refresh token nhận được lúc login — bỏ qua nếu dùng cookie mode',
+  })
   @IsOptional()
   @IsString()
   refreshToken?: string;
 }
 
 export class LogoutDto {
-  @ApiPropertyOptional({ description: 'Refresh token cần thu hồi — bỏ qua nếu dùng cookie mode' })
+  @ApiPropertyOptional({
+    description: 'Refresh token cần thu hồi — bỏ qua nếu dùng cookie mode',
+  })
   @IsOptional()
   @IsString()
   refreshToken?: string;
@@ -123,8 +128,9 @@ export class AuthTokenResponseDto {
 /** Response cho GET /me, PATCH /users/:id/roles, POST /users/:id/lock|unlock. */
 export class UserResponseDto {
   @Expose()
-  @Transform(({ obj }: { obj: { _id?: Types.ObjectId | { toString(): string } } }) =>
-    obj._id?.toString(),
+  @Transform(
+    ({ obj }: { obj: { _id?: Types.ObjectId | { toString(): string } } }) =>
+      obj._id?.toString(),
   )
   @ApiProperty()
   id!: string;
@@ -154,8 +160,12 @@ export class UserResponseDto {
   mustChangePassword!: boolean;
 
   @Expose()
-  @Transform(({ obj }: { obj: { warehouseId?: Types.ObjectId | { toString(): string } | null } }) =>
-    obj.warehouseId?.toString() ?? undefined,
+  @Transform(
+    ({
+      obj,
+    }: {
+      obj: { warehouseId?: Types.ObjectId | { toString(): string } | null };
+    }) => obj.warehouseId?.toString() ?? undefined,
   )
   @ApiPropertyOptional()
   warehouseId?: string;
@@ -172,8 +182,9 @@ export class UserResponseDto {
 /** Response cho POST /users và POST /bootstrap-admin. */
 export class CreateUserResponseDto {
   @Expose()
-  @Transform(({ obj }: { obj: { _id?: Types.ObjectId | { toString(): string } } }) =>
-    obj._id?.toString(),
+  @Transform(
+    ({ obj }: { obj: { _id?: Types.ObjectId | { toString(): string } } }) =>
+      obj._id?.toString(),
   )
   @ApiProperty()
   id!: string;

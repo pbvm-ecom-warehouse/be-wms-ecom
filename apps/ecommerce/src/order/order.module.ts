@@ -5,7 +5,10 @@ import { QUEUES } from '@app/events';
 import { AuthModule } from '../auth/auth.module';
 import { CartModule } from '../cart/cart.module';
 import { Order, OrderSchema } from './schemas/order.schema';
-import { PaymentTransaction, PaymentTransactionSchema } from './schemas/payment-transaction.schema';
+import {
+  PaymentTransaction,
+  PaymentTransactionSchema,
+} from './schemas/payment-transaction.schema';
 import { OrderRepository } from './order.repository';
 import { OrderService } from './order.service';
 import { CheckoutService } from './checkout.service';
@@ -21,10 +24,7 @@ import { ShipmentConsumer } from './order.consumer';
       { name: Order.name, schema: OrderSchema },
       { name: PaymentTransaction.name, schema: PaymentTransactionSchema },
     ]),
-    BullModule.registerQueue(
-      { name: QUEUES.ORDER },
-      { name: QUEUES.SHIPMENT },
-    ),
+    BullModule.registerQueue({ name: QUEUES.ORDER }, { name: QUEUES.SHIPMENT }),
     AuthModule,
     CartModule,
   ],

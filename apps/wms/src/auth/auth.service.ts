@@ -46,7 +46,10 @@ export class AuthService {
       ? await bcrypt.compare(password, user.passwordHash)
       : await bcrypt.compare(password, INVALID_BCRYPT_HASH);
     if (!user || !ok) {
-      throw new AppException('AUTH_INVALID_CREDENTIALS', 'Sai tài khoản hoặc mật khẩu');
+      throw new AppException(
+        'AUTH_INVALID_CREDENTIALS',
+        'Sai tài khoản hoặc mật khẩu',
+      );
     }
     return user;
   }
@@ -229,7 +232,10 @@ export class AuthService {
       ? await bcrypt.compare(dto.oldPassword, user.passwordHash)
       : await bcrypt.compare(dto.oldPassword, INVALID_BCRYPT_HASH);
     if (!user || !ok) {
-      throw new AppException('AUTH_INVALID_CREDENTIALS', 'Mật khẩu cũ không đúng');
+      throw new AppException(
+        'AUTH_INVALID_CREDENTIALS',
+        'Mật khẩu cũ không đúng',
+      );
     }
 
     const passwordHash = await bcrypt.hash(dto.newPassword, BCRYPT_ROUNDS);

@@ -23,12 +23,16 @@ export class UpdateRackDto extends PartialType(CreateRackDto) {}
 
 export class RackResponseDto {
   @Expose()
-  @Transform(({ obj }: { obj: { _id?: Types.ObjectId } }) => obj._id?.toString())
+  @Transform(({ obj }: { obj: { _id?: Types.ObjectId } }) =>
+    obj._id?.toString(),
+  )
   @ApiProperty()
   id!: string;
 
   @Expose()
-  @Transform(({ obj }: { obj: { zoneId?: Types.ObjectId } }) => obj.zoneId?.toString())
+  @Transform(({ obj }: { obj: { zoneId?: Types.ObjectId } }) =>
+    obj.zoneId?.toString(),
+  )
   @ApiProperty()
   zoneId!: string;
 

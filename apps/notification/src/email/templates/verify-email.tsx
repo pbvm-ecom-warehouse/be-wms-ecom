@@ -155,7 +155,9 @@ export function VerifyEmail({ code }: { code: string }): ReactElement {
           <Hr style={{ borderColor: BORDER, margin: '0' }} />
 
           {/* Footer */}
-          <Section style={{ padding: '16px 32px 24px', backgroundColor: SURFACE }}>
+          <Section
+            style={{ padding: '16px 32px 24px', backgroundColor: SURFACE }}
+          >
             <Text
               style={{
                 color: SLATE,
@@ -165,8 +167,8 @@ export function VerifyEmail({ code }: { code: string }): ReactElement {
                 fontFamily: SANS,
               }}
             >
-              Nếu bạn không yêu cầu mã này, hãy bỏ qua email — tài khoản của
-              bạn vẫn an toàn.
+              Nếu bạn không yêu cầu mã này, hãy bỏ qua email — tài khoản của bạn
+              vẫn an toàn.
             </Text>
             <Text
               style={{

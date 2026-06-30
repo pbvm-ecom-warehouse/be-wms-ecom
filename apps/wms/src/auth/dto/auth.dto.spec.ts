@@ -1,11 +1,24 @@
 import { plainToInstance } from 'class-transformer';
 import { validate } from 'class-validator';
-import { AuthTokenResponseDto, UserResponseDto, CreateUserResponseDto, RefreshDto, LogoutDto } from './auth.dto';
+import {
+  AuthTokenResponseDto,
+  UserResponseDto,
+  CreateUserResponseDto,
+  RefreshDto,
+  LogoutDto,
+} from './auth.dto';
 
 describe('AuthTokenResponseDto', () => {
   it('expose accessToken, refreshToken, mustChangePassword — không expose field lạ', () => {
-    const raw = { accessToken: 'at', refreshToken: 'rt', mustChangePassword: true, passwordHash: 'secret' };
-    const dto = plainToInstance(AuthTokenResponseDto, raw, { excludeExtraneousValues: true });
+    const raw = {
+      accessToken: 'at',
+      refreshToken: 'rt',
+      mustChangePassword: true,
+      passwordHash: 'secret',
+    };
+    const dto = plainToInstance(AuthTokenResponseDto, raw, {
+      excludeExtraneousValues: true,
+    });
     expect(dto.accessToken).toBe('at');
     expect(dto.refreshToken).toBe('rt');
     expect(dto.mustChangePassword).toBe(true);
@@ -30,7 +43,9 @@ describe('UserResponseDto', () => {
       firebaseUid: 'fb-uid',
       deletedAt: null,
     };
-    const dto = plainToInstance(UserResponseDto, raw, { excludeExtraneousValues: true });
+    const dto = plainToInstance(UserResponseDto, raw, {
+      excludeExtraneousValues: true,
+    });
     expect(dto.id).toBe('user-id-123');
     expect(dto.username).toBe('admin');
     expect(dto.warehouseId).toBe('wh-id-456');
@@ -42,8 +57,17 @@ describe('UserResponseDto', () => {
 
 describe('CreateUserResponseDto', () => {
   it('expose id, username, email, roles, mustChangePassword', () => {
-    const raw = { _id: { toString: () => 'id-1' }, username: 'user1', email: 'u@x.com', roles: ['RECEIVER'], mustChangePassword: true, passwordHash: 'x' };
-    const dto = plainToInstance(CreateUserResponseDto, raw, { excludeExtraneousValues: true });
+    const raw = {
+      _id: { toString: () => 'id-1' },
+      username: 'user1',
+      email: 'u@x.com',
+      roles: ['RECEIVER'],
+      mustChangePassword: true,
+      passwordHash: 'x',
+    };
+    const dto = plainToInstance(CreateUserResponseDto, raw, {
+      excludeExtraneousValues: true,
+    });
     expect(dto.id).toBe('id-1');
     expect((dto as Record<string, unknown>)['passwordHash']).toBeUndefined();
   });

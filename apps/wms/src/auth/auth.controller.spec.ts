@@ -2,7 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { appConfig } from '../config/app.config';
-import { AuthTokenResponseDto, UserResponseDto } from './dto/auth.dto';
+import { UserResponseDto } from './dto/auth.dto';
 
 const mockAuthService = {
   login: jest.fn(),
@@ -45,45 +45,95 @@ describe('AuthController', () => {
 
   describe('login', () => {
     it('set cookie và trả AuthTokenResponseDto', async () => {
-      const tokens = { accessToken: 'at', refreshToken: 'rt', mustChangePassword: false };
+      const tokens = {
+        accessToken: 'at',
+        refreshToken: 'rt',
+        mustChangePassword: false,
+      };
       mockAuthService.login.mockResolvedValue(tokens);
       const res = makeMockRes();
 
-      const result = await controller.login({ username: 'admin', password: 'pass' }, res as never);
+      const result = await controller.login(
+        { username: 'admin', password: 'pass' },
+        res as never,
+      );
 
-      expect(res.cookie).toHaveBeenCalledWith('access_token', 'at', expect.objectContaining({ httpOnly: true, path: '/api/wms' }));
-      expect(res.cookie).toHaveBeenCalledWith('refresh_token', 'rt', expect.objectContaining({ httpOnly: true, path: '/api/wms/auth' }));
-      expect(result).toMatchObject({ accessToken: 'at', refreshToken: 'rt', mustChangePassword: false });
+      expect(res.cookie).toHaveBeenCalledWith(
+        'access_token',
+        'at',
+        expect.objectContaining({ httpOnly: true, path: '/api/wms' }),
+      );
+      expect(res.cookie).toHaveBeenCalledWith(
+        'refresh_token',
+        'rt',
+        expect.objectContaining({ httpOnly: true, path: '/api/wms/auth' }),
+      );
+      expect(result).toMatchObject({
+        accessToken: 'at',
+        refreshToken: 'rt',
+        mustChangePassword: false,
+      });
     });
   });
 
   describe('googleLogin', () => {
     it('set cookie và trả AuthTokenResponseDto', async () => {
-      const tokens = { accessToken: 'at', refreshToken: 'rt', mustChangePassword: false };
+      const tokens = {
+        accessToken: 'at',
+        refreshToken: 'rt',
+        mustChangePassword: false,
+      };
       mockAuthService.googleLogin.mockResolvedValue(tokens);
       const res = makeMockRes();
 
-      const result = await controller.googleLogin({ idToken: 'firebase-id-token' }, res as never);
+      const result = await controller.googleLogin(
+        { idToken: 'firebase-id-token' },
+        res as never,
+      );
 
-      expect(res.cookie).toHaveBeenCalledWith('access_token', 'at', expect.objectContaining({ httpOnly: true, path: '/api/wms' }));
-      expect(res.cookie).toHaveBeenCalledWith('refresh_token', 'rt', expect.objectContaining({ httpOnly: true, path: '/api/wms/auth' }));
-      expect(result).toMatchObject({ accessToken: 'at', refreshToken: 'rt', mustChangePassword: false });
+      expect(res.cookie).toHaveBeenCalledWith(
+        'access_token',
+        'at',
+        expect.objectContaining({ httpOnly: true, path: '/api/wms' }),
+      );
+      expect(res.cookie).toHaveBeenCalledWith(
+        'refresh_token',
+        'rt',
+        expect.objectContaining({ httpOnly: true, path: '/api/wms/auth' }),
+      );
+      expect(result).toMatchObject({
+        accessToken: 'at',
+        refreshToken: 'rt',
+        mustChangePassword: false,
+      });
     });
   });
 
   describe('refresh', () => {
     it('ưu tiên body refreshToken', async () => {
-      mockAuthService.refresh.mockResolvedValue({ accessToken: 'at2', refreshToken: 'rt2', mustChangePassword: false });
+      mockAuthService.refresh.mockResolvedValue({
+        accessToken: 'at2',
+        refreshToken: 'rt2',
+        mustChangePassword: false,
+      });
       const res = makeMockRes();
       const req = makeMockReq({ refresh_token: 'cookie-token' });
 
-      await controller.refresh({ refreshToken: 'body-token' }, res as never, req as never);
+      await controller.refresh(
+        { refreshToken: 'body-token' },
+        res as never,
+        req as never,
+      );
 
       expect(mockAuthService.refresh).toHaveBeenCalledWith('body-token');
     });
 
     it('fallback cookie khi body không có refreshToken', async () => {
-      mockAuthService.refresh.mockResolvedValue({ accessToken: 'at2', refreshToken: 'rt2', mustChangePassword: false });
+      mockAuthService.refresh.mockResolvedValue({
+        accessToken: 'at2',
+        refreshToken: 'rt2',
+        mustChangePassword: false,
+      });
       const res = makeMockRes();
       const req = makeMockReq({ refresh_token: 'cookie-token' });
 
@@ -101,8 +151,12 @@ describe('AuthController', () => {
 
       await controller.logout({}, res as never, req as never);
 
-      expect(res.clearCookie).toHaveBeenCalledWith('access_token', { path: '/api/wms' });
-      expect(res.clearCookie).toHaveBeenCalledWith('refresh_token', { path: '/api/wms/auth' });
+      expect(res.clearCookie).toHaveBeenCalledWith('access_token', {
+        path: '/api/wms',
+      });
+      expect(res.clearCookie).toHaveBeenCalledWith('refresh_token', {
+        path: '/api/wms/auth',
+      });
     });
   });
 
@@ -121,8 +175,10 @@ describe('AuthController', () => {
 
       const result = await controller.me('uid');
       expect(result).toBeInstanceOf(UserResponseDto);
-      expect((result as Record<string, unknown>)['passwordHash']).toBeUndefined();
-      expect((result as UserResponseDto).id).toBe('uid');
+      expect(
+        (result as Record<string, unknown>)['passwordHash'],
+      ).toBeUndefined();
+      expect(result.id).toBe('uid');
     });
   });
 });

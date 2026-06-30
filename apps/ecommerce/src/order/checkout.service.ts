@@ -48,12 +48,20 @@ export class CheckoutService {
     // Kiểm tra và lấy địa chỉ giao nhận của khách
     const customer = await this.customerRepo.findActiveById(customerId);
     if (!customer) {
-      throw new AppException('UNAUTHENTICATED', 'Khách hàng không hoạt động hoặc không tồn tại');
+      throw new AppException(
+        'UNAUTHENTICATED',
+        'Khách hàng không hoạt động hoặc không tồn tại',
+      );
     }
 
-    const address = customer.addresses.find((addr) => addr._id?.toString() === dto.addressId);
+    const address = customer.addresses.find(
+      (addr) => addr._id?.toString() === dto.addressId,
+    );
     if (!address) {
-      throw new AppException('VALIDATION_FAILED', 'Địa chỉ giao hàng không tồn tại trong sổ địa chỉ');
+      throw new AppException(
+        'VALIDATION_FAILED',
+        'Địa chỉ giao hàng không tồn tại trong sổ địa chỉ',
+      );
     }
 
     const shippingAddress = {
@@ -66,14 +74,19 @@ export class CheckoutService {
     };
 
     // Tính toán tiền hàng
-    const subtotal = cart.items.reduce((sum, item) => sum + item.unitPrice * item.quantity, 0);
+    const subtotal = cart.items.reduce(
+      (sum, item) => sum + item.unitPrice * item.quantity,
+      0,
+    );
     const shippingFee = 0; // Mặc định miễn phí giao hàng v1
     const total = subtotal + shippingFee;
 
-    const deadlineMinutes = this.config.get<number>('PAYMENT_DEADLINE_MINUTES') ?? 30;
-    const paymentDeadline = dto.paymentMethod === PaymentMethod.ONLINE
-      ? new Date(Date.now() + deadlineMinutes * 60 * 1000)
-      : null;
+    const deadlineMinutes =
+      this.config.get<number>('PAYMENT_DEADLINE_MINUTES') ?? 30;
+    const paymentDeadline =
+      dto.paymentMethod === PaymentMethod.ONLINE
+        ? new Date(Date.now() + deadlineMinutes * 60 * 1000)
+        : null;
 
     const code = await this.orderRepo.generateOrderCode();
 
@@ -120,7 +133,10 @@ export class CheckoutService {
       await this.orderQueue.add(
         'auto.cancel',
         { orderId: order._id.toString() },
-        { delay: deadlineMinutes * 60 * 1000, jobId: `auto-cancel:${order._id}` },
+        {
+          delay: deadlineMinutes * 60 * 1000,
+          jobId: `auto-cancel:${order._id.toString()}`,
+        },
       );
     }
 

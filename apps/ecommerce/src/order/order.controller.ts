@@ -7,12 +7,22 @@ import {
   Post,
   UseGuards,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiOkResponse, ApiParam, ApiTags } from '@nestjs/swagger';
+import {
+  ApiBearerAuth,
+  ApiOperation,
+  ApiOkResponse,
+  ApiParam,
+  ApiTags,
+} from '@nestjs/swagger';
 import { CurrentUser, JwtAuthGuard, CustomerGuard } from '@app/auth';
 import { CheckoutService } from './checkout.service';
 import { OrderService } from './order.service';
 import { CheckoutDto } from './dto/checkout.dto';
-import { CancelOrderDto, OrderResponseDto, SuccessResponseDto } from './dto/order.dto';
+import {
+  CancelOrderDto,
+  OrderResponseDto,
+  SuccessResponseDto,
+} from './dto/order.dto';
 import { plainToInstance } from 'class-transformer';
 import { Types } from 'mongoose';
 import { AppException } from '@app/common';
@@ -63,7 +73,10 @@ export class OrderController {
     }
     const order = await this.orderService.findById(id);
     if (order.customerId.toString() !== customerId) {
-      throw new AppException('FORBIDDEN', 'Bạn không có quyền xem đơn hàng này');
+      throw new AppException(
+        'FORBIDDEN',
+        'Bạn không có quyền xem đơn hàng này',
+      );
     }
     return plainToInstance(OrderResponseDto, order, {
       excludeExtraneousValues: true,
@@ -85,10 +98,15 @@ export class OrderController {
     }
     const order = await this.orderService.findById(id);
     if (order.customerId.toString() !== customerId) {
-      throw new AppException('FORBIDDEN', 'Bạn không có quyền thao tác trên đơn hàng này');
+      throw new AppException(
+        'FORBIDDEN',
+        'Bạn không có quyền thao tác trên đơn hàng này',
+      );
     }
     await this.orderService.cancelOrder(id, dto.reason);
-    return plainToInstance(SuccessResponseDto, { message: 'Hủy đơn hàng thành công' });
+    return plainToInstance(SuccessResponseDto, {
+      message: 'Hủy đơn hàng thành công',
+    });
   }
 
   @Post(':id/return')

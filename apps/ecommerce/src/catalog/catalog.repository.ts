@@ -14,8 +14,10 @@ const DUPLICATE_KEY = 11000;
 export class CatalogRepository {
   constructor(
     @InjectConnection() private readonly conn: Connection,
-    @InjectModel(ProductVariant.name) private readonly variantModel: Model<ProductVariant>,
-    @InjectModel(ProcessedEvent.name) private readonly processedModel: Model<ProcessedEvent>,
+    @InjectModel(ProductVariant.name)
+    private readonly variantModel: Model<ProductVariant>,
+    @InjectModel(ProcessedEvent.name)
+    private readonly processedModel: Model<ProcessedEvent>,
     @InjectModel(Category.name) private readonly categoryModel: Model<Category>,
     @InjectModel(Product.name) private readonly productModel: Model<Product>,
     @InjectModel(Design.name) private readonly designModel: Model<Design>,
@@ -62,9 +64,10 @@ export class CatalogRepository {
   }
 
   async listCategories(parentId?: string | null) {
-    const filter: Record<string, any> = parentId !== undefined
-      ? { parentId: parentId ? new Types.ObjectId(parentId) : null }
-      : {};
+    const filter: Record<string, any> =
+      parentId !== undefined
+        ? { parentId: parentId ? new Types.ObjectId(parentId) : null }
+        : {};
     return this.categoryModel.find(filter).sort({ position: 1 }).lean();
   }
 
@@ -83,20 +86,26 @@ export class CatalogRepository {
   }
 
   async listProducts(query: ProductQueryDto) {
-    const filter: Record<string, any> = { status: ProductStatus.ACTIVE };
-    if (query.categoryId) filter.categoryId = new Types.ObjectId(query.categoryId);
+    const filter: Record<string, unknown> = { status: ProductStatus.ACTIVE };
+    if (query.categoryId)
+      filter.categoryId = new Types.ObjectId(query.categoryId);
     if (query.q) filter.name = { $regex: query.q, $options: 'i' };
 
     const products = await this.productModel.find(filter).lean();
 
     // Nếu lọc theo giá hoặc còn-hàng, cần join với variants
-    if (query.minPrice !== undefined || query.maxPrice !== undefined || query.inStock) {
+    if (
+      query.minPrice !== undefined ||
+      query.maxPrice !== undefined ||
+      query.inStock
+    ) {
       const productIds = products.map((p) => p._id);
-      const variantFilter: Record<string, any> = {
+      const variantFilter: Record<string, unknown> = {
         productId: { $in: productIds },
         isActive: true,
       };
-      if (query.minPrice !== undefined) variantFilter.price = { $gte: query.minPrice };
+      if (query.minPrice !== undefined)
+        variantFilter.price = { $gte: query.minPrice };
       if (query.maxPrice !== undefined) {
         variantFilter.price = { ...variantFilter.price, $lte: query.maxPrice };
       }
@@ -104,8 +113,13 @@ export class CatalogRepository {
         variantFilter.availableQty = { $gt: 0 };
       }
 
-      const validVariants = await this.variantModel.find(variantFilter).select('productId').lean();
-      const validProductIds = new Set(validVariants.map((v) => v.productId.toString()));
+      const validVariants = await this.variantModel
+        .find(variantFilter)
+        .select('productId')
+        .lean();
+      const validProductIds = new Set(
+        validVariants.map((v) => v.productId.toString()),
+      );
       return products.filter((p) => validProductIds.has(p._id.toString()));
     }
 
@@ -113,7 +127,9 @@ export class CatalogRepository {
   }
 
   async getProductBySlug(slug: string) {
-    return this.productModel.findOne({ slug, status: ProductStatus.ACTIVE }).lean();
+    return this.productModel
+      .findOne({ slug, status: ProductStatus.ACTIVE })
+      .lean();
   }
 
   async getProductById(id: string) {
@@ -159,18 +175,25 @@ export class CatalogRepository {
 
   async findDesign(id: string, customerId: string) {
     return this.designModel
-      .findOne({ _id: new Types.ObjectId(id), customerId: new Types.ObjectId(customerId) })
+      .findOne({
+        _id: new Types.ObjectId(id),
+        customerId: new Types.ObjectId(customerId),
+      })
       .lean();
   }
 
   async deleteDesign(id: string, customerId: string) {
     return this.designModel
-      .findOneAndDelete({ _id: new Types.ObjectId(id), customerId: new Types.ObjectId(customerId) })
+      .findOneAndDelete({
+        _id: new Types.ObjectId(id),
+        customerId: new Types.ObjectId(customerId),
+      })
       .lean();
   }
 
   async touchDesign(id: string) {
-    return this.designModel.findByIdAndUpdate(id, { lastUsedAt: new Date() }).lean();
+    return this.designModel
+      .findByIdAndUpdate(id, { lastUsedAt: new Date() })
+      .lean();
   }
 }
-

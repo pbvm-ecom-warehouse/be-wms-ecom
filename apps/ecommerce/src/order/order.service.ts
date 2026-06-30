@@ -9,7 +9,6 @@ import {
   OrderStatus,
   PaymentMethod,
   PaymentStatus,
-  OrderItem,
   Order,
 } from './schemas/order.schema';
 import { TxnStatus, TxnType } from './schemas/payment-transaction.schema';
@@ -74,7 +73,9 @@ export class OrderService {
         codAmount: order.total,
       });
 
-      this.logger.log(`Đơn COD ${orderId} -> CONFIRMED & READY_TO_PICK -> Đã phát lệnh xuất kho`);
+      this.logger.log(
+        `Đơn COD ${orderId} -> CONFIRMED & READY_TO_PICK -> Đã phát lệnh xuất kho`,
+      );
     }
   }
 
@@ -82,7 +83,12 @@ export class OrderService {
    * Gọi khi webhook xác nhận thanh toán thành công.
    * Cập nhật PAID, duyệt đơn, phát lệnh in (nếu có ly in) hoặc lệnh xuất kho.
    */
-  async onPaymentSuccess(orderId: string, providerTxnId: string, amount: number, provider: string) {
+  async onPaymentSuccess(
+    orderId: string,
+    providerTxnId: string,
+    amount: number,
+    provider: string,
+  ) {
     const order = await this.repo.findById(orderId);
     if (!order) {
       throw new AppException('ORDER_NOT_FOUND');
@@ -90,7 +96,9 @@ export class OrderService {
 
     // Idempotency: nếu đơn đã thanh toán trước đó
     if (order.paymentStatus === PaymentStatus.PAID) {
-      this.logger.warn(`Thanh toán trùng lặp: Đơn hàng ${orderId} đã ở trạng thái PAID`);
+      this.logger.warn(
+        `Thanh toán trùng lặp: Đơn hàng ${orderId} đã ở trạng thái PAID`,
+      );
       return order;
     }
 
@@ -107,7 +115,9 @@ export class OrderService {
       });
     } catch (err: unknown) {
       if ((err as { code?: number }).code === DUPLICATE_KEY_CODE) {
-        this.logger.warn(`Mã giao dịch ${providerTxnId} đã được xử lý (idempotency) -> Bỏ qua`);
+        this.logger.warn(
+          `Mã giao dịch ${providerTxnId} đã được xử lý (idempotency) -> Bỏ qua`,
+        );
         return order;
       }
       throw err;
@@ -129,9 +139,15 @@ export class OrderService {
         orderId,
         items: order.items
           .filter((i) => i.isPrintItem)
-          .map((i) => ({ sku: i.sku, quantity: i.quantity, designFile: i.designFile })),
+          .map((i) => ({
+            sku: i.sku,
+            quantity: i.quantity,
+            designFile: i.designFile,
+          })),
       });
-      this.logger.log(`Đơn in custom ${orderId} -> AWAITING_PRINT -> Phát lệnh in thành công`);
+      this.logger.log(
+        `Đơn in custom ${orderId} -> AWAITING_PRINT -> Phát lệnh in thành công`,
+      );
     } else {
       // Đơn thường -> Phát lệnh xuất kho
       await this.orderQueue.add(EVENTS.ORDER_READY_TO_FULFILL, {
@@ -145,7 +161,9 @@ export class OrderService {
         },
         paymentMethod: 'ONLINE',
       });
-      this.logger.log(`Đơn hàng thường ${orderId} -> READY_TO_PICK -> Phát lệnh xuất kho thành công`);
+      this.logger.log(
+        `Đơn hàng thường ${orderId} -> READY_TO_PICK -> Phát lệnh xuất kho thành công`,
+      );
     }
 
     return updated;
@@ -166,12 +184,21 @@ export class OrderService {
     ];
 
     if (!allowedCancel.includes(order.fulfillmentStatus)) {
-      throw new AppException('ORDER_NOT_CANCELLABLE', 'Hàng đã được đóng gói hoặc xuất kho, không thể hủy đơn');
+      throw new AppException(
+        'ORDER_NOT_CANCELLABLE',
+        'Hàng đã được đóng gói hoặc xuất kho, không thể hủy đơn',
+      );
     }
 
     // Đối với ly in custom: không cho hủy khi đã đưa xuống xưởng in
-    if (order.hasPrintItems && order.fulfillmentStatus === FulfillmentStatus.AWAITING_PRINT) {
-      throw new AppException('ORDER_NOT_CANCELLABLE', 'Đơn hàng in ấn đã đưa vào sản xuất, không thể hủy đơn');
+    if (
+      order.hasPrintItems &&
+      order.fulfillmentStatus === FulfillmentStatus.AWAITING_PRINT
+    ) {
+      throw new AppException(
+        'ORDER_NOT_CANCELLABLE',
+        'Đơn hàng in ấn đã đưa vào sản xuất, không thể hủy đơn',
+      );
     }
 
     await this.repo.updateOrder(orderId, {
@@ -205,16 +232,23 @@ export class OrderService {
     }
 
     if (order.customerId.toString() !== customerId) {
-      throw new AppException('FORBIDDEN', 'Bạn không có quyền thao tác trên đơn hàng này');
+      throw new AppException(
+        'FORBIDDEN',
+        'Bạn không có quyền thao tác trên đơn hàng này',
+      );
     }
 
     if (order.fulfillmentStatus !== FulfillmentStatus.DELIVERED) {
-      throw new AppException('VALIDATION_FAILED', 'Chỉ hỗ trợ hoàn trả khi đơn hàng đã giao thành công');
+      throw new AppException(
+        'VALIDATION_FAILED',
+        'Chỉ hỗ trợ hoàn trả khi đơn hàng đã giao thành công',
+      );
     }
 
     // Kiểm tra thời hạn 7 ngày
     const RETURN_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
-    const deliveredAt = order.placedAt ?? (order as unknown as { createdAt: Date }).createdAt; // hoặc lấy trường updatedAt gần nhất
+    const deliveredAt =
+      order.placedAt ?? (order as unknown as { createdAt: Date }).createdAt; // hoặc lấy trường updatedAt gần nhất
     if (Date.now() - new Date(deliveredAt).getTime() > RETURN_WINDOW_MS) {
       throw new AppException('ORDER_RETURN_EXPIRED');
     }
@@ -244,7 +278,9 @@ export class OrderService {
     await this.repo.updateOrder(orderId, {
       fulfillmentStatus: FulfillmentStatus.ISSUED,
     });
-    this.logger.log(`WMS cập nhật: Đơn hàng ${orderId} đã xuất kho (GoodsIssue: ${goodsIssueId})`);
+    this.logger.log(
+      `WMS cập nhật: Đơn hàng ${orderId} đã xuất kho (GoodsIssue: ${goodsIssueId})`,
+    );
   }
 
   async onPrintCompleted(orderId: string, printJobId: string) {
@@ -255,10 +291,12 @@ export class OrderService {
     const items = order.items.map((item) =>
       item.isPrintItem && !item.printJobId ? { ...item, printJobId } : item,
     );
-    await this.repo.updateOrder(orderId, { items: items as OrderItem[] });
+    await this.repo.updateOrder(orderId, { items: items });
 
     // Nếu tất cả ly in của đơn hàng đã được in xong
-    const allPrinted = items.filter((i) => i.isPrintItem).every((i) => !!i.printJobId);
+    const allPrinted = items
+      .filter((i) => i.isPrintItem)
+      .every((i) => !!i.printJobId);
     if (allPrinted) {
       await this.repo.updateOrder(orderId, {
         fulfillmentStatus: FulfillmentStatus.READY_TO_PICK,
@@ -276,7 +314,9 @@ export class OrderService {
         },
         paymentMethod: 'ONLINE',
       });
-      this.logger.log(`WMS in xong ly đơn ${orderId} -> READY_TO_PICK -> Phát lệnh xuất kho`);
+      this.logger.log(
+        `WMS in xong ly đơn ${orderId} -> READY_TO_PICK -> Phát lệnh xuất kho`,
+      );
     }
   }
 
@@ -302,6 +342,8 @@ export class OrderService {
     }
 
     await this.repo.updateOrder(orderId, updates);
-    this.logger.log(`WMS cập nhật: Giao thành công đơn ${orderId} -> Đã đóng đơn`);
+    this.logger.log(
+      `WMS cập nhật: Giao thành công đơn ${orderId} -> Đã đóng đơn`,
+    );
   }
 }

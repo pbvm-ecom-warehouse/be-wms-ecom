@@ -21,7 +21,14 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 import { plainToInstance } from 'class-transformer';
-import { CurrentUser, JwtAuthGuard, RolesGuard, Roles, EcomRole, CustomerGuard } from '@app/auth';
+import {
+  CurrentUser,
+  JwtAuthGuard,
+  RolesGuard,
+  Roles,
+  EcomRole,
+  CustomerGuard,
+} from '@app/auth';
 import { CatalogService } from './catalog.service';
 import {
   CreateCategoryDto,
@@ -49,7 +56,11 @@ export class CatalogPublicController {
 
   @Get('categories')
   @ApiOperation({ summary: 'Lấy danh sách hoặc cây danh mục' })
-  @ApiQuery({ name: 'parentId', required: false, description: '"root" để lấy danh mục gốc' })
+  @ApiQuery({
+    name: 'parentId',
+    required: false,
+    description: '"root" để lấy danh mục gốc',
+  })
   @ApiOkResponse({ type: [CategoryResponseDto] })
   async listCategories(@Query('parentId') parentId?: string) {
     const list = await this.svc.listCategories(parentId);
@@ -105,7 +116,10 @@ export class CatalogAdminController {
   @ApiOperation({ summary: '[Admin] Cập nhật danh mục' })
   @ApiParam({ name: 'id', description: 'ID danh mục' })
   @ApiOkResponse({ type: CategoryResponseDto })
-  async updateCategory(@Param('id') id: string, @Body() dto: UpdateCategoryDto) {
+  async updateCategory(
+    @Param('id') id: string,
+    @Body() dto: UpdateCategoryDto,
+  ) {
     const category = await this.svc.updateCategory(id, dto);
     return plainToInstance(CategoryResponseDto, category, {
       excludeExtraneousValues: true,

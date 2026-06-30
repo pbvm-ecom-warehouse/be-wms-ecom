@@ -10,7 +10,9 @@ import {
   UpdateVariantDto,
 } from './dto/product.dto';
 import { CreateDesignDto } from './dto/design.dto';
-import { ProductStatus } from './schemas/product.schema';
+import { Category } from './schemas/category.schema';
+import { Product, ProductStatus } from './schemas/product.schema';
+import { ProductVariant } from './schemas/product-variant.schema';
 import { Types } from 'mongoose';
 
 const DUPLICATE_KEY_CODE = 11000;
@@ -23,7 +25,10 @@ export class CatalogService {
 
   async createCategory(dto: CreateCategoryDto) {
     if (dto.parentId && !Types.ObjectId.isValid(dto.parentId)) {
-      throw new AppException('VALIDATION_FAILED', 'ID danh mục cha không hợp lệ');
+      throw new AppException(
+        'VALIDATION_FAILED',
+        'ID danh mục cha không hợp lệ',
+      );
     }
 
     try {
@@ -33,8 +38,9 @@ export class CatalogService {
         parentId: dto.parentId ? new Types.ObjectId(dto.parentId) : null,
         position: dto.position ?? 0,
       });
-    } catch (err: any) {
-      if (err.code === DUPLICATE_KEY_CODE) {
+    } catch (err: unknown) {
+      const mongoErr = err as { code?: number };
+      if (mongoErr.code === DUPLICATE_KEY_CODE) {
         throw new AppException('CATALOG_CATEGORY_SLUG_DUPLICATE');
       }
       throw err;
@@ -43,7 +49,10 @@ export class CatalogService {
 
   async listCategories(parentId?: string) {
     if (parentId && parentId !== 'root' && !Types.ObjectId.isValid(parentId)) {
-      throw new AppException('VALIDATION_FAILED', 'ID danh mục cha không hợp lệ');
+      throw new AppException(
+        'VALIDATION_FAILED',
+        'ID danh mục cha không hợp lệ',
+      );
     }
     // parentId='root' -> lấy root (parentId=null); không truyền -> lấy tất cả
     if (parentId === 'root') return this.repo.listCategories(null);
@@ -55,16 +64,23 @@ export class CatalogService {
       throw new AppException('VALIDATION_FAILED', 'ID danh mục không hợp lệ');
     }
     if (dto.parentId && !Types.ObjectId.isValid(dto.parentId)) {
-      throw new AppException('VALIDATION_FAILED', 'ID danh mục cha không hợp lệ');
+      throw new AppException(
+        'VALIDATION_FAILED',
+        'ID danh mục cha không hợp lệ',
+      );
     }
 
     try {
-      const updated = await this.repo.updateCategory(id, dto as any);
+      const updated = await this.repo.updateCategory(
+        id,
+        dto as unknown as Partial<Category>,
+      );
       if (!updated) throw new AppException('CATALOG_CATEGORY_NOT_FOUND');
       return updated;
-    } catch (err: any) {
+    } catch (err: unknown) {
       if (err instanceof AppException) throw err;
-      if (err.code === DUPLICATE_KEY_CODE) {
+      const mongoErr = err as { code?: number };
+      if (mongoErr.code === DUPLICATE_KEY_CODE) {
         throw new AppException('CATALOG_CATEGORY_SLUG_DUPLICATE');
       }
       throw err;
@@ -98,8 +114,9 @@ export class CatalogService {
         status: dto.status ?? ProductStatus.DRAFT,
         seo: dto.seo ?? {},
       });
-    } catch (err: any) {
-      if (err.code === DUPLICATE_KEY_CODE) {
+    } catch (err: unknown) {
+      const mongoErr = err as { code?: number };
+      if (mongoErr.code === DUPLICATE_KEY_CODE) {
         throw new AppException('CATALOG_PRODUCT_SLUG_DUPLICATE');
       }
       throw err;
@@ -116,7 +133,9 @@ export class CatalogService {
   async getProductDetail(slug: string) {
     const product = await this.repo.getProductBySlug(slug);
     if (!product) throw new AppException('CATALOG_PRODUCT_NOT_FOUND');
-    const variants = await this.repo.listVariantsByProduct(product._id.toString());
+    const variants = await this.repo.listVariantsByProduct(
+      product._id.toString(),
+    );
     return { ...product, variants };
   }
 
@@ -129,12 +148,16 @@ export class CatalogService {
     }
 
     try {
-      const updated = await this.repo.updateProduct(id, dto as any);
+      const updated = await this.repo.updateProduct(
+        id,
+        dto as unknown as Partial<Product>,
+      );
       if (!updated) throw new AppException('CATALOG_PRODUCT_NOT_FOUND');
       return updated;
-    } catch (err: any) {
+    } catch (err: unknown) {
       if (err instanceof AppException) throw err;
-      if (err.code === DUPLICATE_KEY_CODE) {
+      const mongoErr = err as { code?: number };
+      if (mongoErr.code === DUPLICATE_KEY_CODE) {
         throw new AppException('CATALOG_PRODUCT_SLUG_DUPLICATE');
       }
       throw err;
@@ -146,7 +169,9 @@ export class CatalogService {
       throw new AppException('VALIDATION_FAILED', 'ID sản phẩm không hợp lệ');
     }
 
-    const updated = await this.repo.updateProduct(id, { status: ProductStatus.ACTIVE } as any);
+    const updated = await this.repo.updateProduct(id, {
+      status: ProductStatus.ACTIVE,
+    });
     if (!updated) throw new AppException('CATALOG_PRODUCT_NOT_FOUND');
     return updated;
   }
@@ -170,8 +195,9 @@ export class CatalogService {
         price: dto.price,
         fulfillmentType: dto.fulfillmentType,
       });
-    } catch (err: any) {
-      if (err.code === DUPLICATE_KEY_CODE) {
+    } catch (err: unknown) {
+      const mongoErr = err as { code?: number };
+      if (mongoErr.code === DUPLICATE_KEY_CODE) {
         throw new AppException('CATALOG_VARIANT_SKU_DUPLICATE');
       }
       throw err;
@@ -184,12 +210,16 @@ export class CatalogService {
     }
 
     try {
-      const updated = await this.repo.updateVariant(id, dto as any);
+      const updated = await this.repo.updateVariant(
+        id,
+        dto as unknown as Partial<ProductVariant>,
+      );
       if (!updated) throw new AppException('CATALOG_VARIANT_NOT_FOUND');
       return updated;
-    } catch (err: any) {
+    } catch (err: unknown) {
       if (err instanceof AppException) throw err;
-      if (err.code === DUPLICATE_KEY_CODE) {
+      const mongoErr = err as { code?: number };
+      if (mongoErr.code === DUPLICATE_KEY_CODE) {
         throw new AppException('CATALOG_VARIANT_SKU_DUPLICATE');
       }
       throw err;
@@ -227,7 +257,10 @@ export class CatalogService {
       throw new AppException('VALIDATION_FAILED', 'ID khách hàng không hợp lệ');
     }
     if (!Types.ObjectId.isValid(designId)) {
-      throw new AppException('VALIDATION_FAILED', 'ID mẫu thiết kế không hợp lệ');
+      throw new AppException(
+        'VALIDATION_FAILED',
+        'ID mẫu thiết kế không hợp lệ',
+      );
     }
 
     const deleted = await this.repo.deleteDesign(designId, customerId);
@@ -237,7 +270,10 @@ export class CatalogService {
 
   async touchDesign(designId: string) {
     if (!Types.ObjectId.isValid(designId)) {
-      throw new AppException('VALIDATION_FAILED', 'ID mẫu thiết kế không hợp lệ');
+      throw new AppException(
+        'VALIDATION_FAILED',
+        'ID mẫu thiết kế không hợp lệ',
+      );
     }
     const touched = await this.repo.touchDesign(designId);
     if (!touched) throw new AppException('CATALOG_DESIGN_NOT_FOUND');

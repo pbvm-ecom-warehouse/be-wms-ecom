@@ -27,13 +27,20 @@ export class CartService {
 
     const variant = await this.catalog.findVariantBySku(dto.sku);
     if (!variant) {
-      throw new AppException('CART_VARIANT_NOT_AVAILABLE', `SKU ${dto.sku} không tồn tại`);
+      throw new AppException(
+        'CART_VARIANT_NOT_AVAILABLE',
+        `SKU ${dto.sku} không tồn tại`,
+      );
     }
     if (!variant.isActive) {
-      throw new AppException('CART_VARIANT_NOT_AVAILABLE', 'Sản phẩm đã bị ẩn hoặc ngừng kinh doanh');
+      throw new AppException(
+        'CART_VARIANT_NOT_AVAILABLE',
+        'Sản phẩm đã bị ẩn hoặc ngừng kinh doanh',
+      );
     }
 
-    const isPrintItem = variant.fulfillmentType === FulfillmentType.CUSTOM_PRINT;
+    const isPrintItem =
+      variant.fulfillmentType === FulfillmentType.CUSTOM_PRINT;
 
     // CUSTOM_PRINT bắt buộc kèm designFile
     if (isPrintItem && !dto.designFile) {

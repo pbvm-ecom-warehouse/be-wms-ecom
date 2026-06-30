@@ -1,4 +1,4 @@
-import { InventoryStock, InventoryStockSchema } from './inventory-stock.schema';
+import { InventoryStockSchema } from './inventory-stock.schema';
 
 describe('InventoryStock schema', () => {
   it('schema có đủ field tồn theo vị trí', () => {

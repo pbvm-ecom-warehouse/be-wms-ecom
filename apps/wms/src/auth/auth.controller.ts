@@ -56,7 +56,8 @@ export class AuthController {
 
   constructor(
     private readonly auth: AuthService,
-    @Inject(appConfig.KEY) private readonly appCfg: ConfigType<typeof appConfig>,
+    @Inject(appConfig.KEY)
+    private readonly appCfg: ConfigType<typeof appConfig>,
   ) {
     this.isProd = this.appCfg.env === 'production';
   }
@@ -195,7 +196,9 @@ export class AuthController {
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Đăng xuất và thu hồi refresh token — [ALL_ROLES]' })
-  @ApiOkResponse({ description: '{ success: true } — cookies cleared, token revoked' })
+  @ApiOkResponse({
+    description: '{ success: true } — cookies cleared, token revoked',
+  })
   @ApiBody({
     type: LogoutDto,
     examples: {
@@ -314,7 +317,9 @@ export class AuthController {
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(WmsRole.ADMIN)
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Khóa tài khoản và revoke tất cả refresh token — [ADMIN]' })
+  @ApiOperation({
+    summary: 'Khóa tài khoản và revoke tất cả refresh token — [ADMIN]',
+  })
   @ApiParam({ name: 'id', description: 'Mongo ObjectId của user' })
   @ApiOkResponse({ type: UserResponseDto })
   async lockUser(

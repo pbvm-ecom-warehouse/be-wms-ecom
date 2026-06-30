@@ -17,43 +17,57 @@ import { FulfillmentType } from '../schemas/product-variant.schema';
 
 export class SeoDto {
   @ApiPropertyOptional()
-  @IsString() @IsOptional() title?: string;
+  @IsString()
+  @IsOptional()
+  title?: string;
 
   @ApiPropertyOptional()
-  @IsString() @IsOptional() description?: string;
+  @IsString()
+  @IsOptional()
+  description?: string;
 
   @ApiPropertyOptional({ type: [String] })
-  @IsArray() @IsOptional() keywords?: string[];
+  @IsArray()
+  @IsOptional()
+  keywords?: string[];
 }
 
 export class CreateProductDto {
   @ApiProperty({ example: 'Ly nhựa in custom' })
-  @IsString() @IsNotEmpty()
+  @IsString()
+  @IsNotEmpty()
   name: string;
 
   @ApiProperty({ example: 'ly-nhua-in-custom' })
   @IsString()
-  @Matches(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, { message: 'slug phải là lowercase-kebab-case' })
+  @Matches(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, {
+    message: 'slug phải là lowercase-kebab-case',
+  })
   slug: string;
 
   @ApiPropertyOptional()
-  @IsString() @IsOptional()
+  @IsString()
+  @IsOptional()
   description?: string;
 
   @ApiPropertyOptional({ type: [String] })
-  @IsArray() @IsOptional()
+  @IsArray()
+  @IsOptional()
   images?: string[];
 
   @ApiProperty({ example: '64abc...' })
-  @IsString() @IsNotEmpty()
+  @IsString()
+  @IsNotEmpty()
   categoryId: string;
 
   @ApiPropertyOptional({ enum: ProductStatus })
-  @IsEnum(ProductStatus) @IsOptional()
+  @IsEnum(ProductStatus)
+  @IsOptional()
   status?: ProductStatus;
 
   @ApiPropertyOptional()
-  @IsObject() @IsOptional()
+  @IsObject()
+  @IsOptional()
   seo?: SeoDto;
 }
 
@@ -61,23 +75,28 @@ export class UpdateProductDto extends PartialType(CreateProductDto) {}
 
 export class CreateVariantDto {
   @ApiProperty({ example: 'CUP-PP-350ML' })
-  @IsString() @IsNotEmpty()
+  @IsString()
+  @IsNotEmpty()
   sku: string;
 
   @ApiProperty({ example: '64abc...' })
-  @IsString() @IsNotEmpty()
+  @IsString()
+  @IsNotEmpty()
   productId: string;
 
   @ApiPropertyOptional({ example: { size: '350ml' } })
-  @IsObject() @IsOptional()
+  @IsObject()
+  @IsOptional()
   attributes?: Record<string, string>;
 
   @ApiProperty({ example: 12000 })
-  @IsNumber() @Min(0)
+  @IsNumber()
+  @Min(0)
   price: number;
 
   @ApiPropertyOptional({ enum: FulfillmentType })
-  @IsEnum(FulfillmentType) @IsOptional()
+  @IsEnum(FulfillmentType)
+  @IsOptional()
   fulfillmentType?: FulfillmentType;
 }
 
@@ -85,19 +104,24 @@ export class UpdateVariantDto extends PartialType(CreateVariantDto) {}
 
 export class ProductQueryDto {
   @ApiPropertyOptional({ example: 'ly' })
-  @IsString() @IsOptional()
+  @IsString()
+  @IsOptional()
   q?: string;
 
   @ApiPropertyOptional({ example: '64abc...' })
-  @IsString() @IsOptional()
+  @IsString()
+  @IsOptional()
   categoryId?: string;
 
   @ApiPropertyOptional({ example: 10000 })
-  @IsNumber() @IsOptional() @Min(0)
+  @IsNumber()
+  @IsOptional()
+  @Min(0)
   minPrice?: number;
 
   @ApiPropertyOptional({ example: 100000 })
-  @IsNumber() @IsOptional()
+  @IsNumber()
+  @IsOptional()
   maxPrice?: number;
 
   /** Chỉ lấy sản phẩm còn hàng (availableQty > 0 ít nhất 1 variant) */
@@ -108,7 +132,9 @@ export class ProductQueryDto {
 
 export class ProductResponseDto {
   @Expose()
-  @Transform(({ obj }: { obj: { _id?: Types.ObjectId } }) => obj._id?.toString())
+  @Transform(({ obj }: { obj: { _id?: Types.ObjectId } }) =>
+    obj._id?.toString(),
+  )
   id!: string;
 
   @Expose()
@@ -124,7 +150,9 @@ export class ProductResponseDto {
   images!: string[];
 
   @Expose()
-  @Transform(({ obj }: { obj: { categoryId?: Types.ObjectId } }) => obj.categoryId?.toString())
+  @Transform(({ obj }: { obj: { categoryId?: Types.ObjectId } }) =>
+    obj.categoryId?.toString(),
+  )
   categoryId!: string;
 
   @Expose()
@@ -136,14 +164,18 @@ export class ProductResponseDto {
 
 export class ProductVariantResponseDto {
   @Expose()
-  @Transform(({ obj }: { obj: { _id?: Types.ObjectId } }) => obj._id?.toString())
+  @Transform(({ obj }: { obj: { _id?: Types.ObjectId } }) =>
+    obj._id?.toString(),
+  )
   id!: string;
 
   @Expose()
   sku!: string;
 
   @Expose()
-  @Transform(({ obj }: { obj: { productId?: Types.ObjectId } }) => obj.productId?.toString())
+  @Transform(({ obj }: { obj: { productId?: Types.ObjectId } }) =>
+    obj.productId?.toString(),
+  )
   productId!: string;
 
   @Expose()

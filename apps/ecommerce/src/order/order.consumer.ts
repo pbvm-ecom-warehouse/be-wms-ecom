@@ -1,7 +1,13 @@
 import { Processor, WorkerHost } from '@nestjs/bullmq';
 import { Job } from 'bullmq';
 import { Logger } from '@nestjs/common';
-import { EVENTS, QUEUES } from '@app/events';
+import {
+  EVENTS,
+  QUEUES,
+  GoodsIssuedPayload,
+  PrintCompletedPayload,
+  ShipmentEventPayload,
+} from '@app/events';
 import { OrderService } from './order.service';
 
 /**
@@ -16,26 +22,45 @@ export class ShipmentConsumer extends WorkerHost {
   }
 
   async process(job: Job): Promise<void> {
-    const { orderId } = job.data;
-    if (!orderId) return;
-
-    this.logger.log(`Nhận sự kiện fulfillment: ${job.name} cho đơn hàng ${orderId}`);
-
     switch (job.name) {
-      case EVENTS.GOODS_ISSUED:
-        await this.orderService.onGoodsIssued(orderId, job.data.goodsIssueId);
+      case EVENTS.GOODS_ISSUED: {
+        const data = job.data as GoodsIssuedPayload;
+        if (!data.orderId) return;
+        this.logger.log(
+          `Nhận sự kiện fulfillment: ${job.name} cho đơn hàng ${data.orderId}`,
+        );
+        await this.orderService.onGoodsIssued(data.orderId, data.goodsIssueId);
         break;
-      case EVENTS.PRINT_COMPLETED:
-        await this.orderService.onPrintCompleted(orderId, job.data.printJobId);
+      }
+      case EVENTS.PRINT_COMPLETED: {
+        const data = job.data as PrintCompletedPayload;
+        if (!data.orderId) return;
+        this.logger.log(
+          `Nhận sự kiện fulfillment: ${job.name} cho đơn hàng ${data.orderId}`,
+        );
+        await this.orderService.onPrintCompleted(data.orderId, data.printJobId);
         break;
-      case EVENTS.SHIPMENT_SHIPPED:
-        await this.orderService.onShipped(orderId);
+      }
+      case EVENTS.SHIPMENT_SHIPPED: {
+        const data = job.data as ShipmentEventPayload;
+        if (!data.orderId) return;
+        this.logger.log(
+          `Nhận sự kiện fulfillment: ${job.name} cho đơn hàng ${data.orderId}`,
+        );
+        await this.orderService.onShipped(data.orderId);
         break;
-      case EVENTS.SHIPMENT_DELIVERED:
-        await this.orderService.onDelivered(orderId);
+      }
+      case EVENTS.SHIPMENT_DELIVERED: {
+        const data = job.data as ShipmentEventPayload;
+        if (!data.orderId) return;
+        this.logger.log(
+          `Nhận sự kiện fulfillment: ${job.name} cho đơn hàng ${data.orderId}`,
+        );
+        await this.orderService.onDelivered(data.orderId);
         break;
+      }
       default:
-        // Bỏ qua các sự kiện khác
+      // Bỏ qua các sự kiện khác
     }
   }
 }

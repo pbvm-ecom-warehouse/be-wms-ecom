@@ -2,7 +2,7 @@ import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { HydratedDocument, Types } from 'mongoose';
 
 export enum CartStatus {
-  ACTIVE = 'ACTIVE',       // đang dùng
+  ACTIVE = 'ACTIVE', // đang dùng
   CONVERTED = 'CONVERTED', // đã checkout thành công
   ABANDONED = 'ABANDONED', // bỏ không dùng nữa
 }
@@ -19,7 +19,7 @@ export class CartItem {
   isPrintItem: boolean;
 
   @Prop({ default: null })
-  designId?: string;   // ref Design._id (tùy chọn, để reuse)
+  designId?: string; // ref Design._id (tùy chọn, để reuse)
 
   @Prop({ default: null })
   designFile?: string; // URL file artwork — snapshot tại thời điểm thêm giỏ
