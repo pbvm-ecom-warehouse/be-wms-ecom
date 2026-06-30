@@ -75,6 +75,40 @@ export const ERROR_CATALOG = {
     status: HttpStatus.FORBIDDEN,
     message: 'Đã có nhân viên trong hệ thống',
   },
+
+  // ── WMS — Warehouse Structure ──────────────────────────────────────────────
+  WAREHOUSE_NOT_FOUND: {
+    status: HttpStatus.NOT_FOUND,
+    message: 'Không tìm thấy kho',
+  },
+  WAREHOUSE_CODE_EXISTS: {
+    status: HttpStatus.CONFLICT,
+    message: 'Mã khu vực đã tồn tại trong kho này',
+  },
+  ZONE_NOT_FOUND: {
+    status: HttpStatus.NOT_FOUND,
+    message: 'Không tìm thấy khu vực',
+  },
+  ZONE_CODE_EXISTS: {
+    status: HttpStatus.CONFLICT,
+    message: 'Mã khu vực đã tồn tại trong kho này',
+  },
+  RACK_NOT_FOUND: {
+    status: HttpStatus.NOT_FOUND,
+    message: 'Không tìm thấy kệ',
+  },
+  RACK_CODE_EXISTS: {
+    status: HttpStatus.CONFLICT,
+    message: 'Mã kệ đã tồn tại trong zone này',
+  },
+  SHELF_NOT_FOUND: {
+    status: HttpStatus.NOT_FOUND,
+    message: 'Không tìm thấy tầng kệ',
+  },
+  SHELF_CODE_EXISTS: {
+    status: HttpStatus.CONFLICT,
+    message: 'Mã barcode tầng đã tồn tại',
+  },
 } as const;
 
 export type CommonErrorCode = keyof typeof ERROR_CATALOG;
