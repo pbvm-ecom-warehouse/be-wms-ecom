@@ -15,6 +15,7 @@ import { AppService } from './app.service';
 import { AuthModule } from './auth/auth.module';
 import { HealthModule } from './health/health.module';
 import { StockModule } from './stock/stock.module';
+import { WarehouseModule } from './warehouse/warehouse.module';
 import { appConfig } from './config/app.config';
 import { authConfig } from './config/auth.config';
 import { validateEnv } from './config/env.validation';
@@ -40,6 +41,7 @@ import { validateEnv } from './config/env.validation';
     AuthModule, // đăng nhập nhân viên (users) + JWT
     HealthModule, // GET /api/wms/health
     StockModule, // producer mẫu: stock.changed
+    WarehouseModule, // CRUD cấu trúc kho: Warehouse/Zone/Rack/Shelf
   ],
   controllers: [AppController],
   providers: [
