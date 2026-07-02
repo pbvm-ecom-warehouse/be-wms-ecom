@@ -40,8 +40,9 @@ export class PurchaseOrderRepository {
       status: PurchaseOrderStatus.CONFIRMED,
       expectedDate: dto.expectedDate ? new Date(dto.expectedDate) : undefined,
       note: dto.note,
-      // itemId giữ nguyên string — Mongoose tự cast sang ObjectId theo schema khi lưu
-      items: resolvedItems,
+      // itemId giữ string — Mongoose tự cast sang ObjectId theo schema khi lưu.
+      // Cast tay vì overload của Model.create() yêu cầu ObjectId ở kiểu tĩnh.
+      items: resolvedItems as unknown as PurchaseOrder['items'],
       createdBy: new Types.ObjectId(actorId),
     });
   }
