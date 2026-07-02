@@ -135,6 +135,16 @@ export const ERROR_CATALOG = {
     status: HttpStatus.CONFLICT,
     message: 'SKU này đã có NCC chính — cập nhật thay vì tạo mới',
   },
+
+  // ── WMS — Purchase Order ────────────────────────────────────────────────────
+  PO_NOT_FOUND: {
+    status: HttpStatus.NOT_FOUND,
+    message: 'Không tìm thấy đơn đặt hàng',
+  },
+  PO_PRICE_MISSING: {
+    status: HttpStatus.BAD_REQUEST,
+    message: 'Thiếu đơn giá — SKU chưa có báo giá NCC, cần nhập tay',
+  },
 } as const;
 
 export type CommonErrorCode = keyof typeof ERROR_CATALOG;
