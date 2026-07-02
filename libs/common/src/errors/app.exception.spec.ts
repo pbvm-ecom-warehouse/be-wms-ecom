@@ -29,3 +29,35 @@ describe('AppException', () => {
     expect(ex.getStatus()).toBe(HttpStatus.BAD_REQUEST);
   });
 });
+
+describe('auth error codes', () => {
+  it.each([
+    ['AUTH_INVALID_CREDENTIALS', 401],
+    ['AUTH_TOKEN_INVALID', 401],
+    ['AUTH_ACCOUNT_INACTIVE', 401],
+    ['AUTH_FIREBASE_NO_EMAIL', 401],
+    ['AUTH_FIREBASE_UID_MISMATCH', 401],
+    ['AUTH_FIREBASE_LOGIN_FAILED', 401],
+    ['AUTH_OTP_INVALID', 400],
+    ['AUTH_EMAIL_CONFLICT', 409],
+    ['AUTH_WMS_NOT_INITIALIZED', 401],
+    ['AUTH_BOOTSTRAP_FORBIDDEN', 403],
+  ] as const)('AppException(%s) → status %i', (code, expectedStatus) => {
+    const ex = new AppException(code);
+    expect(ex.getStatus()).toBe(expectedStatus);
+    const body = ex.getResponse() as { code: string; message: string };
+    expect(body.code).toBe(code);
+    expect(typeof body.message).toBe('string');
+    expect(body.message.length).toBeGreaterThan(0);
+  });
+
+  it('override message giữ nguyên status từ catalog', () => {
+    const ex = new AppException(
+      'AUTH_INVALID_CREDENTIALS',
+      'Mật khẩu cũ không đúng',
+    );
+    expect(ex.getStatus()).toBe(401);
+    const body = ex.getResponse() as { code: string; message: string };
+    expect(body.message).toBe('Mật khẩu cũ không đúng');
+  });
+});

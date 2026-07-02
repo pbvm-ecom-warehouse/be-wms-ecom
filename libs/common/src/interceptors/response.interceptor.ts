@@ -30,7 +30,8 @@ export class ResponseInterceptor implements NestInterceptor {
     if (raw) return next.handle();
 
     const req = context.switchToHttp().getRequest<Request & { id?: string }>();
-    const requestId = req.id ?? (req.headers['x-request-id'] as string | undefined);
+    const requestId =
+      req.id ?? (req.headers['x-request-id'] as string | undefined);
 
     return next.handle().pipe(
       map((payload) => {
@@ -42,7 +43,8 @@ export class ResponseInterceptor implements NestInterceptor {
           meta.pagination = payload.pagination;
           return { data: payload.items, meta };
         }
-        return { data: payload ?? null, meta };
+        const data: unknown = payload ?? null;
+        return { data, meta };
       }),
     );
   }

@@ -19,7 +19,7 @@ export class UserRefreshToken {
   @Prop({ required: true })
   expiresAt: Date;
 
-  @Prop({ default: null })
+  @Prop({ type: Date, default: null })
   revokedAt?: Date | null; // set khi logout hoặc bị xoay (rotate)
 }
 

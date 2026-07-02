@@ -1,6 +1,30 @@
 import { Logger } from '@nestjs/common';
 import type { CorsOptions } from '@nestjs/common/interfaces/external/cors-options.interface';
 
+function normalizeOrigin(origin: string): string {
+  try {
+    const url = new URL(origin);
+    return `${url.protocol}//${url.host}`;
+  } catch {
+    return origin.replace(/\/+$/, '');
+  }
+}
+
+function originPatternMatches(pattern: string, origin: string): boolean {
+  if (!pattern.endsWith(':*')) return pattern === origin;
+
+  try {
+    const patternUrl = new URL(pattern.slice(0, -2));
+    const originUrl = new URL(origin);
+    return (
+      patternUrl.protocol === originUrl.protocol &&
+      patternUrl.hostname === originUrl.hostname
+    );
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Dựng cấu hình CORS an toàn dùng chung cho mọi app.
  *
@@ -18,7 +42,7 @@ export function buildCorsOptions(
   const logger = new Logger('CORS');
   const origins = (originsCsv ?? '')
     .split(',')
-    .map((o) => o.trim())
+    .map((o) => normalizeOrigin(o.trim()))
     .filter(Boolean);
 
   if (origins.length === 0) {
@@ -34,5 +58,20 @@ export function buildCorsOptions(
     return { origin: true, credentials: true };
   }
 
-  return { origin: origins, credentials: true };
+  return {
+    origin(origin, callback) {
+      if (!origin) {
+        callback(null, true);
+        return;
+      }
+
+      const normalizedOrigin = normalizeOrigin(origin);
+      const allowed = origins.some((allowedOrigin) =>
+        originPatternMatches(allowedOrigin, normalizedOrigin),
+      );
+
+      callback(null, allowed);
+    },
+    credentials: true,
+  };
 }

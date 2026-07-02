@@ -17,6 +17,9 @@ export class User {
   @Prop({ required: true, unique: true })
   username: string;
 
+  @Prop({ unique: true, sparse: true })
+  firebaseUid?: string;
+
   @Prop()
   email?: string;
 
@@ -46,7 +49,7 @@ export class User {
   @Prop({ type: SchemaTypes.ObjectId })
   updatedBy?: Types.ObjectId;
 
-  @Prop({ default: null })
+  @Prop({ type: Date, default: null })
   deletedAt?: Date | null; // soft-delete: query luôn lọc deletedAt: null
 }
 

@@ -20,6 +20,15 @@ const envSchema = z.object({
   REDIS_PORT: z.coerce.number().int().positive(),
   REDIS_PASSWORD: z.string().optional(),
 
+  // Firebase Admin từ env (không đọc file). Cần đủ 3 trường mới bật.
+  FIREBASE_PROJECT_ID: z.string().min(1).optional(),
+  FIREBASE_CLIENT_EMAIL: z.string().min(1).optional(),
+  FIREBASE_PRIVATE_KEY: z.string().min(1).optional(),
+
+  // Email qua Resend. Thiếu RESEND_API_KEY/RESEND_FROM → email tắt mềm.
+  RESEND_API_KEY: z.string().min(1).optional(),
+  RESEND_FROM: z.string().min(1).optional(),
+
   NOTIFICATION_PORT: z.coerce.number().int().positive(),
 });
 

@@ -16,12 +16,23 @@ export class AppException extends HttpException {
   readonly code: string;
   readonly details?: unknown;
 
-  constructor(code: string, message?: string, status?: number, details?: unknown) {
-    const fallback = (ERROR_CATALOG as Record<string, { status: number; message: string }>)[code];
+  constructor(
+    code: string,
+    message?: string,
+    status?: number,
+    details?: unknown,
+  ) {
+    const fallback = (
+      ERROR_CATALOG as Record<string, { status: number; message: string }>
+    )[code];
     const resolvedStatus = status ?? fallback?.status ?? HttpStatus.BAD_REQUEST;
     const resolvedMessage = message ?? fallback?.message ?? code;
     super(
-      { code, message: resolvedMessage, ...(details !== undefined ? { details } : {}) },
+      {
+        code,
+        message: resolvedMessage,
+        ...(details !== undefined ? { details } : {}),
+      },
       resolvedStatus,
     );
     this.code = code;

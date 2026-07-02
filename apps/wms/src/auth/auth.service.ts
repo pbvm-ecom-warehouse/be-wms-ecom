@@ -1,48 +1,55 @@
-import {
-  ForbiddenException,
-  Injectable,
-  UnauthorizedException,
-} from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
+import { Inject, Injectable } from '@nestjs/common';
+import type { ConfigType } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
-import { InjectModel } from '@nestjs/mongoose';
+import type { JwtSignOptions } from '@nestjs/jwt';
 import { JwtPayload, WmsRole } from '@app/auth';
-import { durationToMs, generateOpaqueToken, hashToken } from '@app/common';
+import {
+  AppException,
+  durationToMs,
+  generateOpaqueToken,
+  hashToken,
+  FirebaseAdminService,
+} from '@app/common';
 import * as bcrypt from 'bcryptjs';
-import { Model, Types } from 'mongoose';
-import { Env } from '../config/env.validation';
-import { CreateUserDto } from './dto/auth.dto';
-import { UserStatus, User } from './schemas/user.schema';
-import { UserRefreshToken } from './schemas/user-refresh-token.schema';
+import { Types } from 'mongoose';
+import { authConfig } from '../config/auth.config';
+import { ChangePasswordDto, CreateUserDto } from './dto/auth.dto';
+import { UserRefreshTokenRepository } from './repositories/user-refresh-token.repository';
+import { UserRepository } from './repositories/user.repository';
+import { UserStatus } from './schemas/user.schema';
+
+type MsDuration = Exclude<JwtSignOptions['expiresIn'], number | undefined>;
 
 const BCRYPT_ROUNDS = 12;
+const INVALID_BCRYPT_HASH = '$2a$12$invalidinvalidinvalidinvalidin';
 
-/**
- * Auth nhân viên WMS: login bằng username/password, cấp access JWT (ngắn) +
- * refresh token (dài, lưu HASH trong DB, rotate khi refresh). Secret RIÊNG của WMS.
- */
 @Injectable()
 export class AuthService {
   constructor(
-    @InjectModel(User.name) private readonly userModel: Model<User>,
-    @InjectModel(UserRefreshToken.name)
-    private readonly refreshModel: Model<UserRefreshToken>,
+    private readonly userRepo: UserRepository,
+    private readonly refreshRepo: UserRefreshTokenRepository,
     private readonly jwt: JwtService,
-    private readonly config: ConfigService<Env, true>,
+    private readonly firebaseAdmin: FirebaseAdminService,
+    @Inject(authConfig.KEY)
+    private readonly auth: ConfigType<typeof authConfig>,
   ) {}
 
-  /** Xác thực username/password → trả document user (đã loại tài khoản khóa/xóa). */
+  private objectId(id: string) {
+    if (!Types.ObjectId.isValid(id))
+      throw new AppException('NOT_FOUND', 'User not found');
+    return new Types.ObjectId(id);
+  }
+
   private async validateUser(username: string, password: string) {
-    const user = await this.userModel
-      .findOne({ username, deletedAt: null, status: UserStatus.ACTIVE })
-      .select('+passwordHash')
-      .exec();
-    // So sánh kể cả khi không tìm thấy user để tránh lộ thời gian (timing attack nhẹ).
+    const user = await this.userRepo.findActiveByUsername(username, true);
     const ok = user
       ? await bcrypt.compare(password, user.passwordHash)
-      : await bcrypt.compare(password, '$2a$12$invalidinvalidinvalidinvalidin');
+      : await bcrypt.compare(password, INVALID_BCRYPT_HASH);
     if (!user || !ok) {
-      throw new UnauthorizedException('Sai tài khoản hoặc mật khẩu');
+      throw new AppException(
+        'AUTH_INVALID_CREDENTIALS',
+        'Sai tài khoản hoặc mật khẩu',
+      );
     }
     return user;
   }
@@ -53,7 +60,40 @@ export class AuthService {
     return { ...tokens, mustChangePassword: user.mustChangePassword };
   }
 
-  /** Cấp cặp access + refresh token; lưu hash refresh vào DB. */
+  async googleLogin(idToken: string) {
+    const decoded = await this.firebaseAdmin.verifyIdToken(idToken);
+    if (!decoded.email) {
+      throw new AppException('AUTH_FIREBASE_NO_EMAIL');
+    }
+
+    const existingByUid = await this.userRepo.findByFirebaseUid(
+      decoded.uid,
+      true,
+    );
+    const existingByEmail = existingByUid
+      ? existingByUid
+      : await this.userRepo.findActiveByEmail(decoded.email, true);
+
+    if (!existingByEmail) {
+      throw new AppException('AUTH_WMS_NOT_INITIALIZED');
+    }
+
+    const user = existingByEmail.firebaseUid
+      ? existingByEmail.firebaseUid === decoded.uid
+        ? existingByEmail
+        : (() => {
+            throw new AppException('AUTH_FIREBASE_UID_MISMATCH');
+          })()
+      : await this.userRepo.linkFirebaseUid(existingByEmail._id, decoded.uid);
+
+    if (!user) {
+      throw new AppException('AUTH_WMS_NOT_INITIALIZED');
+    }
+
+    const tokens = await this.issueTokens(user._id, user.roles, user.username);
+    return { ...tokens, mustChangePassword: user.mustChangePassword };
+  }
+
   private async issueTokens(
     userId: Types.ObjectId,
     roles: string[],
@@ -66,86 +106,140 @@ export class AuthService {
       username,
     };
     const accessToken = await this.jwt.signAsync(payload, {
-      secret: this.config.get('WMS_JWT_SECRET', { infer: true }),
-      expiresIn: this.config.get('WMS_JWT_EXPIRES_IN', { infer: true }),
+      secret: this.auth.jwtSecret,
+      expiresIn: this.auth.jwtExpiresIn as MsDuration,
     });
 
     const refreshToken = generateOpaqueToken();
-    const ttl = durationToMs(
-      this.config.get('WMS_REFRESH_EXPIRES_IN', { infer: true }),
-    );
-    await this.refreshModel.create({
+    const ttl = durationToMs(this.auth.refreshExpiresIn);
+    await this.refreshRepo.create(
       userId,
-      tokenHash: hashToken(refreshToken),
-      expiresAt: new Date(Date.now() + ttl),
-    });
+      hashToken(refreshToken),
+      new Date(Date.now() + ttl),
+    );
 
     return { accessToken, refreshToken };
   }
 
-  /** Đổi access token mới + xoay refresh token (revoke cái cũ). */
   async refresh(refreshToken: string) {
-    const doc = await this.refreshModel
-      .findOne({ tokenHash: hashToken(refreshToken), revokedAt: null })
-      .exec();
+    const doc = await this.refreshRepo.findValid(hashToken(refreshToken));
     if (!doc || doc.expiresAt.getTime() < Date.now()) {
-      throw new UnauthorizedException(
-        'Refresh token không hợp lệ hoặc đã hết hạn',
-      );
+      throw new AppException('AUTH_TOKEN_INVALID');
     }
-    const user = await this.userModel
-      .findOne({ _id: doc.userId, deletedAt: null, status: UserStatus.ACTIVE })
-      .exec();
-    if (!user) throw new UnauthorizedException('Tài khoản không còn hiệu lực');
+    const user = await this.userRepo.findActiveById(doc.userId);
+    if (!user || user.status !== UserStatus.ACTIVE) {
+      throw new AppException('AUTH_ACCOUNT_INACTIVE');
+    }
 
-    doc.revokedAt = new Date(); // xoay: token cũ hết dùng được
+    doc.revokedAt = new Date();
     await doc.save();
     return this.issueTokens(user._id, user.roles, user.username);
   }
 
-  /** Đăng xuất: thu hồi refresh token đang giữ. */
   async logout(refreshToken: string) {
-    await this.refreshModel.updateOne(
-      { tokenHash: hashToken(refreshToken), revokedAt: null },
-      { $set: { revokedAt: new Date() } },
-    );
+    await this.refreshRepo.revoke(hashToken(refreshToken));
     return { success: true };
   }
 
-  /** Thông tin nhân viên hiện tại (không kèm passwordHash). */
   async me(userId: string) {
-    const user = await this.userModel
-      .findOne({ _id: userId, deletedAt: null })
-      .exec();
-    if (!user) throw new UnauthorizedException();
+    const user = await this.userRepo.findActiveById(userId);
+    if (!user || user.status !== UserStatus.ACTIVE)
+      throw new AppException('UNAUTHENTICATED');
     return user;
   }
 
-  /**
-   * Khởi tạo ADMIN đầu tiên — CHỈ chạy được khi DB chưa có user nào (chống chiếm quyền).
-   * Sau khi có admin, hãy dùng createUser (đã bảo vệ bằng @Roles(ADMIN)).
-   */
   async bootstrapAdmin(dto: CreateUserDto) {
-    const count = await this.userModel.estimatedDocumentCount().exec();
+    const count = await this.userRepo.countAll();
     if (count > 0) {
-      throw new ForbiddenException(
-        'Đã có nhân viên trong hệ thống — dùng endpoint tạo user (ADMIN).',
-      );
+      throw new AppException('AUTH_BOOTSTRAP_FORBIDDEN');
     }
     return this.createUser({ ...dto, roles: [WmsRole.ADMIN] });
   }
 
-  /** Tạo nhân viên mới (gọi bởi ADMIN). */
   async createUser(dto: CreateUserDto, createdBy?: string) {
     const passwordHash = await bcrypt.hash(dto.password, BCRYPT_ROUNDS);
-    const user = await this.userModel.create({
+    const user = await this.userRepo.create({
       username: dto.username,
+      email: dto.email,
       name: dto.name,
       roles: dto.roles ?? [],
       passwordHash,
-      createdBy: createdBy ? new Types.ObjectId(createdBy) : undefined,
+      mustChangePassword: true,
+      createdBy: createdBy ? this.objectId(createdBy) : undefined,
     });
-    // Không trả passwordHash (select:false vẫn loại, nhưng trả về object gọn).
-    return { id: user._id, username: user.username, roles: user.roles };
+    return {
+      id: user._id,
+      username: user.username,
+      email: user.email,
+      roles: user.roles,
+      mustChangePassword: user.mustChangePassword,
+    };
+  }
+
+  async updateRoles(userId: string, roles: string[], actorId: string) {
+    const user = await this.userRepo.updateRoles(
+      this.objectId(userId),
+      roles,
+      this.objectId(actorId),
+    );
+    if (!user) throw new AppException('NOT_FOUND', 'User not found');
+    return user;
+  }
+
+  async lockUser(userId: string, actorId: string) {
+    const user = await this.userRepo.updateStatus(
+      this.objectId(userId),
+      UserStatus.LOCKED,
+      this.objectId(actorId),
+    );
+    if (!user) throw new AppException('NOT_FOUND', 'User not found');
+    await this.refreshRepo.revokeAllForUser(user._id);
+    return user;
+  }
+
+  async unlockUser(userId: string, actorId: string) {
+    const user = await this.userRepo.updateStatus(
+      this.objectId(userId),
+      UserStatus.ACTIVE,
+      this.objectId(actorId),
+    );
+    if (!user) throw new AppException('NOT_FOUND', 'User not found');
+    return user;
+  }
+
+  async resetTemporaryPassword(
+    userId: string,
+    temporaryPassword: string,
+    actorId: string,
+  ) {
+    const passwordHash = await bcrypt.hash(temporaryPassword, BCRYPT_ROUNDS);
+    const user = await this.userRepo.updatePassword(
+      this.objectId(userId),
+      passwordHash,
+      true,
+      this.objectId(actorId),
+    );
+    if (!user) throw new AppException('NOT_FOUND', 'User not found');
+    await this.refreshRepo.revokeAllForUser(user._id);
+    return { success: true, mustChangePassword: user.mustChangePassword };
+  }
+
+  async changePassword(userId: string, dto: ChangePasswordDto) {
+    const user = await this.userRepo.findByIdWithPassword(
+      this.objectId(userId),
+    );
+    const ok = user
+      ? await bcrypt.compare(dto.oldPassword, user.passwordHash)
+      : await bcrypt.compare(dto.oldPassword, INVALID_BCRYPT_HASH);
+    if (!user || !ok) {
+      throw new AppException(
+        'AUTH_INVALID_CREDENTIALS',
+        'Mật khẩu cũ không đúng',
+      );
+    }
+
+    const passwordHash = await bcrypt.hash(dto.newPassword, BCRYPT_ROUNDS);
+    await this.userRepo.updatePassword(user._id, passwordHash, false, user._id);
+    return { success: true, mustChangePassword: false };
   }
 }

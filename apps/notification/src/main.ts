@@ -5,7 +5,9 @@ import { Env } from './config/env.validation';
 import { NotificationModule } from './notification.module';
 
 async function bootstrap() {
-  const app = await NestFactory.create(NotificationModule, { bufferLogs: true });
+  const app = await NestFactory.create(NotificationModule, {
+    bufferLogs: true,
+  });
   const config = app.get(ConfigService<Env, true>);
 
   setupApp(app, {

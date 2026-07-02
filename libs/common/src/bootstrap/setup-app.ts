@@ -19,7 +19,10 @@ export interface SetupAppOptions {
 export function setupApp(app: INestApplication, opts: SetupAppOptions): void {
   app.useLogger(app.get(Logger)); // Nest log đi qua pino
   app.use(helmet());
-  app.enableCors(buildCorsOptions(opts.corsOrigins, opts.isProd));
+  // corsOrigins undefined = app không expose endpoint cho FE (vd notification) → skip CORS
+  if (opts.corsOrigins !== undefined) {
+    app.enableCors(buildCorsOptions(opts.corsOrigins, opts.isProd));
+  }
   app.setGlobalPrefix(opts.globalPrefix);
   app.enableShutdownHooks();
 }

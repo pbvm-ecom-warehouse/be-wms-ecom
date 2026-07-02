@@ -4,7 +4,7 @@ import { lastValueFrom, of } from 'rxjs';
 import { PaginatedResult } from '../pagination/paginated-result';
 import { ResponseInterceptor } from './response.interceptor';
 
-function ctx(handlerMeta = false): ExecutionContext {
+function ctx(): ExecutionContext {
   const req = { id: 'req-9', headers: {} };
   return {
     getType: () => 'http',
@@ -31,12 +31,21 @@ describe('ResponseInterceptor', () => {
 
   it('PaginatedResult → data=items, meta.pagination', async () => {
     const interceptor = new ResponseInterceptor(reflectorWith(false));
-    const paged = new PaginatedResult([{ id: 1 }], { type: 'cursor', limit: 20, nextCursor: null, hasNext: false });
+    const paged = new PaginatedResult([{ id: 1 }], {
+      type: 'cursor',
+      limit: 20,
+      nextCursor: null,
+      hasNext: false,
+    });
     const next: CallHandler = { handle: () => of(paged) };
     const out = await lastValueFrom(interceptor.intercept(ctx(), next));
     expect(out).toEqual({
       data: [{ id: 1 }],
-      meta: { requestId: 'req-9', timestamp: expect.any(String), pagination: paged.pagination },
+      meta: {
+        requestId: 'req-9',
+        timestamp: expect.any(String),
+        pagination: paged.pagination,
+      },
     });
   });
 

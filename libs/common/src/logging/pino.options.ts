@@ -13,7 +13,6 @@ import { sanitizeForLog } from './sanitize';
  * - dev: pino-pretty; prod: JSON 1 dòng.
  */
 export function buildPinoOptions(config: ConfigService): Params {
-  const isProd = config.get<string>('NODE_ENV') === 'production';
   const level = config.get<string>('LOG_LEVEL') ?? 'info';
 
   return {
@@ -48,9 +47,10 @@ export function buildPinoOptions(config: ConfigService): Params {
           };
         },
       },
-      transport: isProd
-        ? undefined
-        : { target: 'pino-pretty', options: { singleLine: true, translateTime: 'SYS:standard' } },
+      transport: {
+        target: 'pino-pretty',
+        options: { singleLine: true, translateTime: 'SYS:standard' },
+      },
     },
   };
 }

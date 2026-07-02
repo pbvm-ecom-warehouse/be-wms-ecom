@@ -1,6 +1,5 @@
 import { Processor, WorkerHost } from '@nestjs/bullmq';
 import { Logger } from '@nestjs/common';
-import { InjectConnection, InjectModel } from '@nestjs/mongoose';
 import {
   EVENTS,
   QUEUES,
@@ -8,31 +7,18 @@ import {
   type StockExpiredPayload,
 } from '@app/events';
 import { Job } from 'bullmq';
-import { Connection, Model } from 'mongoose';
-import { ProcessedEvent } from './schemas/processed-event.schema';
-import { ProductVariant } from './schemas/product-variant.schema';
-
-const DUPLICATE_KEY = 11000; // Mongo error: trùng khóa unique
+import { CatalogRepository } from './catalog.repository';
 
 /**
  * CONSUMER tồn kho: cộng dồn ProductVariant.availableQty theo delta (bản copy do WMS
  * sync về, match theo sku). KHÔNG đọc wms_db.
- *
- * Idempotency: job retry tới 5 lần nên $inc KHÔNG tự an toàn (retry sau khi đã ghi =
- * cộng kép). Ta ghi jobId vào sổ processed_events TRONG CÙNG transaction với $inc →
- * lần retry sẽ vướng khóa unique và bị bỏ qua. Cần MongoDB replica set (dự án đã yêu cầu).
+ * Idempotency được encapsulate trong CatalogRepository.applyStockDeltaOnce.
  */
 @Processor(QUEUES.STOCK)
 export class StockConsumer extends WorkerHost {
   private readonly logger = new Logger(StockConsumer.name);
 
-  constructor(
-    @InjectConnection() private readonly conn: Connection,
-    @InjectModel(ProductVariant.name)
-    private readonly variantModel: Model<ProductVariant>,
-    @InjectModel(ProcessedEvent.name)
-    private readonly processedModel: Model<ProcessedEvent>,
-  ) {
+  constructor(private readonly catalogRepo: CatalogRepository) {
     super();
   }
 
@@ -43,45 +29,23 @@ export class StockConsumer extends WorkerHost {
         const { sku, delta } = job.data as
           | StockChangedPayload
           | StockExpiredPayload;
-        await this.applyDeltaOnce(job, sku, delta);
+        const applied = await this.catalogRepo.applyStockDeltaOnce(
+          String(job.id),
+          job.name,
+          sku,
+          delta,
+        );
+        if (applied) {
+          this.logger.log(`availableQty[${sku}] += ${delta} (job ${job.id})`);
+        } else {
+          this.logger.warn(
+            `Job ${job.id} đã xử lý trước đó → bỏ qua (idempotent).`,
+          );
+        }
         break;
       }
       default:
         this.logger.warn(`Bỏ qua job lạ trên stock-queue: ${job.name}`);
-    }
-  }
-
-  /** Áp delta đúng MỘT lần cho mọi variant cùng sku (idempotent theo jobId). */
-  private async applyDeltaOnce(
-    job: Job,
-    sku: string,
-    delta: number,
-  ): Promise<void> {
-    const jobId = String(job.id);
-    const session = await this.conn.startSession();
-    try {
-      await session.withTransaction(async () => {
-        // Ghi dấu jobId trước — nếu đã xử lý, unique index ném 11000 → bỏ qua.
-        await this.processedModel.create([{ jobId, eventName: job.name }], {
-          session,
-        });
-        await this.variantModel.updateMany(
-          { sku },
-          { $inc: { availableQty: delta } },
-          { session },
-        );
-      });
-      this.logger.log(`availableQty[${sku}] += ${delta} (job ${jobId})`);
-    } catch (err: unknown) {
-      if ((err as { code?: number })?.code === DUPLICATE_KEY) {
-        this.logger.warn(
-          `Job ${jobId} đã xử lý trước đó → bỏ qua (idempotent).`,
-        );
-        return;
-      }
-      throw err; // lỗi khác → để BullMQ retry
-    } finally {
-      await session.endSession();
     }
   }
 }

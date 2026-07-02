@@ -1,0 +1,76 @@
+# Test Docker image locally — build cả 3 app từ Dockerfile, giống prod.
+# MongoDB: Atlas (như prod). Redis: Docker local, không password.
+#
+# Cách dùng:
+#   docker compose -f docker-compose.local.yml up -d --build
+#   docker compose -f docker-compose.local.yml logs -f wms
+#   docker compose -f docker-compose.local.yml down
+#
+# Yêu cầu: file .env đã điền đủ (cp .env.example .env).
+# REDIS_HOST / REDIS_PASSWORD không cần đặt trong .env — file này tự override.
+services:
+  wms:
+    build: .
+    image: wms-ecom-be:local
+    command: node dist/apps/wms/main
+    env_file: .env
+    environment:
+      - NODE_ENV=production  # image prod không có pino-pretty (devDep) → dùng JSON log
+      - REDIS_HOST=redis
+      - REDIS_PASSWORD=  # dev không password
+    depends_on:
+      redis:
+        condition: service_healthy
+    ports:
+      - '3001:3001'  # expose ra host để curl/Postman test trực tiếp
+    restart: unless-stopped
+
+  ecommerce:
+    image: wms-ecom-be:local
+    command: node dist/apps/ecommerce/main
+    env_file: .env
+    environment:
+      - NODE_ENV=production
+      - REDIS_HOST=redis
+      - REDIS_PASSWORD=
+    depends_on:
+      wms:
+        condition: service_started  # đảm bảo image đã được build bởi service wms trước
+      redis:
+        condition: service_healthy
+    ports:
+      - '3002:3002'
+    restart: unless-stopped
+
+  notification:
+    image: wms-ecom-be:local
+    command: node dist/apps/notification/main
+    env_file: .env
+    environment:
+      - NODE_ENV=production
+      - REDIS_HOST=redis
+      - REDIS_PASSWORD=
+    depends_on:
+      wms:
+        condition: service_started
+      redis:
+        condition: service_healthy
+    ports:
+      - '3000:3000'
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    container_name: wms-ecom-redis-local
+    ports:
+      - '6379:6379'
+    volumes:
+      - redis-local-data:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  redis-local-data:

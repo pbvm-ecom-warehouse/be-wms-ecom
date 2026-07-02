@@ -2,9 +2,12 @@ import { Module } from '@nestjs/common';
 import { JwtModule } from '@nestjs/jwt';
 import { MongooseModule } from '@nestjs/mongoose';
 import { PassportModule } from '@nestjs/passport';
+import { FirebaseAdminModule } from '@app/common';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { JwtStrategy } from './jwt.strategy';
+import { UserRefreshTokenRepository } from './repositories/user-refresh-token.repository';
+import { UserRepository } from './repositories/user.repository';
 import { User, UserSchema } from './schemas/user.schema';
 import {
   UserRefreshToken,
@@ -19,13 +22,19 @@ import {
   imports: [
     PassportModule,
     JwtModule.register({}),
+    FirebaseAdminModule,
     MongooseModule.forFeature([
       { name: User.name, schema: UserSchema },
       { name: UserRefreshToken.name, schema: UserRefreshTokenSchema },
     ]),
   ],
   controllers: [AuthController],
-  providers: [AuthService, JwtStrategy],
+  providers: [
+    AuthService,
+    JwtStrategy,
+    UserRepository,
+    UserRefreshTokenRepository,
+  ],
   exports: [AuthService],
 })
 export class AuthModule {}

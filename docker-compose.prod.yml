@@ -1,8 +1,53 @@
-# Hạ tầng PRODUCTION (DO VPS): CHỈ Redis (hàng đợi BullMQ).
+# Hạ tầng PRODUCTION (DO VPS): 3 app NestJS (Docker) + Redis (BullMQ).
 # MongoDB dùng Atlas (managed, có sẵn replica set) — KHÔNG chạy Mongo ở đây.
-#   docker compose -f docker-compose.prod.yml up -d
-# Yêu cầu REDIS_PASSWORD trong .env (hoặc shell env) — thiếu là container không khởi động.
+# nginx KHÔNG ở đây — dùng reverse proxy có sẵn (network ngoài `proxy-network`).
+# Route ở nginx thật (paste vào server block đã có TLS):
+#   location /api/wms/  { proxy_pass http://wms:3001; ... }        # WMS
+#   location /api/shop/ { proxy_pass http://ecommerce:3002; ... }  # Ecommerce
+#   (kèm header: Host / X-Real-IP / X-Forwarded-For / X-Forwarded-Proto)
+#
+#   docker compose --env-file .env.production -f docker-compose.prod.yml up -d
+#
+# --env-file .env.production: 1 nguồn duy nhất cho cả ${...} (redis password)
+# lẫn env_file của app. Yêu cầu REDIS_PASSWORD trong .env.production.
 services:
+  wms:
+    image: ghcr.io/pbvm-ecom-warehouse/be-wms-ecom:latest
+    command: node dist/apps/wms/main
+    env_file: .env.production
+    environment:
+      - REDIS_HOST=redis # override localhost (redis = tên service trong network)
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    networks: [internal, proxy] # proxy → nginx gọi http://wms:3001
+    # KHÔNG publish ports: nginx vào qua network, app không lộ ra host/internet
+
+  ecommerce:
+    image: ghcr.io/pbvm-ecom-warehouse/be-wms-ecom:latest
+    command: node dist/apps/ecommerce/main
+    env_file: .env.production
+    environment:
+      - REDIS_HOST=redis
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    networks: [internal, proxy] # nginx gọi http://ecommerce:3002
+
+  notification:
+    image: ghcr.io/pbvm-ecom-warehouse/be-wms-ecom:latest
+    command: node dist/apps/notification/main
+    env_file: .env.production
+    environment:
+      - REDIS_HOST=redis
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    networks: [internal] # consumer thuần, không public → không cần proxy
+
   redis:
     image: redis:7-alpine
     container_name: wms-ecom-redis
@@ -14,10 +59,8 @@ services:
       - 'yes'
       - --requirepass
       - '${REDIS_PASSWORD:?REDIS_PASSWORD bắt buộc cho prod}'
-    # Chỉ bind loopback: app chạy trên CÙNG VPS (PM2/host) gọi qua localhost.
-    # KHÔNG mở 6379 ra internet. (Nếu app chạy trong Docker, xem ghi chú bên dưới.)
-    ports:
-      - '127.0.0.1:6379:6379'
+    # App chạy Docker → redis chỉ ở network nội bộ, KHÔNG publish ra host.
+    networks: [internal]
     environment:
       # để healthcheck `redis-cli ping` tự auth, không lộ password trong args.
       - REDISCLI_AUTH=${REDIS_PASSWORD}
@@ -29,9 +72,11 @@ services:
       timeout: 5s
       retries: 5
 
+networks:
+  internal: # nội bộ project: app ↔ redis
+  proxy: # network có sẵn của nginx reverse proxy
+    external: true
+    name: proxy-network
+
 volumes:
   redis-data:
-
-# Ghi chú: nếu 3 app NestJS cũng chạy bằng Docker (không phải PM2/host), bỏ binding
-# 127.0.0.1 ở trên, cho redis + các app vào CHUNG một docker network, rồi app dùng
-# REDIS_HOST=redis (tên service) thay vì localhost. Vẫn KHÔNG publish port ra host.

@@ -25,6 +25,11 @@ const envSchema = z.object({
   REDIS_PORT: z.coerce.number().int().positive(), // env là string → ép sang number
   REDIS_PASSWORD: z.string().optional(), // prod nên đặt; dev có thể trống
 
+  // Firebase Admin từ env (không đọc file). Cần đủ 3 trường mới bật.
+  FIREBASE_PROJECT_ID: z.string().min(1).optional(),
+  FIREBASE_CLIENT_EMAIL: z.string().min(1).optional(),
+  FIREBASE_PRIVATE_KEY: z.string().min(1).optional(),
+
   // ---- Auth ----
   // Secret JWT phải đủ dài (≥32 ký tự) chống brute-force. Token WMS dùng secret
   // RIÊNG, KHÔNG trùng Ecommerce (luật #4) — không check chéo được ở đây vì mỗi app

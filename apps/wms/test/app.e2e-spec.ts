@@ -1,6 +1,5 @@
 import { INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
-import { Logger } from 'nestjs-pino';
 import request from 'supertest';
 import { setupApp } from '@app/common';
 import { AppModule } from '../src/app.module';
@@ -17,9 +16,15 @@ describe.skip('Cross-cutting (e2e)', () => {
   let app: INestApplication;
 
   beforeAll(async () => {
-    const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
+    const moduleRef = await Test.createTestingModule({
+      imports: [AppModule],
+    }).compile();
     app = moduleRef.createNestApplication({ bufferLogs: true });
-    setupApp(app, { corsOrigins: undefined, isProd: false, globalPrefix: 'api/wms' });
+    setupApp(app, {
+      corsOrigins: undefined,
+      isProd: false,
+      globalPrefix: 'api/wms',
+    });
     await app.init();
   });
 
@@ -37,7 +42,9 @@ describe.skip('Cross-cutting (e2e)', () => {
   });
 
   it('route không tồn tại → error envelope { error.code: NOT_FOUND }', async () => {
-    const res = await request(app.getHttpServer()).get('/api/wms/khong-ton-tai').expect(404);
+    const res = await request(app.getHttpServer())
+      .get('/api/wms/khong-ton-tai')
+      .expect(404);
     expect(res.body).toMatchObject({
       error: { code: 'NOT_FOUND' },
       meta: { requestId: expect.any(String), path: expect.any(String) },

@@ -61,7 +61,15 @@ export function buildCursorPage<T extends { _id: unknown }>(
   let nextCursor: string | null = null;
   if (hasNext && items.length > 0) {
     const last = items[items.length - 1] as Record<string, unknown>;
-    nextCursor = encodeCursor({ sortValue: last[sortField], id: String(last._id) });
+    nextCursor = encodeCursor({
+      sortValue: last[sortField],
+      id: String(last._id),
+    });
   }
-  return new PaginatedResult(items, { type: 'cursor', limit, nextCursor, hasNext });
+  return new PaginatedResult(items, {
+    type: 'cursor',
+    limit,
+    nextCursor,
+    hasNext,
+  });
 }

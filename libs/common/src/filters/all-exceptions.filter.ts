@@ -33,16 +33,21 @@ export class AllExceptionsFilter implements ExceptionFilter {
     const ctx = host.switchToHttp();
     const res = ctx.getResponse<Response>();
     const req = ctx.getRequest<Request & { id?: string }>();
-    const requestId = req.id ?? (req.headers['x-request-id'] as string | undefined);
+    const requestId =
+      req.id ?? (req.headers['x-request-id'] as string | undefined);
 
-    let status = HttpStatus.INTERNAL_SERVER_ERROR;
+    let status: number = HttpStatus.INTERNAL_SERVER_ERROR;
     let code = 'INTERNAL';
     let message = 'Lỗi hệ thống';
     let details: unknown;
 
     if (exception instanceof AppException) {
       status = exception.getStatus();
-      const body = exception.getResponse() as { code: string; message: string; details?: unknown };
+      const body = exception.getResponse() as {
+        code: string;
+        message: string;
+        details?: unknown;
+      };
       code = body.code;
       message = body.message;
       details = body.details;
