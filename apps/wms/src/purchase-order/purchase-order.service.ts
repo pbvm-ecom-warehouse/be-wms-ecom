@@ -35,13 +35,22 @@ export class PurchaseOrderService {
       let unitPrice = item.unitPrice;
       if (unitPrice === undefined) {
         // Giá để trống → tra bảng giá NCC; SKU chưa từng khai giá thì từ chối luôn PO
+        let supplierItem: { purchasePrice: number; isActive: boolean };
         try {
-          const supplierItem =
+          supplierItem =
             await this.supplierService.getSupplierItemByItemId(item.itemId);
-          unitPrice = supplierItem.purchasePrice;
-        } catch {
+        } catch (err) {
+          // Chỉ dịch lỗi "chưa có báo giá" sang PO_PRICE_MISSING; lỗi khác (vd hạ tầng) giữ nguyên
+          if ((err as { code?: string })?.code === 'SUPPLIER_ITEM_NOT_FOUND') {
+            throw new AppException('PO_PRICE_MISSING');
+          }
+          throw err;
+        }
+        // Báo giá hết hiệu lực (isActive=false) → coi như chưa có giá, không tự điền
+        if (!supplierItem.isActive) {
           throw new AppException('PO_PRICE_MISSING');
         }
+        unitPrice = supplierItem.purchasePrice;
       }
       resolvedItems.push({
         itemId: item.itemId,

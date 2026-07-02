@@ -74,6 +74,7 @@ describe('PurchaseOrderService', () => {
     it('tự điền unitPrice từ SupplierItem khi item để trống giá', async () => {
       supplierSvc.getSupplierItemByItemId.mockResolvedValue({
         purchasePrice: 7000,
+        isActive: true,
       });
       repo.createPurchaseOrder.mockResolvedValue({ poNumber: 'PO-X' });
       await svc.createPurchaseOrder(baseDto, actorId);
@@ -136,10 +137,35 @@ describe('PurchaseOrderService', () => {
       });
     });
 
+    it('không đổi mã lỗi khi getSupplierItemByItemId throw lỗi khác SUPPLIER_ITEM_NOT_FOUND', async () => {
+      supplierSvc.getSupplierItemByItemId.mockRejectedValue({
+        code: 'INTERNAL',
+      });
+      await expect(
+        svc.createPurchaseOrder(baseDto as never, actorId),
+      ).rejects.toMatchObject({
+        code: 'INTERNAL',
+      });
+    });
+
+    it('throw PO_PRICE_MISSING khi SupplierItem tìm được nhưng isActive=false', async () => {
+      supplierSvc.getSupplierItemByItemId.mockResolvedValue({
+        purchasePrice: 7000,
+        isActive: false,
+      });
+      await expect(
+        svc.createPurchaseOrder(baseDto as never, actorId),
+      ).rejects.toMatchObject({
+        code: 'PO_PRICE_MISSING',
+      });
+      expect(repo.createPurchaseOrder).not.toHaveBeenCalled();
+    });
+
     it('sinh poNumber theo format PO-YYYYMMDD-xxxx', async () => {
       repo.countByPoNumberPrefix.mockResolvedValue(4);
       supplierSvc.getSupplierItemByItemId.mockResolvedValue({
         purchasePrice: 1000,
+        isActive: true,
       });
       repo.createPurchaseOrder.mockResolvedValue({ poNumber: 'PO-X' });
       await svc.createPurchaseOrder(baseDto, actorId);
