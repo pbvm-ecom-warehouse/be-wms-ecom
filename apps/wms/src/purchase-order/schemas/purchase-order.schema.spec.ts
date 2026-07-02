@@ -1,4 +1,7 @@
-import { PurchaseOrderStatus, PurchaseOrderSchema } from './purchase-order.schema';
+import {
+  PurchaseOrderStatus,
+  PurchaseOrderSchema,
+} from './purchase-order.schema';
 
 describe('PurchaseOrder schema', () => {
   it('PurchaseOrderStatus enum có đủ 6 giá trị', () => {

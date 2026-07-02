@@ -1,7 +1,10 @@
 // apps/wms/src/purchase-order/purchase-order.module.ts
 import { Module } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
-import { PurchaseOrder, PurchaseOrderSchema } from './schemas/purchase-order.schema';
+import {
+  PurchaseOrder,
+  PurchaseOrderSchema,
+} from './schemas/purchase-order.schema';
 import { PurchaseOrderRepository } from './purchase-order.repository';
 import { PurchaseOrderService } from './purchase-order.service';
 import { PurchaseOrderController } from './purchase-order.controller';

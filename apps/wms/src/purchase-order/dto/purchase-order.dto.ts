@@ -18,7 +18,10 @@ import { Types } from 'mongoose';
 import { PurchaseOrderStatus } from '../schemas/purchase-order.schema';
 
 export class CreatePurchaseOrderItemDto {
-  @ApiProperty({ description: 'WarehouseItem._id (ObjectId)', example: '665f...' })
+  @ApiProperty({
+    description: 'WarehouseItem._id (ObjectId)',
+    example: '665f...',
+  })
   @IsMongoId()
   itemId!: string;
 
@@ -101,7 +104,9 @@ export class QueryPurchaseOrderDto {
 
 export class PurchaseOrderItemResponseDto {
   @Expose()
-  @Transform(({ obj }: { obj: { itemId?: Types.ObjectId } }) => obj.itemId?.toString())
+  @Transform(({ obj }: { obj: { itemId?: Types.ObjectId } }) =>
+    obj.itemId?.toString(),
+  )
   @ApiProperty()
   itemId!: string;
 
@@ -124,7 +129,9 @@ export class PurchaseOrderItemResponseDto {
 
 export class PurchaseOrderResponseDto {
   @Expose()
-  @Transform(({ obj }: { obj: { _id?: Types.ObjectId } }) => obj._id?.toString())
+  @Transform(({ obj }: { obj: { _id?: Types.ObjectId } }) =>
+    obj._id?.toString(),
+  )
   @ApiProperty()
   id!: string;
 
@@ -133,12 +140,16 @@ export class PurchaseOrderResponseDto {
   poNumber!: string;
 
   @Expose()
-  @Transform(({ obj }: { obj: { supplierId?: Types.ObjectId } }) => obj.supplierId?.toString())
+  @Transform(({ obj }: { obj: { supplierId?: Types.ObjectId } }) =>
+    obj.supplierId?.toString(),
+  )
   @ApiProperty()
   supplierId!: string;
 
   @Expose()
-  @Transform(({ obj }: { obj: { warehouseId?: Types.ObjectId } }) => obj.warehouseId?.toString())
+  @Transform(({ obj }: { obj: { warehouseId?: Types.ObjectId } }) =>
+    obj.warehouseId?.toString(),
+  )
   @ApiProperty()
   warehouseId!: string;
 

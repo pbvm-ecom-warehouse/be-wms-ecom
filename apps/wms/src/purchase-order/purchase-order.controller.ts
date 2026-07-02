@@ -1,5 +1,13 @@
 // apps/wms/src/purchase-order/purchase-order.controller.ts
-import { Body, Controller, Get, Param, Post, Query, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Param,
+  Post,
+  Query,
+  UseGuards,
+} from '@nestjs/common';
 import {
   ApiBearerAuth,
   ApiCreatedResponse,
@@ -7,7 +15,13 @@ import {
   ApiOperation,
   ApiTags,
 } from '@nestjs/swagger';
-import { CurrentUser, JwtAuthGuard, Roles, RolesGuard, WmsRole } from '@app/auth';
+import {
+  CurrentUser,
+  JwtAuthGuard,
+  Roles,
+  RolesGuard,
+  WmsRole,
+} from '@app/auth';
 import { plainToInstance } from 'class-transformer';
 import { PurchaseOrderService } from './purchase-order.service';
 import {
@@ -64,7 +78,9 @@ export class PurchaseOrderController {
   @Roles(WmsRole.MANAGER, WmsRole.ADMIN)
   @ApiOperation({ summary: 'Chi tiết PO — [MANAGER, ADMIN]' })
   @ApiOkResponse({ type: PurchaseOrderResponseDto })
-  async getPurchaseOrder(@Param('id') id: string): Promise<PurchaseOrderResponseDto> {
+  async getPurchaseOrder(
+    @Param('id') id: string,
+  ): Promise<PurchaseOrderResponseDto> {
     const doc = await this.svc.getPurchaseOrder(id);
     return plainToInstance(PurchaseOrderResponseDto, doc.toObject(), TO_OPTS);
   }
