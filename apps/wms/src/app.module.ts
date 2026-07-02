@@ -17,6 +17,7 @@ import { HealthModule } from './health/health.module';
 import { StockModule } from './stock/stock.module';
 import { WarehouseModule } from './warehouse/warehouse.module';
 import { SupplierModule } from './supplier/supplier.module';
+import { PurchaseOrderModule } from './purchase-order/purchase-order.module';
 import { appConfig } from './config/app.config';
 import { authConfig } from './config/auth.config';
 import { validateEnv } from './config/env.validation';
@@ -44,6 +45,7 @@ import { validateEnv } from './config/env.validation';
     StockModule, // producer mẫu: stock.changed
     WarehouseModule, // CRUD cấu trúc kho: Warehouse/Zone/Rack/Shelf
     SupplierModule, // CRUD NCC + bảng giá SupplierItem
+    PurchaseOrderModule, // UC-01: tạo/xem PO — dùng SupplierModule + WarehouseModule
   ],
   controllers: [AppController],
   providers: [
