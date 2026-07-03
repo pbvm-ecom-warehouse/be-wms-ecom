@@ -12,7 +12,9 @@ describe('SupplierItem schema', () => {
   });
 
   it('itemId có unique index (1 SKU ↔ 1 NCC chính)', () => {
-    const itemIdPath = SupplierItemSchema.path('itemId') as { options?: { unique?: boolean } };
+    const itemIdPath = SupplierItemSchema.path('itemId') as {
+      options?: { unique?: boolean };
+    };
     expect(itemIdPath.options?.unique).toBe(true);
   });
 });

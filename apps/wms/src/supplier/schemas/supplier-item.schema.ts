@@ -6,7 +6,10 @@ import { HydratedDocument, SchemaTypes, Types } from 'mongoose';
  * Không soft-delete — toggle isActive khi hết hiệu lực báo giá.
  * updatedAt tự update qua timestamps.
  */
-@Schema({ collection: 'supplier_items', timestamps: { createdAt: false, updatedAt: true } })
+@Schema({
+  collection: 'supplier_items',
+  timestamps: { createdAt: false, updatedAt: true },
+})
 export class SupplierItem {
   /** WarehouseItem._id — unique: 1 SKU chỉ có 1 NCC chính */
   @Prop({ type: SchemaTypes.ObjectId, required: true, unique: true })

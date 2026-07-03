@@ -13,7 +13,10 @@ import { Types } from 'mongoose';
 import { SupplierStatus } from '../schemas/supplier.schema';
 
 export class CreateSupplierDto {
-  @ApiProperty({ example: 'NCC-001', description: 'Mã NCC — unique, không đổi sau khi có PO' })
+  @ApiProperty({
+    example: 'NCC-001',
+    description: 'Mã NCC — unique, không đổi sau khi có PO',
+  })
   @IsString()
   @MinLength(1)
   code!: string;
@@ -89,7 +92,9 @@ export class QuerySupplierDto {
 
 export class SupplierResponseDto {
   @Expose()
-  @Transform(({ obj }: { obj: { _id?: Types.ObjectId } }) => obj._id?.toString())
+  @Transform(({ obj }: { obj: { _id?: Types.ObjectId } }) =>
+    obj._id?.toString(),
+  )
   @ApiProperty()
   id!: string;
 

@@ -19,7 +19,10 @@ import { Types } from 'mongoose';
 import { GoodsReceiptNoteStatus } from '../schemas/goods-receipt-note.schema';
 
 export class CreateGoodsReceiptNoteItemDto {
-  @ApiProperty({ description: 'WarehouseItem._id (ObjectId)', example: '665f...' })
+  @ApiProperty({
+    description: 'WarehouseItem._id (ObjectId)',
+    example: '665f...',
+  })
   @IsMongoId()
   itemId!: string;
 
@@ -61,7 +64,10 @@ export class CreateGoodsReceiptNoteItemDto {
 }
 
 export class CreateGoodsReceiptNoteDto {
-  @ApiProperty({ description: 'PurchaseOrder._id (ObjectId)', example: '665f...' })
+  @ApiProperty({
+    description: 'PurchaseOrder._id (ObjectId)',
+    example: '665f...',
+  })
   @IsMongoId()
   purchaseOrderId!: string;
 

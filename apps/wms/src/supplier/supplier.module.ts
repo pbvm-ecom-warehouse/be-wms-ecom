@@ -2,7 +2,10 @@
 import { Module } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
 import { Supplier, SupplierSchema } from './schemas/supplier.schema';
-import { SupplierItem, SupplierItemSchema } from './schemas/supplier-item.schema';
+import {
+  SupplierItem,
+  SupplierItemSchema,
+} from './schemas/supplier-item.schema';
 import { SupplierRepository } from './supplier.repository';
 import { SupplierService } from './supplier.service';
 import { SupplierController } from './supplier.controller';

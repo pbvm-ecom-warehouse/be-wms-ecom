@@ -41,14 +41,20 @@ export class GoodsReceiptNoteController {
 
   @Post()
   @Roles(WmsRole.RECEIVER, WmsRole.ADMIN)
-  @ApiOperation({ summary: 'Tạo phiếu nhập kho (GRN) theo PO — [RECEIVER, ADMIN]' })
+  @ApiOperation({
+    summary: 'Tạo phiếu nhập kho (GRN) theo PO — [RECEIVER, ADMIN]',
+  })
   @ApiCreatedResponse({ type: GoodsReceiptNoteResponseDto })
   async createGoodsReceiptNote(
     @Body() dto: CreateGoodsReceiptNoteDto,
     @CurrentUser('sub') actorId: string,
   ): Promise<GoodsReceiptNoteResponseDto> {
     const doc = await this.svc.createGoodsReceiptNote(dto, actorId);
-    return plainToInstance(GoodsReceiptNoteResponseDto, doc.toObject(), TO_OPTS);
+    return plainToInstance(
+      GoodsReceiptNoteResponseDto,
+      doc.toObject(),
+      TO_OPTS,
+    );
   }
 
   @Post(':id/confirm')
@@ -63,7 +69,11 @@ export class GoodsReceiptNoteController {
     @CurrentUser('sub') actorId: string,
   ): Promise<GoodsReceiptNoteResponseDto> {
     const doc = await this.svc.confirmGoodsReceiptNote(id, actorId);
-    return plainToInstance(GoodsReceiptNoteResponseDto, doc.toObject(), TO_OPTS);
+    return plainToInstance(
+      GoodsReceiptNoteResponseDto,
+      doc.toObject(),
+      TO_OPTS,
+    );
   }
 
   @Post(':id/approve')
@@ -75,7 +85,11 @@ export class GoodsReceiptNoteController {
     @CurrentUser('sub') actorId: string,
   ): Promise<GoodsReceiptNoteResponseDto> {
     const doc = await this.svc.approveGoodsReceiptNote(id, actorId);
-    return plainToInstance(GoodsReceiptNoteResponseDto, doc.toObject(), TO_OPTS);
+    return plainToInstance(
+      GoodsReceiptNoteResponseDto,
+      doc.toObject(),
+      TO_OPTS,
+    );
   }
 
   @Get()
@@ -84,7 +98,9 @@ export class GoodsReceiptNoteController {
     summary: 'Danh sách phiếu nhập kho — [RECEIVER, MANAGER, ADMIN]',
   })
   @ApiOkResponse({ type: [GoodsReceiptNoteResponseDto] })
-  async listGoodsReceiptNotes(@Query() query: QueryGoodsReceiptNoteDto): Promise<{
+  async listGoodsReceiptNotes(
+    @Query() query: QueryGoodsReceiptNoteDto,
+  ): Promise<{
     data: GoodsReceiptNoteResponseDto[];
     total: number;
     page: number;
@@ -113,6 +129,10 @@ export class GoodsReceiptNoteController {
     @Param('id') id: string,
   ): Promise<GoodsReceiptNoteResponseDto> {
     const doc = await this.svc.getGoodsReceiptNote(id);
-    return plainToInstance(GoodsReceiptNoteResponseDto, doc.toObject(), TO_OPTS);
+    return plainToInstance(
+      GoodsReceiptNoteResponseDto,
+      doc.toObject(),
+      TO_OPTS,
+    );
   }
 }

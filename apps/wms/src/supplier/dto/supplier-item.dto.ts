@@ -11,7 +11,10 @@ import {
 import { Types } from 'mongoose';
 
 export class CreateSupplierItemDto {
-  @ApiProperty({ description: 'WarehouseItem._id (ObjectId)', example: '665f...' })
+  @ApiProperty({
+    description: 'WarehouseItem._id (ObjectId)',
+    example: '665f...',
+  })
   @IsMongoId()
   itemId!: string;
 
@@ -19,7 +22,9 @@ export class CreateSupplierItemDto {
   @IsMongoId()
   supplierId!: string;
 
-  @ApiPropertyOptional({ description: 'Mã hàng phía NCC để đối chiếu khi đặt hàng' })
+  @ApiPropertyOptional({
+    description: 'Mã hàng phía NCC để đối chiếu khi đặt hàng',
+  })
   @IsOptional()
   @IsString()
   supplierItemCode?: string;
@@ -35,7 +40,10 @@ export class CreateSupplierItemDto {
   @Min(0)
   leadTimeDays?: number;
 
-  @ApiPropertyOptional({ example: 100, description: 'Số lượng đặt tối thiểu (MOQ)' })
+  @ApiPropertyOptional({
+    example: 100,
+    description: 'Số lượng đặt tối thiểu (MOQ)',
+  })
   @IsOptional()
   @IsNumber()
   @Min(0)
@@ -79,17 +87,23 @@ export class UpdateSupplierItemDto {
 
 export class SupplierItemResponseDto {
   @Expose()
-  @Transform(({ obj }: { obj: { _id?: Types.ObjectId } }) => obj._id?.toString())
+  @Transform(({ obj }: { obj: { _id?: Types.ObjectId } }) =>
+    obj._id?.toString(),
+  )
   @ApiProperty()
   id!: string;
 
   @Expose()
-  @Transform(({ obj }: { obj: { itemId?: Types.ObjectId } }) => obj.itemId?.toString())
+  @Transform(({ obj }: { obj: { itemId?: Types.ObjectId } }) =>
+    obj.itemId?.toString(),
+  )
   @ApiProperty()
   itemId!: string;
 
   @Expose()
-  @Transform(({ obj }: { obj: { supplierId?: Types.ObjectId } }) => obj.supplierId?.toString())
+  @Transform(({ obj }: { obj: { supplierId?: Types.ObjectId } }) =>
+    obj.supplierId?.toString(),
+  )
   @ApiProperty()
   supplierId!: string;
 

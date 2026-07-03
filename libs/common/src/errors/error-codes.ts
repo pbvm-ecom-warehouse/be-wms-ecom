@@ -173,7 +173,8 @@ export const ERROR_CATALOG = {
   },
   PO_NOT_RECEIVABLE: {
     status: HttpStatus.CONFLICT,
-    message: 'Đơn đặt hàng đã hủy hoặc đã nhận đủ, không thể tạo phiếu nhập mới',
+    message:
+      'Đơn đặt hàng đã hủy hoặc đã nhận đủ, không thể tạo phiếu nhập mới',
   },
 } as const;
 

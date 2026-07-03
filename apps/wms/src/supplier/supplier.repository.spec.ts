@@ -36,7 +36,10 @@ describe('SupplierRepository', () => {
       providers: [
         SupplierRepository,
         { provide: getModelToken(Supplier.name), useValue: supplierModel },
-        { provide: getModelToken(SupplierItem.name), useValue: supplierItemModel },
+        {
+          provide: getModelToken(SupplierItem.name),
+          useValue: supplierItemModel,
+        },
       ],
     }).compile();
 

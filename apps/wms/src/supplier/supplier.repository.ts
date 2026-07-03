@@ -2,10 +2,24 @@
 import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
-import { Supplier, SupplierDocument, SupplierStatus } from './schemas/supplier.schema';
-import { SupplierItem, SupplierItemDocument } from './schemas/supplier-item.schema';
-import type { CreateSupplierDto, UpdateSupplierDto, QuerySupplierDto } from './dto/supplier.dto';
-import type { CreateSupplierItemDto, UpdateSupplierItemDto } from './dto/supplier-item.dto';
+import {
+  Supplier,
+  SupplierDocument,
+  SupplierStatus,
+} from './schemas/supplier.schema';
+import {
+  SupplierItem,
+  SupplierItemDocument,
+} from './schemas/supplier-item.schema';
+import type {
+  CreateSupplierDto,
+  UpdateSupplierDto,
+  QuerySupplierDto,
+} from './dto/supplier.dto';
+import type {
+  CreateSupplierItemDto,
+  UpdateSupplierItemDto,
+} from './dto/supplier-item.dto';
 
 // Supplier là master data — soft-delete, luôn filter deletedAt: null
 const SOFT_DELETE_FILTER = { deletedAt: null } as const;
@@ -21,7 +35,10 @@ export class SupplierRepository {
 
   // ─── Supplier ─────────────────────────────────────────────────────────────
 
-  async createSupplier(dto: CreateSupplierDto, actorId: string): Promise<SupplierDocument> {
+  async createSupplier(
+    dto: CreateSupplierDto,
+    actorId: string,
+  ): Promise<SupplierDocument> {
     return this.supplierModel.create({
       ...dto,
       createdBy: new Types.ObjectId(actorId),
@@ -30,7 +47,9 @@ export class SupplierRepository {
   }
 
   async findSupplierById(id: string): Promise<SupplierDocument | null> {
-    return this.supplierModel.findOne({ _id: id, ...SOFT_DELETE_FILTER }).exec();
+    return this.supplierModel
+      .findOne({ _id: id, ...SOFT_DELETE_FILTER })
+      .exec();
   }
 
   async findSupplierByCode(code: string): Promise<SupplierDocument | null> {
@@ -105,7 +124,9 @@ export class SupplierRepository {
   // ─── SupplierItem ─────────────────────────────────────────────────────────
   // SupplierItem không soft-delete — dùng isActive để tắt báo giá hết hiệu lực
 
-  async createSupplierItem(dto: CreateSupplierItemDto): Promise<SupplierItemDocument> {
+  async createSupplierItem(
+    dto: CreateSupplierItemDto,
+  ): Promise<SupplierItemDocument> {
     return this.supplierItemModel.create({
       ...dto,
       itemId: new Types.ObjectId(dto.itemId),
@@ -117,13 +138,17 @@ export class SupplierRepository {
     return this.supplierItemModel.findOne({ _id: id }).exec();
   }
 
-  async findSupplierItemByItemId(itemId: string): Promise<SupplierItemDocument | null> {
+  async findSupplierItemByItemId(
+    itemId: string,
+  ): Promise<SupplierItemDocument | null> {
     return this.supplierItemModel
       .findOne({ itemId: new Types.ObjectId(itemId) })
       .exec();
   }
 
-  async findSupplierItemsBySupplierId(supplierId: string): Promise<SupplierItemDocument[]> {
+  async findSupplierItemsBySupplierId(
+    supplierId: string,
+  ): Promise<SupplierItemDocument[]> {
     return this.supplierItemModel
       .find({ supplierId: new Types.ObjectId(supplierId) })
       .sort({ updatedAt: -1 })
@@ -136,7 +161,8 @@ export class SupplierRepository {
   ): Promise<SupplierItemDocument | null> {
     // Convert supplierId string thành ObjectId nếu có trong dto
     const update: Record<string, unknown> = { ...dto };
-    if (dto.supplierId) update['supplierId'] = new Types.ObjectId(dto.supplierId);
+    if (dto.supplierId)
+      update['supplierId'] = new Types.ObjectId(dto.supplierId);
     return this.supplierItemModel
       .findOneAndUpdate({ _id: id }, update, { new: true })
       .exec();

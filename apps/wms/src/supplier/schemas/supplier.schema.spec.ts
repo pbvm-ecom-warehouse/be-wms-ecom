@@ -20,7 +20,9 @@ describe('Supplier schema', () => {
   });
 
   it('field code có unique index', () => {
-    const codeSchema = SupplierSchema.path('code') as { options?: { unique?: boolean } };
+    const codeSchema = SupplierSchema.path('code') as {
+      options?: { unique?: boolean };
+    };
     expect(codeSchema.options?.unique).toBe(true);
   });
 });
