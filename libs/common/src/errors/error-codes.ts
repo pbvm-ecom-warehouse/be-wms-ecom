@@ -147,9 +147,33 @@ export const ERROR_CATALOG = {
   },
 
   // ── WMS — Goods Receipt Note ────────────────────────────────────────────
+  GRN_NOT_FOUND: {
+    status: HttpStatus.NOT_FOUND,
+    message: 'Không tìm thấy phiếu nhập kho',
+  },
+  GRN_INVALID_STATUS_TRANSITION: {
+    status: HttpStatus.CONFLICT,
+    message: 'Trạng thái phiếu nhập kho không hợp lệ cho thao tác này',
+  },
+  GRN_ITEM_NOT_IN_PO: {
+    status: HttpStatus.BAD_REQUEST,
+    message: 'Mặt hàng không thuộc đơn đặt hàng tham chiếu',
+  },
+  GRN_LOT_INFO_MISSING: {
+    status: HttpStatus.BAD_REQUEST,
+    message: 'Mặt hàng có hạn dùng — cần nhập lô và hạn sử dụng',
+  },
+  GRN_QTY_EXCEEDS_PO: {
+    status: HttpStatus.BAD_REQUEST,
+    message: 'Số lượng nhận vượt quá số lượng đặt còn lại của đơn hàng',
+  },
   GRN_STAGING_SHELF_NOT_FOUND: {
     status: HttpStatus.NOT_FOUND,
     message: 'Kho chưa cấu hình vị trí nhận hàng (staging)',
+  },
+  PO_NOT_RECEIVABLE: {
+    status: HttpStatus.CONFLICT,
+    message: 'Đơn đặt hàng đã hủy hoặc đã nhận đủ, không thể tạo phiếu nhập mới',
   },
 } as const;
 
