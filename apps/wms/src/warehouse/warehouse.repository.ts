@@ -206,9 +206,21 @@ export class WarehouseRepository {
     dto: CreateShelfDto,
     actorId: string,
   ): Promise<ShelfDocument> {
+    // warehouseId không nhận từ client — resolve qua Rack.zoneId → Zone.warehouseId để tránh lệch dữ liệu
+    const rack = await this.rackModel.findOne({
+      _id: dto.rackId,
+      ...SOFT_DELETE_FILTER,
+    });
+    const zone = rack
+      ? await this.zoneModel.findOne({
+          _id: rack.zoneId,
+          ...SOFT_DELETE_FILTER,
+        })
+      : null;
     return this.shelfModel.create({
       ...dto,
       rackId: new Types.ObjectId(dto.rackId),
+      warehouseId: zone?.warehouseId,
       createdBy: new Types.ObjectId(actorId),
       updatedBy: new Types.ObjectId(actorId),
     });
@@ -227,6 +239,19 @@ export class WarehouseRepository {
 
   async findShelfByCode(code: string): Promise<ShelfDocument | null> {
     return this.shelfModel.findOne({ code, ...SOFT_DELETE_FILTER }).exec();
+  }
+
+  /** Tìm shelf staging (khu nhận hàng tạm) của 1 kho — dùng khi GRN CONFIRMED cộng tồn. */
+  async findStagingShelfByWarehouse(
+    warehouseId: string,
+  ): Promise<ShelfDocument | null> {
+    return this.shelfModel
+      .findOne({
+        warehouseId: new Types.ObjectId(warehouseId),
+        isStaging: true,
+        deletedAt: null,
+      })
+      .exec();
   }
 
   async updateShelf(

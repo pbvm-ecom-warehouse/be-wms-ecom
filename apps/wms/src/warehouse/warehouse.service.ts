@@ -190,4 +190,11 @@ export class WarehouseService {
     const deleted = await this.repo.softDeleteShelf(id, actorId);
     if (!deleted) throw new AppException('SHELF_NOT_FOUND');
   }
+
+  /** GRN CONFIRMED cần shelf staging của kho để đặt hàng vào — không có thì chặn confirm. */
+  async findStagingShelf(warehouseId: string): Promise<ShelfDocument> {
+    const shelf = await this.repo.findStagingShelfByWarehouse(warehouseId);
+    if (!shelf) throw new AppException('GRN_STAGING_SHELF_NOT_FOUND');
+    return shelf;
+  }
 }

@@ -145,6 +145,12 @@ export const ERROR_CATALOG = {
     status: HttpStatus.BAD_REQUEST,
     message: 'Thiếu đơn giá — SKU chưa có báo giá NCC, cần nhập tay',
   },
+
+  // ── WMS — Goods Receipt Note ────────────────────────────────────────────
+  GRN_STAGING_SHELF_NOT_FOUND: {
+    status: HttpStatus.NOT_FOUND,
+    message: 'Kho chưa cấu hình vị trí nhận hàng (staging)',
+  },
 } as const;
 
 export type CommonErrorCode = keyof typeof ERROR_CATALOG;

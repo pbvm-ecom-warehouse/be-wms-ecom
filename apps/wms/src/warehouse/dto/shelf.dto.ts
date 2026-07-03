@@ -90,6 +90,13 @@ export class ShelfResponseDto {
   rackId!: string;
 
   @Expose()
+  @Transform(({ obj }: { obj: { warehouseId?: Types.ObjectId } }) =>
+    obj.warehouseId?.toString(),
+  )
+  @ApiProperty()
+  warehouseId!: string;
+
+  @Expose()
   @ApiProperty()
   level!: number;
 

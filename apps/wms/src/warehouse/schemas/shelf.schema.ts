@@ -6,6 +6,10 @@ export class Shelf {
   @Prop({ type: SchemaTypes.ObjectId, required: true })
   rackId!: Types.ObjectId;
 
+  /** Denormalized từ Rack.zoneId → Zone.warehouseId — tra staging shelf nhanh, không join 3 tầng */
+  @Prop({ type: SchemaTypes.ObjectId, required: true })
+  warehouseId!: Types.ObjectId;
+
   @Prop({ required: true })
   level!: number;
 
@@ -48,3 +52,4 @@ ShelfSchema.index(
   { code: 1 },
   { unique: true, partialFilterExpression: { deletedAt: null } },
 );
+ShelfSchema.index({ warehouseId: 1, isStaging: 1 });
