@@ -281,6 +281,211 @@ describe('GoodsReceiptNoteService', () => {
       );
       expect(result).toEqual(confirmed);
     });
+
+    it('xử lý đúng 2 dòng cùng itemId nhưng khác lô (lotNumber/expiryDate riêng)', async () => {
+      poService.getPurchaseOrder.mockResolvedValue({
+        items: [{ itemId, expectedQty: 100, receivedQty: 0 }],
+      });
+      stockRepo.findItemById.mockResolvedValue({
+        isPerishable: true,
+        unit: 'cái',
+        altUnits: [],
+      });
+      warehouseService.findStagingShelf.mockResolvedValue({
+        _id: stagingShelfId,
+      });
+
+      const expiryL1 = new Date('2026-08-01');
+      const expiryL2 = new Date('2026-09-01');
+      const confirmed = { status: GoodsReceiptNoteStatus.CONFIRMED };
+      repo.findGoodsReceiptNoteById
+        .mockResolvedValueOnce({
+          _id: grnId,
+          status: GoodsReceiptNoteStatus.DRAFT,
+          purchaseOrderId,
+          warehouseId,
+          items: [
+            {
+              itemId,
+              sku: 'SKU-1',
+              actualQty: 20,
+              unit: 'cái',
+              lotNumber: 'L1',
+              expiryDate: expiryL1,
+            },
+            {
+              itemId,
+              sku: 'SKU-1',
+              actualQty: 15,
+              unit: 'cái',
+              lotNumber: 'L2',
+              expiryDate: expiryL2,
+            },
+          ],
+        })
+        .mockResolvedValueOnce(confirmed);
+
+      // Không có lô active nào tồn tại từ trước — cả 2 dòng đều tạo lô mới
+      stockRepo.findActiveLotByNumber.mockResolvedValue(null);
+      const lotId1 = new Types.ObjectId();
+      const lotId2 = new Types.ObjectId();
+      stockRepo.createLot
+        .mockResolvedValueOnce({ _id: lotId1 })
+        .mockResolvedValueOnce({ _id: lotId2 });
+
+      await svc.confirmGoodsReceiptNote(grnId, actorId);
+
+      // createLot được gọi đúng 2 lần, mỗi lần với lotNumber/expiryDate riêng của từng dòng
+      expect(stockRepo.createLot).toHaveBeenCalledTimes(2);
+      expect(stockRepo.createLot).toHaveBeenNthCalledWith(
+        1,
+        expect.objectContaining({
+          itemId: new Types.ObjectId(itemId),
+          lotNumber: 'L1',
+          expiryDate: expiryL1,
+        }),
+        expect.anything(),
+      );
+      expect(stockRepo.createLot).toHaveBeenNthCalledWith(
+        2,
+        expect.objectContaining({
+          itemId: new Types.ObjectId(itemId),
+          lotNumber: 'L2',
+          expiryDate: expiryL2,
+        }),
+        expect.anything(),
+      );
+
+      // upsertInventory gọi 2 lần, mỗi lần dùng đúng lotId trả về từ createLot của chính dòng đó
+      // (không bị lẫn lotId giữa 2 dòng)
+      expect(stockRepo.upsertInventory).toHaveBeenCalledTimes(2);
+      expect(stockRepo.upsertInventory).toHaveBeenNthCalledWith(
+        1,
+        new Types.ObjectId(itemId),
+        new Types.ObjectId(warehouseId),
+        stagingShelfId,
+        lotId1,
+        20,
+        expect.anything(),
+      );
+      expect(stockRepo.upsertInventory).toHaveBeenNthCalledWith(
+        2,
+        new Types.ObjectId(itemId),
+        new Types.ObjectId(warehouseId),
+        stagingShelfId,
+        lotId2,
+        15,
+        expect.anything(),
+      );
+
+      // upsertBalance: code hiện tại gọi 1 lần / dòng (không gộp trước khi ghi transaction) —
+      // 2 lệnh $inc riêng biệt trong cùng transaction lên cùng 1 balance doc vẫn cộng dồn ra tổng đúng (20 + 15 = 35),
+      // nên đây là hành vi hợp lệ dù không gộp thành 1 lệnh duy nhất.
+      expect(stockRepo.upsertBalance).toHaveBeenCalledTimes(2);
+      expect(stockRepo.upsertBalance).toHaveBeenNthCalledWith(
+        1,
+        new Types.ObjectId(itemId),
+        new Types.ObjectId(warehouseId),
+        20,
+        0,
+        0,
+        expect.anything(),
+      );
+      expect(stockRepo.upsertBalance).toHaveBeenNthCalledWith(
+        2,
+        new Types.ObjectId(itemId),
+        new Types.ObjectId(warehouseId),
+        15,
+        0,
+        0,
+        expect.anything(),
+      );
+
+      // applyReceivedQty cũng gọi theo từng dòng — 20 rồi 15, cộng dồn ra đúng 35 ở PO
+      expect(poService.applyReceivedQty).toHaveBeenCalledTimes(2);
+      expect(poService.applyReceivedQty).toHaveBeenNthCalledWith(
+        1,
+        purchaseOrderId,
+        itemId,
+        20,
+        expect.anything(),
+      );
+      expect(poService.applyReceivedQty).toHaveBeenNthCalledWith(
+        2,
+        purchaseOrderId,
+        itemId,
+        15,
+        expect.anything(),
+      );
+
+      // publishAvailableForItem gộp theo itemId TRƯỚC transaction (baseQtyByItem) — gọi 1 lần với tổng 35
+      expect(stockService.publishAvailableForItem).toHaveBeenCalledTimes(1);
+      expect(stockService.publishAvailableForItem).toHaveBeenCalledWith(
+        itemId,
+        35,
+      );
+    });
+
+    it('quy đổi baseQty theo altUnits khi dòng GRN dùng đơn vị thay thế (thùng → cái)', async () => {
+      poService.getPurchaseOrder.mockResolvedValue({
+        items: [{ itemId, expectedQty: 1000, receivedQty: 0 }],
+      });
+      stockRepo.findItemById.mockResolvedValue({
+        isPerishable: false,
+        unit: 'cái',
+        altUnits: [{ unit: 'thùng', factor: 50 }],
+      });
+      warehouseService.findStagingShelf.mockResolvedValue({
+        _id: stagingShelfId,
+      });
+      const confirmed = { status: GoodsReceiptNoteStatus.CONFIRMED };
+      repo.findGoodsReceiptNoteById
+        .mockResolvedValueOnce({
+          _id: grnId,
+          status: GoodsReceiptNoteStatus.DRAFT,
+          purchaseOrderId,
+          warehouseId,
+          items: [
+            {
+              itemId,
+              sku: 'SKU-1',
+              actualQty: 2,
+              unit: 'thùng',
+            },
+          ],
+        })
+        .mockResolvedValueOnce(confirmed);
+
+      await svc.confirmGoodsReceiptNote(grnId, actorId);
+
+      // 2 thùng x factor 50 = 100 cái (baseQty), không phải 2
+      expect(stockRepo.upsertBalance).toHaveBeenCalledWith(
+        new Types.ObjectId(itemId),
+        new Types.ObjectId(warehouseId),
+        100,
+        0,
+        0,
+        expect.anything(),
+      );
+      expect(stockRepo.upsertInventory).toHaveBeenCalledWith(
+        new Types.ObjectId(itemId),
+        new Types.ObjectId(warehouseId),
+        stagingShelfId,
+        null,
+        100,
+        expect.anything(),
+      );
+      expect(poService.applyReceivedQty).toHaveBeenCalledWith(
+        purchaseOrderId,
+        itemId,
+        100,
+        expect.anything(),
+      );
+      expect(stockService.publishAvailableForItem).toHaveBeenCalledWith(
+        itemId,
+        100,
+      );
+    });
   });
 
   describe('approveGoodsReceiptNote', () => {
