@@ -154,10 +154,15 @@ export class WarehouseService {
     // kiểm tra rack cha tồn tại trước khi tạo shelf con
     const rack = await this.repo.findRackById(dto.rackId);
     if (!rack) throw new AppException('RACK_NOT_FOUND');
+    // rack tồn tại không đảm bảo zone cha còn — zone có thể đã bị soft-delete sau khi rack được tạo.
+    // Validate ở đây (thay vì để repository tự re-derive) để throw AppException thay vì
+    // ValidationError thô của Mongoose khi warehouseId bắt buộc bị undefined.
+    const zone = await this.repo.findZoneById(rack.zoneId.toString());
+    if (!zone) throw new AppException('ZONE_NOT_FOUND');
     // kiểm tra code unique toàn cục (shelf code là barcode dùng trên toàn hệ thống)
     const existing = await this.repo.findShelfByCode(dto.code);
     if (existing) throw new AppException('SHELF_CODE_EXISTS');
-    return this.repo.createShelf(dto, actorId);
+    return this.repo.createShelf(dto, actorId, zone.warehouseId.toString());
   }
 
   async listShelves(rackId: string): Promise<ShelfDocument[]> {

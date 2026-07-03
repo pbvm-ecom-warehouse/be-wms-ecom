@@ -205,22 +205,14 @@ export class WarehouseRepository {
   async createShelf(
     dto: CreateShelfDto,
     actorId: string,
+    warehouseId: string,
   ): Promise<ShelfDocument> {
-    // warehouseId không nhận từ client — resolve qua Rack.zoneId → Zone.warehouseId để tránh lệch dữ liệu
-    const rack = await this.rackModel.findOne({
-      _id: dto.rackId,
-      ...SOFT_DELETE_FILTER,
-    });
-    const zone = rack
-      ? await this.zoneModel.findOne({
-          _id: rack.zoneId,
-          ...SOFT_DELETE_FILTER,
-        })
-      : null;
+    // warehouseId không nhận từ client — WarehouseService đã resolve qua Rack.zoneId → Zone.warehouseId
+    // và validate zone còn tồn tại (không soft-delete) trước khi gọi xuống đây, tránh lặp lại lookup rack/zone.
     return this.shelfModel.create({
       ...dto,
       rackId: new Types.ObjectId(dto.rackId),
-      warehouseId: zone?.warehouseId,
+      warehouseId: new Types.ObjectId(warehouseId),
       createdBy: new Types.ObjectId(actorId),
       updatedBy: new Types.ObjectId(actorId),
     });
