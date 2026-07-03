@@ -1,0 +1,344 @@
+import { Types } from 'mongoose';
+import { GoodsReceiptNoteService } from './goods-receipt-note.service';
+import { GoodsReceiptNoteStatus } from './schemas/goods-receipt-note.schema';
+import { PurchaseOrderStatus } from '../purchase-order/schemas/purchase-order.schema';
+
+const makeRepo = () => ({
+  createGoodsReceiptNote: jest.fn(),
+  findGoodsReceiptNoteById: jest.fn(),
+  findGoodsReceiptNotes: jest.fn(),
+  countByGrnNumberPrefix: jest.fn(),
+  updateStatusConfirmed: jest.fn(),
+  updateStatusApproved: jest.fn(),
+});
+
+const makePurchaseOrderService = () => ({
+  getPurchaseOrder: jest.fn(),
+  applyReceivedQty: jest.fn(),
+});
+
+const makeWarehouseService = () => ({
+  findStagingShelf: jest.fn(),
+});
+
+const makeStockRepository = () => ({
+  findItemById: jest.fn(),
+  findActiveLotByNumber: jest.fn(),
+  createLot: jest.fn(),
+  upsertBalance: jest.fn(),
+  upsertInventory: jest.fn(),
+  insertMovement: jest.fn(),
+});
+
+const makeStockService = () => ({
+  publishAvailableForItem: jest.fn(),
+});
+
+const makeStockTransactionHelper = () => ({
+  withStockTransaction: jest.fn((fn: (session: unknown) => unknown) => fn({})),
+});
+
+describe('GoodsReceiptNoteService', () => {
+  let svc: GoodsReceiptNoteService;
+  let repo: ReturnType<typeof makeRepo>;
+  let poService: ReturnType<typeof makePurchaseOrderService>;
+  let warehouseService: ReturnType<typeof makeWarehouseService>;
+  let stockRepo: ReturnType<typeof makeStockRepository>;
+  let stockService: ReturnType<typeof makeStockService>;
+  let txHelper: ReturnType<typeof makeStockTransactionHelper>;
+
+  const actorId = new Types.ObjectId().toString();
+  const purchaseOrderId = new Types.ObjectId().toString();
+  const warehouseId = new Types.ObjectId().toString();
+  const itemId = new Types.ObjectId().toString();
+  const stagingShelfId = new Types.ObjectId();
+
+  beforeEach(() => {
+    repo = makeRepo();
+    poService = makePurchaseOrderService();
+    warehouseService = makeWarehouseService();
+    stockRepo = makeStockRepository();
+    stockService = makeStockService();
+    txHelper = makeStockTransactionHelper();
+    svc = new GoodsReceiptNoteService(
+      repo as never,
+      poService as never,
+      warehouseService as never,
+      stockRepo as never,
+      stockService as never,
+      txHelper as never,
+    );
+    repo.countByGrnNumberPrefix.mockResolvedValue(0);
+  });
+
+  describe('createGoodsReceiptNote', () => {
+    const baseDto = {
+      purchaseOrderId,
+      items: [
+        {
+          itemId,
+          sku: 'SKU-1',
+          actualQty: 20,
+          unit: 'cái',
+        },
+      ],
+    };
+
+    it('throw PO_NOT_RECEIVABLE khi PO đã CANCELLED', async () => {
+      poService.getPurchaseOrder.mockResolvedValue({
+        _id: purchaseOrderId,
+        warehouseId,
+        status: PurchaseOrderStatus.CANCELLED,
+        items: [{ itemId, expectedQty: 100, receivedQty: 0 }],
+      });
+      await expect(
+        svc.createGoodsReceiptNote(baseDto as never, actorId),
+      ).rejects.toMatchObject({ code: 'PO_NOT_RECEIVABLE' });
+    });
+
+    it('throw PO_NOT_RECEIVABLE khi PO đã COMPLETED', async () => {
+      poService.getPurchaseOrder.mockResolvedValue({
+        _id: purchaseOrderId,
+        warehouseId,
+        status: PurchaseOrderStatus.COMPLETED,
+        items: [{ itemId, expectedQty: 100, receivedQty: 100 }],
+      });
+      await expect(
+        svc.createGoodsReceiptNote(baseDto as never, actorId),
+      ).rejects.toMatchObject({ code: 'PO_NOT_RECEIVABLE' });
+    });
+
+    it('throw GRN_ITEM_NOT_IN_PO khi item không thuộc PO', async () => {
+      poService.getPurchaseOrder.mockResolvedValue({
+        _id: purchaseOrderId,
+        warehouseId,
+        status: PurchaseOrderStatus.SENT,
+        items: [{ itemId: 'other-item', expectedQty: 100, receivedQty: 0 }],
+      });
+      await expect(
+        svc.createGoodsReceiptNote(baseDto as never, actorId),
+      ).rejects.toMatchObject({ code: 'GRN_ITEM_NOT_IN_PO' });
+    });
+
+    it('throw GRN_LOT_INFO_MISSING khi item perishable thiếu lotNumber/expiryDate', async () => {
+      poService.getPurchaseOrder.mockResolvedValue({
+        _id: purchaseOrderId,
+        warehouseId,
+        status: PurchaseOrderStatus.SENT,
+        items: [{ itemId, expectedQty: 100, receivedQty: 0 }],
+      });
+      stockRepo.findItemById.mockResolvedValue({ isPerishable: true });
+      await expect(
+        svc.createGoodsReceiptNote(baseDto as never, actorId),
+      ).rejects.toMatchObject({ code: 'GRN_LOT_INFO_MISSING' });
+    });
+
+    it('tạo GRN DRAFT thành công khi mọi validate qua', async () => {
+      poService.getPurchaseOrder.mockResolvedValue({
+        _id: purchaseOrderId,
+        warehouseId,
+        status: PurchaseOrderStatus.SENT,
+        items: [{ itemId, expectedQty: 100, receivedQty: 0 }],
+      });
+      stockRepo.findItemById.mockResolvedValue({ isPerishable: false });
+      repo.createGoodsReceiptNote.mockResolvedValue({
+        grnNumber: 'GRN-X',
+      });
+      await svc.createGoodsReceiptNote(baseDto, actorId);
+      expect(repo.createGoodsReceiptNote).toHaveBeenCalledWith(
+        purchaseOrderId,
+        warehouseId,
+        expect.any(String),
+        [
+          {
+            itemId,
+            sku: 'SKU-1',
+            expectedQty: 100,
+            actualQty: 20,
+            unit: 'cái',
+            lotNumber: undefined,
+            expiryDate: undefined,
+            note: undefined,
+          },
+        ],
+        actorId,
+      );
+    });
+  });
+
+  describe('confirmGoodsReceiptNote', () => {
+    const grnId = 'grn1';
+
+    it('throw GRN_NOT_FOUND khi GRN không tồn tại', async () => {
+      repo.findGoodsReceiptNoteById.mockResolvedValue(null);
+      await expect(
+        svc.confirmGoodsReceiptNote(grnId, actorId),
+      ).rejects.toMatchObject({ code: 'GRN_NOT_FOUND' });
+    });
+
+    it('throw GRN_INVALID_STATUS_TRANSITION khi GRN không phải DRAFT', async () => {
+      repo.findGoodsReceiptNoteById.mockResolvedValue({
+        status: GoodsReceiptNoteStatus.CONFIRMED,
+      });
+      await expect(
+        svc.confirmGoodsReceiptNote(grnId, actorId),
+      ).rejects.toMatchObject({ code: 'GRN_INVALID_STATUS_TRANSITION' });
+    });
+
+    it('throw GRN_QTY_EXCEEDS_PO khi vượt expectedQty còn lại', async () => {
+      repo.findGoodsReceiptNoteById.mockResolvedValue({
+        _id: grnId,
+        status: GoodsReceiptNoteStatus.DRAFT,
+        purchaseOrderId,
+        warehouseId,
+        items: [{ itemId, sku: 'SKU-1', actualQty: 60, unit: 'cái' }],
+      });
+      poService.getPurchaseOrder.mockResolvedValue({
+        items: [{ itemId, expectedQty: 100, receivedQty: 50 }],
+      });
+      await expect(
+        svc.confirmGoodsReceiptNote(grnId, actorId),
+      ).rejects.toMatchObject({ code: 'GRN_QTY_EXCEEDS_PO' });
+      expect(warehouseService.findStagingShelf).not.toHaveBeenCalled();
+    });
+
+    it('cộng tồn 2 lớp + ghi movement RECEIVE + cập nhật PO khi hợp lệ', async () => {
+      poService.getPurchaseOrder.mockResolvedValue({
+        items: [{ itemId, expectedQty: 100, receivedQty: 50 }],
+      });
+      stockRepo.findItemById.mockResolvedValue({
+        isPerishable: false,
+        unit: 'cái',
+        altUnits: [],
+      });
+      warehouseService.findStagingShelf.mockResolvedValue({
+        _id: stagingShelfId,
+      });
+      const confirmed = { status: GoodsReceiptNoteStatus.CONFIRMED };
+      // Service đọc GRN 2 lần: 1 lần đầu để load DRAFT, 1 lần cuối (sau transaction) để trả bản ghi mới nhất
+      repo.findGoodsReceiptNoteById
+        .mockResolvedValueOnce({
+          _id: grnId,
+          status: GoodsReceiptNoteStatus.DRAFT,
+          purchaseOrderId,
+          warehouseId,
+          items: [
+            {
+              itemId,
+              sku: 'SKU-1',
+              actualQty: 20,
+              unit: 'cái',
+            },
+          ],
+        })
+        .mockResolvedValueOnce(confirmed);
+
+      const result = await svc.confirmGoodsReceiptNote(grnId, actorId);
+
+      expect(txHelper.withStockTransaction).toHaveBeenCalled();
+      expect(stockRepo.upsertBalance).toHaveBeenCalledWith(
+        new Types.ObjectId(itemId),
+        new Types.ObjectId(warehouseId),
+        20,
+        0,
+        0,
+        expect.anything(),
+      );
+      expect(stockRepo.upsertInventory).toHaveBeenCalledWith(
+        new Types.ObjectId(itemId),
+        new Types.ObjectId(warehouseId),
+        stagingShelfId,
+        null,
+        20,
+        expect.anything(),
+      );
+      expect(stockRepo.insertMovement).toHaveBeenCalledWith(
+        expect.objectContaining({
+          itemId: new Types.ObjectId(itemId),
+          warehouseId: new Types.ObjectId(warehouseId),
+          shelfId: stagingShelfId,
+          lotId: null,
+          type: 'RECEIVE',
+          quantity: 20,
+          refType: 'grn',
+        }),
+        expect.anything(),
+      );
+      expect(poService.applyReceivedQty).toHaveBeenCalledWith(
+        purchaseOrderId,
+        itemId,
+        20,
+        expect.anything(),
+      );
+      expect(repo.updateStatusConfirmed).toHaveBeenCalledWith(
+        grnId,
+        actorId,
+        expect.anything(),
+      );
+      expect(stockService.publishAvailableForItem).toHaveBeenCalledWith(
+        itemId,
+        20,
+      );
+      expect(result).toEqual(confirmed);
+    });
+  });
+
+  describe('approveGoodsReceiptNote', () => {
+    const grnId = 'grn1';
+
+    it('throw GRN_NOT_FOUND khi GRN không tồn tại', async () => {
+      repo.findGoodsReceiptNoteById.mockResolvedValue(null);
+      await expect(
+        svc.approveGoodsReceiptNote(grnId, actorId),
+      ).rejects.toMatchObject({ code: 'GRN_NOT_FOUND' });
+    });
+
+    it('throw GRN_INVALID_STATUS_TRANSITION khi GRN chưa CONFIRMED', async () => {
+      repo.findGoodsReceiptNoteById.mockResolvedValue({
+        status: GoodsReceiptNoteStatus.DRAFT,
+      });
+      await expect(
+        svc.approveGoodsReceiptNote(grnId, actorId),
+      ).rejects.toMatchObject({ code: 'GRN_INVALID_STATUS_TRANSITION' });
+    });
+
+    it('set APPROVED khi GRN đang CONFIRMED', async () => {
+      repo.findGoodsReceiptNoteById.mockResolvedValue({
+        status: GoodsReceiptNoteStatus.CONFIRMED,
+      });
+      repo.updateStatusApproved.mockResolvedValue({
+        status: GoodsReceiptNoteStatus.APPROVED,
+      });
+      const result = await svc.approveGoodsReceiptNote(grnId, actorId);
+      expect(repo.updateStatusApproved).toHaveBeenCalledWith(grnId, actorId);
+      expect(result).toEqual({ status: GoodsReceiptNoteStatus.APPROVED });
+    });
+  });
+
+  describe('getGoodsReceiptNote', () => {
+    it('throw GRN_NOT_FOUND khi không tìm thấy', async () => {
+      repo.findGoodsReceiptNoteById.mockResolvedValue(null);
+      await expect(svc.getGoodsReceiptNote('grn1')).rejects.toMatchObject({
+        code: 'GRN_NOT_FOUND',
+      });
+    });
+
+    it('trả về GRN khi tìm thấy', async () => {
+      repo.findGoodsReceiptNoteById.mockResolvedValue({ grnNumber: 'GRN-X' });
+      await expect(svc.getGoodsReceiptNote('grn1')).resolves.toEqual({
+        grnNumber: 'GRN-X',
+      });
+    });
+  });
+
+  describe('listGoodsReceiptNotes', () => {
+    it('gọi repo.findGoodsReceiptNotes với query nguyên vẹn', async () => {
+      repo.findGoodsReceiptNotes.mockResolvedValue({ data: [], total: 0 });
+      await svc.listGoodsReceiptNotes({ page: 2, limit: 10 });
+      expect(repo.findGoodsReceiptNotes).toHaveBeenCalledWith({
+        page: 2,
+        limit: 10,
+      });
+    });
+  });
+});
