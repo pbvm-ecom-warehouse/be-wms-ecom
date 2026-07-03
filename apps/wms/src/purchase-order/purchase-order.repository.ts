@@ -1,7 +1,7 @@
 // apps/wms/src/purchase-order/purchase-order.repository.ts
 import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model, Types } from 'mongoose';
+import { ClientSession, Model, Types } from 'mongoose';
 import {
   PurchaseOrder,
   PurchaseOrderDocument,
@@ -51,6 +51,37 @@ export class PurchaseOrderRepository {
     id: string,
   ): Promise<PurchaseOrderDocument | null> {
     return this.model.findOne({ _id: id }).exec();
+  }
+
+  /** Đọc PO trong transaction GRN — cần session để thấy đúng bản ghi đang lock. */
+  async findPurchaseOrderByIdWithSession(
+    id: string,
+    session: ClientSession,
+  ): Promise<PurchaseOrderDocument | null> {
+    return this.model.findOne({ _id: id }, null, { session }).exec();
+  }
+
+  /**
+   * Cộng dồn receivedQty cho đúng dòng item (positional $) và set lại status PO —
+   * cùng 1 update để tránh race giữa nhiều GRN confirm song song trên cùng PO.
+   */
+  async applyReceivedQtyAndStatus(
+    poId: string,
+    itemId: string,
+    deltaBaseQty: number,
+    newStatus: PurchaseOrderStatus,
+    session: ClientSession,
+  ): Promise<void> {
+    await this.model
+      .findOneAndUpdate(
+        { _id: poId, 'items.itemId': new Types.ObjectId(itemId) },
+        {
+          $inc: { 'items.$.receivedQty': deltaBaseQty },
+          $set: { status: newStatus },
+        },
+        { session },
+      )
+      .exec();
   }
 
   async findPurchaseOrders(

@@ -101,4 +101,37 @@ describe('PurchaseOrderRepository', () => {
       expect(count).toBe(3);
     });
   });
+
+  describe('findPurchaseOrderByIdWithSession', () => {
+    it('gọi findOne với _id và session truyền vào', async () => {
+      const session = {} as never;
+      model.exec.mockResolvedValue(null);
+      await repo.findPurchaseOrderByIdWithSession('po1', session);
+      expect(model.findOne).toHaveBeenCalledWith({ _id: 'po1' }, null, {
+        session,
+      });
+    });
+  });
+
+  describe('applyReceivedQtyAndStatus', () => {
+    it('$inc receivedQty đúng item (arrayFilters) và set status mới', async () => {
+      const session = {} as never;
+      model.findOneAndUpdate = jest.fn().mockReturnThis();
+      await repo.applyReceivedQtyAndStatus(
+        'po1',
+        itemId,
+        20,
+        PurchaseOrderStatus.PARTIALLY_RECEIVED,
+        session,
+      );
+      expect(model.findOneAndUpdate).toHaveBeenCalledWith(
+        { _id: 'po1', 'items.itemId': new Types.ObjectId(itemId) },
+        {
+          $inc: { 'items.$.receivedQty': 20 },
+          $set: { status: PurchaseOrderStatus.PARTIALLY_RECEIVED },
+        },
+        { session },
+      );
+    });
+  });
 });

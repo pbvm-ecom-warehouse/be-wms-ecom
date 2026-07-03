@@ -21,5 +21,6 @@ import { WarehouseModule } from '../warehouse/warehouse.module';
   ],
   providers: [PurchaseOrderRepository, PurchaseOrderService],
   controllers: [PurchaseOrderController],
+  exports: [PurchaseOrderService], // GRN (S2-03) cần applyReceivedQty + getPurchaseOrder
 })
 export class PurchaseOrderModule {}

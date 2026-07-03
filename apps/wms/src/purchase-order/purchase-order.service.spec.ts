@@ -6,6 +6,8 @@ const makeRepo = () => ({
   findPurchaseOrderById: jest.fn(),
   findPurchaseOrders: jest.fn(),
   countByPoNumberPrefix: jest.fn(),
+  findPurchaseOrderByIdWithSession: jest.fn(),
+  applyReceivedQtyAndStatus: jest.fn(),
 });
 
 const makeSupplierService = () => ({
@@ -198,6 +200,52 @@ describe('PurchaseOrderService', () => {
         page: 2,
         limit: 10,
       });
+    });
+  });
+
+  describe('applyReceivedQty', () => {
+    const poId = 'po1';
+    const session = {} as never;
+
+    it('set PARTIALLY_RECEIVED khi còn item chưa nhận đủ', async () => {
+      repo.findPurchaseOrderByIdWithSession.mockResolvedValue({
+        items: [
+          { itemId, expectedQty: 100, receivedQty: 50 },
+          { itemId: 'item002', expectedQty: 30, receivedQty: 30 },
+        ],
+      });
+      await svc.applyReceivedQty(poId, itemId, 20, session);
+      expect(repo.applyReceivedQtyAndStatus).toHaveBeenCalledWith(
+        poId,
+        itemId,
+        20,
+        'PARTIALLY_RECEIVED',
+        session,
+      );
+    });
+
+    it('set COMPLETED khi mọi item đã nhận đủ expectedQty', async () => {
+      repo.findPurchaseOrderByIdWithSession.mockResolvedValue({
+        items: [
+          { itemId, expectedQty: 100, receivedQty: 80 },
+          { itemId: 'item002', expectedQty: 30, receivedQty: 30 },
+        ],
+      });
+      await svc.applyReceivedQty(poId, itemId, 20, session);
+      expect(repo.applyReceivedQtyAndStatus).toHaveBeenCalledWith(
+        poId,
+        itemId,
+        20,
+        'COMPLETED',
+        session,
+      );
+    });
+
+    it('throw PO_NOT_FOUND nếu PO không tồn tại trong transaction', async () => {
+      repo.findPurchaseOrderByIdWithSession.mockResolvedValue(null);
+      await expect(
+        svc.applyReceivedQty(poId, itemId, 20, session),
+      ).rejects.toMatchObject({ code: 'PO_NOT_FOUND' });
     });
   });
 });

@@ -1,13 +1,17 @@
 // apps/wms/src/purchase-order/purchase-order.service.ts
 import { Injectable } from '@nestjs/common';
 import { AppException } from '@app/common';
+import type { ClientSession } from 'mongoose';
 import {
   PurchaseOrderRepository,
   ResolvedPurchaseOrderItem,
 } from './purchase-order.repository';
 import { SupplierService } from '../supplier/supplier.service';
 import { WarehouseService } from '../warehouse/warehouse.service';
-import type { PurchaseOrderDocument } from './schemas/purchase-order.schema';
+import {
+  PurchaseOrderStatus,
+  type PurchaseOrderDocument,
+} from './schemas/purchase-order.schema';
 import type {
   CreatePurchaseOrderDto,
   QueryPurchaseOrderDto,
@@ -75,6 +79,40 @@ export class PurchaseOrderService {
     const doc = await this.repo.findPurchaseOrderById(id);
     if (!doc) throw new AppException('PO_NOT_FOUND');
     return doc;
+  }
+
+  /**
+   * GRN CONFIRMED gọi hàm này (trong cùng transaction Mongo) để cộng dồn receivedQty
+   * và tính lại status PO. deltaBaseQty đã quy đổi đơn vị cơ sở từ trước (ở GRN service).
+   */
+  async applyReceivedQty(
+    poId: string,
+    itemId: string,
+    deltaBaseQty: number,
+    session: ClientSession,
+  ): Promise<void> {
+    const po = await this.repo.findPurchaseOrderByIdWithSession(poId, session);
+    if (!po) throw new AppException('PO_NOT_FOUND');
+
+    // Tính status dựa trên receivedQty SAU khi cộng deltaBaseQty của item đang xử lý
+    const allComplete = po.items.every((item) => {
+      const received =
+        item.itemId.toString() === itemId
+          ? item.receivedQty + deltaBaseQty
+          : item.receivedQty;
+      return received >= item.expectedQty;
+    });
+    const newStatus = allComplete
+      ? PurchaseOrderStatus.COMPLETED
+      : PurchaseOrderStatus.PARTIALLY_RECEIVED;
+
+    await this.repo.applyReceivedQtyAndStatus(
+      poId,
+      itemId,
+      deltaBaseQty,
+      newStatus,
+      session,
+    );
   }
 
   /** Sinh mã PO dạng PO-YYYYMMDD-xxxx, số thứ tự reset theo ngày. */

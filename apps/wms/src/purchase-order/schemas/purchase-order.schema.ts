@@ -31,6 +31,10 @@ export class PurchaseOrderItem {
   /** Giá đặt — mặc định gợi ý từ SupplierItem.purchasePrice, sửa tay được */
   @Prop({ type: Number, required: true, min: 0 })
   unitPrice!: number;
+
+  /** Tích lũy từ mọi GRN đã CONFIRMED tham chiếu PO này — đơn vị cơ sở (base unit) */
+  @Prop({ type: Number, default: 0, min: 0 })
+  receivedQty!: number;
 }
 const PurchaseOrderItemSchema = SchemaFactory.createForClass(PurchaseOrderItem);
 

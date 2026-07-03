@@ -38,4 +38,13 @@ describe('PurchaseOrder schema', () => {
     };
     expect(statusSchema.options?.default).toBe(PurchaseOrderStatus.CONFIRMED);
   });
+
+  it('PurchaseOrderItem có field receivedQty mặc định 0', () => {
+    const itemPaths = PurchaseOrderSchema.path('items') as unknown as {
+      schema: { paths: Record<string, { options?: { default?: number } }> };
+    };
+    const receivedQtyPath = itemPaths.schema.paths['receivedQty'];
+    expect(receivedQtyPath).toBeDefined();
+    expect(receivedQtyPath.options?.default).toBe(0);
+  });
 });
