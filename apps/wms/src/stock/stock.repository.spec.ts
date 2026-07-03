@@ -133,4 +133,20 @@ describe('StockRepository', () => {
       });
     });
   });
+
+  describe('findItemById', () => {
+    it('trả về item với isPerishable/altUnits/unit', async () => {
+      warehouseItemModel.exec.mockResolvedValue({
+        sku: 'SKU-1',
+        unit: 'cái',
+        isPerishable: true,
+        altUnits: [{ unit: 'thùng', factor: 50 }],
+      });
+      const result = await repo.findItemById(itemId.toString());
+      expect(warehouseItemModel.findById).toHaveBeenCalledWith(
+        itemId.toString(),
+      );
+      expect(result?.isPerishable).toBe(true);
+    });
+  });
 });

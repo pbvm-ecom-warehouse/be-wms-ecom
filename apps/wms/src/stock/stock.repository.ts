@@ -45,6 +45,11 @@ export class StockRepository {
     return this.itemModel.findById(itemId).select('sku').lean().exec();
   }
 
+  /** Đọc đầy đủ WarehouseItem theo id — dùng khi GRN cần isPerishable/altUnits/unit. */
+  findItemById(itemId: string) {
+    return this.itemModel.findById(itemId).lean().exec();
+  }
+
   findBalanceByItemAndWarehouse(
     itemId: Types.ObjectId,
     warehouseId: Types.ObjectId,
