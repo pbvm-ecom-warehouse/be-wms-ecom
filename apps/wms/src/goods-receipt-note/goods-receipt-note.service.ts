@@ -93,6 +93,9 @@ export class GoodsReceiptNoteService {
   ): Promise<GoodsReceiptNoteDocument> {
     const grn = await this.repo.findGoodsReceiptNoteById(id);
     if (!grn) throw new AppException('GRN_NOT_FOUND');
+    // Guard này làm confirm idempotent với retry HTTP: check TRƯỚC mọi ghi transaction/stock,
+    // nên nếu transaction đã commit (GRN → CONFIRMED) thì retry luôn rơi vào đây và bị chặn sạch,
+    // không cộng tồn 2 lần; nếu transaction chưa commit (crash giữa chừng) thì chưa ghi gì, retry chạy lại bình thường.
     if (grn.status !== GoodsReceiptNoteStatus.DRAFT) {
       throw new AppException('GRN_INVALID_STATUS_TRANSITION');
     }
