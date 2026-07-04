@@ -149,4 +149,22 @@ describe('StockRepository', () => {
       expect(result?.isPerishable).toBe(true);
     });
   });
+
+  describe('findItemByBarcode', () => {
+    it('query $or trên barcode và altBarcodes', async () => {
+      const execMock = jest.fn().mockResolvedValue({ sku: 'SKU-1' });
+      const leanMock = jest.fn().mockReturnValue({ exec: execMock });
+      const findOneMock = jest.fn().mockReturnValue({ lean: leanMock });
+      (repo as unknown as { itemModel: { findOne: jest.Mock } }).itemModel = {
+        findOne: findOneMock,
+      } as never;
+
+      const result = await repo.findItemByBarcode('CUP-001');
+
+      expect(findOneMock).toHaveBeenCalledWith({
+        $or: [{ barcode: 'CUP-001' }, { altBarcodes: 'CUP-001' }],
+      });
+      expect(result).toEqual({ sku: 'SKU-1' });
+    });
+  });
 });

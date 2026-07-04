@@ -50,6 +50,14 @@ export class StockRepository {
     return this.itemModel.findById(itemId).lean().exec();
   }
 
+  /** Tra WarehouseItem theo barcode chính hoặc altBarcodes — dùng khi RECEIVER quét SKU lúc put-away. */
+  findItemByBarcode(barcode: string) {
+    return this.itemModel
+      .findOne({ $or: [{ barcode }, { altBarcodes: barcode }] })
+      .lean()
+      .exec();
+  }
+
   findBalanceByItemAndWarehouse(
     itemId: Types.ObjectId,
     warehouseId: Types.ObjectId,
