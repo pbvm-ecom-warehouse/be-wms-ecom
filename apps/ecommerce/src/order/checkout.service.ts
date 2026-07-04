@@ -8,6 +8,7 @@ import { CartService } from '../cart/cart.service';
 import { OrderRepository } from './order.repository';
 import { CheckoutDto } from './dto/checkout.dto';
 import { CustomerRepository } from '../auth/repositories/customer.repository';
+import { CacheService } from '../cache/cache.service';
 import {
   FulfillmentStatus,
   OrderStatus,
@@ -26,6 +27,7 @@ export class CheckoutService {
     private readonly customerRepo: CustomerRepository,
     private readonly config: ConfigService,
     @InjectQueue(QUEUES.ORDER) private readonly orderQueue: Queue,
+    private readonly cacheService: CacheService,
   ) {}
 
   async checkout(customerId: string, dto: CheckoutDto) {
@@ -118,6 +120,13 @@ export class CheckoutService {
 
     // Làm trống giỏ hàng sau khi chốt đơn tạm thời
     await this.cartService.clearCart(customerId);
+
+    // Xóa cache danh sách đơn hàng
+    try {
+      await this.cacheService.del(`ecom:orders:list:${customerId}`);
+    } catch (cacheErr) {
+      this.logger.error(`Lỗi khi xóa cache orders list của khách ${customerId}:`, cacheErr);
+    }
 
     // Gửi yêu cầu kiểm kho và giữ tồn kho vật lý sang WMS
     await this.orderQueue.add(EVENTS.STOCK_RESERVE_REQUESTED, {

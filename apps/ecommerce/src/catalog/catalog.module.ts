@@ -21,6 +21,7 @@ import {
   DesignController,
 } from './catalog.controller';
 import { StockConsumer } from './stock.consumer';
+import { CacheModule } from '../cache/cache.module';
 
 @Module({
   imports: [
@@ -32,6 +33,7 @@ import { StockConsumer } from './stock.consumer';
       { name: Product.name, schema: ProductSchema },
       { name: Design.name, schema: DesignSchema },
     ]),
+    CacheModule,
   ],
   controllers: [
     CatalogPublicController,

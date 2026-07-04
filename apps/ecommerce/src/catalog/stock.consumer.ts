@@ -8,6 +8,7 @@ import {
 } from '@app/events';
 import { Job } from 'bullmq';
 import { CatalogRepository } from './catalog.repository';
+import { CacheService } from '../cache/cache.service';
 
 /**
  * CONSUMER tồn kho: cộng dồn ProductVariant.availableQty theo delta (bản copy do WMS
@@ -18,7 +19,10 @@ import { CatalogRepository } from './catalog.repository';
 export class StockConsumer extends WorkerHost {
   private readonly logger = new Logger(StockConsumer.name);
 
-  constructor(private readonly catalogRepo: CatalogRepository) {
+  constructor(
+    private readonly catalogRepo: CatalogRepository,
+    private readonly cacheService: CacheService,
+  ) {
     super();
   }
 
@@ -37,6 +41,17 @@ export class StockConsumer extends WorkerHost {
         );
         if (applied) {
           this.logger.log(`availableQty[${sku}] += ${delta} (job ${job.id})`);
+          try {
+            const variant = await this.catalogRepo.findVariantBySku(sku);
+            if (variant) {
+              const product = await this.catalogRepo.getProductById(variant.productId.toString());
+              if (product) {
+                await this.cacheService.del(`ecom:catalog:products:detail:${product.slug}`);
+              }
+            }
+          } catch (cacheErr) {
+            this.logger.error(`Lỗi khi xóa cache chi tiết sản phẩm cho SKU ${sku}:`, cacheErr);
+          }
         } else {
           this.logger.warn(
             `Job ${job.id} đã xử lý trước đó → bỏ qua (idempotent).`,
