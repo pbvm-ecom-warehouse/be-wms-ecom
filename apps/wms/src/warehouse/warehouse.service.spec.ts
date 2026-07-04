@@ -85,4 +85,20 @@ describe('WarehouseService', () => {
       expect(result).toEqual(created);
     });
   });
+
+  describe('findShelfByCode', () => {
+    it('throw SHELF_NOT_FOUND khi không tìm thấy', async () => {
+      repo.findShelfByCode.mockResolvedValue(null);
+      await expect(svc.findShelfByCode('X1')).rejects.toMatchObject({
+        code: 'SHELF_NOT_FOUND',
+      });
+    });
+
+    it('trả về shelf khi tìm thấy', async () => {
+      repo.findShelfByCode.mockResolvedValue({ code: 'A1-2' });
+      await expect(svc.findShelfByCode('A1-2')).resolves.toEqual({
+        code: 'A1-2',
+      });
+    });
+  });
 });

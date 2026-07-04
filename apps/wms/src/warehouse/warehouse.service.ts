@@ -202,4 +202,11 @@ export class WarehouseService {
     if (!shelf) throw new AppException('GRN_STAGING_SHELF_NOT_FOUND');
     return shelf;
   }
+
+  /** Tra shelf theo code (barcode vị trí) — dùng khi RECEIVER quét shelf lúc put-away. */
+  async findShelfByCode(code: string): Promise<ShelfDocument> {
+    const shelf = await this.repo.findShelfByCode(code);
+    if (!shelf) throw new AppException('SHELF_NOT_FOUND');
+    return shelf;
+  }
 }
