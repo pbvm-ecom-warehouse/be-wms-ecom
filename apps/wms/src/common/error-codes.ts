@@ -23,6 +23,30 @@ export const WMS_ERRORS = {
     status: HttpStatus.NOT_FOUND,
     message: 'Không tìm thấy lô hàng',
   },
+  PUTAWAY_TASK_NOT_FOUND: {
+    status: HttpStatus.NOT_FOUND,
+    message: 'Không tìm thấy lệnh sắp xếp',
+  },
+  PUTAWAY_ITEM_NOT_FOUND: {
+    status: HttpStatus.NOT_FOUND,
+    message: 'Không tìm thấy mặt hàng theo barcode đã quét',
+  },
+  PUTAWAY_SHELF_NOT_FOUND: {
+    status: HttpStatus.NOT_FOUND,
+    message: 'Không tìm thấy vị trí theo barcode đã quét',
+  },
+  PUTAWAY_SHELF_IS_STAGING: {
+    status: HttpStatus.BAD_REQUEST,
+    message: 'Không thể xếp hàng vào chính vị trí nhận hàng tạm (staging)',
+  },
+  PUTAWAY_ITEM_MISMATCH: {
+    status: HttpStatus.BAD_REQUEST,
+    message: 'Mặt hàng hoặc lô quét được không thuộc lệnh sắp xếp này',
+  },
+  PUTAWAY_QTY_EXCEEDS: {
+    status: HttpStatus.BAD_REQUEST,
+    message: 'Số lượng quét vượt quá số lượng còn lại cần xếp',
+  },
 } as const satisfies Record<
   string,
   { status: HttpStatusType; message: string }
