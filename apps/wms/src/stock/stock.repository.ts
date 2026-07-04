@@ -11,7 +11,11 @@ import {
   StockBalance,
   StockBalanceDocument,
 } from './schemas/stock-balance.schema';
-import { ItemType, WarehouseItem, WarehouseItemDocument } from './schemas/warehouse-item.schema';
+import {
+  ItemType,
+  WarehouseItem,
+  WarehouseItemDocument,
+} from './schemas/warehouse-item.schema';
 
 type InsertMovementData = {
   itemId: Types.ObjectId;
