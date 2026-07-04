@@ -19,11 +19,16 @@ const makeWarehouseService = () => ({
   getWarehouse: jest.fn(),
 });
 
+const makeStockRepo = () => ({
+  findItemById: jest.fn(),
+});
+
 describe('PurchaseOrderService', () => {
   let svc: PurchaseOrderService;
   let repo: ReturnType<typeof makeRepo>;
   let supplierSvc: ReturnType<typeof makeSupplierService>;
   let warehouseSvc: ReturnType<typeof makeWarehouseService>;
+  let stockRepo: ReturnType<typeof makeStockRepo>;
   const actorId = 'actor123';
   const supplierId = 'sup001';
   const warehouseId = 'wh001';
@@ -33,14 +38,17 @@ describe('PurchaseOrderService', () => {
     repo = makeRepo();
     supplierSvc = makeSupplierService();
     warehouseSvc = makeWarehouseService();
+    stockRepo = makeStockRepo();
     svc = new PurchaseOrderService(
       repo as never,
       supplierSvc as never,
       warehouseSvc as never,
+      stockRepo as never,
     );
     repo.countByPoNumberPrefix.mockResolvedValue(0);
     warehouseSvc.getWarehouse.mockResolvedValue({ _id: warehouseId });
     supplierSvc.assertSupplierActive.mockResolvedValue(undefined);
+    stockRepo.findItemById.mockResolvedValue({ _id: itemId, deletedAt: null });
   });
 
   describe('createPurchaseOrder', () => {
@@ -71,6 +79,24 @@ describe('PurchaseOrderService', () => {
       ).rejects.toMatchObject({
         code: 'WAREHOUSE_NOT_FOUND',
       });
+    });
+
+    it('throw STOCK_ITEM_NOT_FOUND khi itemId không tồn tại', async () => {
+      stockRepo.findItemById.mockResolvedValue(null);
+      await expect(
+        svc.createPurchaseOrder(baseDto as never, actorId),
+      ).rejects.toMatchObject({ code: 'STOCK_ITEM_NOT_FOUND' });
+      expect(repo.createPurchaseOrder).not.toHaveBeenCalled();
+    });
+
+    it('throw STOCK_ITEM_NOT_FOUND khi item đã bị soft-delete', async () => {
+      stockRepo.findItemById.mockResolvedValue({
+        _id: itemId,
+        deletedAt: new Date(),
+      });
+      await expect(
+        svc.createPurchaseOrder(baseDto as never, actorId),
+      ).rejects.toMatchObject({ code: 'STOCK_ITEM_NOT_FOUND' });
     });
 
     it('tự điền unitPrice từ SupplierItem khi item để trống giá', async () => {

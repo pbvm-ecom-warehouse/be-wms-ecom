@@ -8,6 +8,7 @@ import {
 } from './purchase-order.repository';
 import { SupplierService } from '../supplier/supplier.service';
 import { WarehouseService } from '../warehouse/warehouse.service';
+import { StockRepository } from '../stock/stock.repository';
 import {
   PurchaseOrderStatus,
   type PurchaseOrderDocument,
@@ -23,6 +24,7 @@ export class PurchaseOrderService {
     private readonly repo: PurchaseOrderRepository,
     private readonly supplierService: SupplierService,
     private readonly warehouseService: WarehouseService,
+    private readonly stockRepo: StockRepository,
   ) {}
 
   async createPurchaseOrder(
@@ -36,6 +38,12 @@ export class PurchaseOrderService {
 
     const resolvedItems: ResolvedPurchaseOrderItem[] = [];
     for (const item of dto.items) {
+      // Item phải tồn tại và chưa bị soft-delete — chặn PO tham chiếu SKU "ma"
+      const warehouseItem = await this.stockRepo.findItemById(item.itemId);
+      if (!warehouseItem || warehouseItem.deletedAt) {
+        throw new AppException('STOCK_ITEM_NOT_FOUND');
+      }
+
       let unitPrice = item.unitPrice;
       if (unitPrice === undefined) {
         // Giá để trống → tra bảng giá NCC; SKU chưa từng khai giá thì từ chối luôn PO
