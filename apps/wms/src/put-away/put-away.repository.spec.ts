@@ -54,4 +54,94 @@ describe('PutAwayRepository', () => {
       );
     });
   });
+
+  describe('decrementRemainingQty', () => {
+    it('filter đúng cả _id, items.itemId VÀ items.lotId; $inc âm để giảm remainingQty', async () => {
+      const taskId = new Types.ObjectId().toString();
+      const itemId = new Types.ObjectId();
+      const lotId = new Types.ObjectId();
+      const session = {} as never;
+      const execMock = jest.fn().mockResolvedValue({ _id: taskId });
+      modelMock.findOneAndUpdate.mockReturnValue({ exec: execMock });
+
+      await repo.decrementRemainingQty(taskId, itemId, lotId, 5, session);
+
+      expect(modelMock.findOneAndUpdate).toHaveBeenCalledWith(
+        {
+          _id: taskId,
+          'items.itemId': itemId,
+          'items.lotId': lotId,
+        },
+        { $inc: { 'items.$.remainingQty': -5 } },
+        { new: true, session },
+      );
+      expect(execMock).toHaveBeenCalled();
+    });
+
+    it('lotId null vẫn được đưa vào filter (item không thuộc lô cụ thể)', async () => {
+      const taskId = new Types.ObjectId().toString();
+      const itemId = new Types.ObjectId();
+      const session = {} as never;
+      const execMock = jest.fn().mockResolvedValue({ _id: taskId });
+      modelMock.findOneAndUpdate.mockReturnValue({ exec: execMock });
+
+      await repo.decrementRemainingQty(taskId, itemId, null, 3, session);
+
+      expect(modelMock.findOneAndUpdate).toHaveBeenCalledWith(
+        {
+          _id: taskId,
+          'items.itemId': itemId,
+          'items.lotId': null,
+        },
+        { $inc: { 'items.$.remainingQty': -3 } },
+        { new: true, session },
+      );
+    });
+  });
+
+  describe('markCompletedIfAllDone', () => {
+    it('set status COMPLETED và save khi mọi items[].remainingQty === 0', async () => {
+      const taskId = new Types.ObjectId().toString();
+      const session = {} as never;
+      const saveMock = jest.fn().mockResolvedValue(undefined);
+      const task = {
+        status: PutAwayTaskStatus.PENDING,
+        items: [{ remainingQty: 0 }, { remainingQty: 0 }],
+        save: saveMock,
+      };
+      modelMock.findOne.mockResolvedValue(task);
+
+      await repo.markCompletedIfAllDone(taskId, session);
+
+      expect(task.status).toBe(PutAwayTaskStatus.COMPLETED);
+      expect(saveMock).toHaveBeenCalledWith({ session });
+    });
+
+    it('KHÔNG set COMPLETED và KHÔNG save khi còn dòng chưa xong', async () => {
+      const taskId = new Types.ObjectId().toString();
+      const session = {} as never;
+      const saveMock = jest.fn().mockResolvedValue(undefined);
+      const task = {
+        status: PutAwayTaskStatus.PENDING,
+        items: [{ remainingQty: 0 }, { remainingQty: 4 }],
+        save: saveMock,
+      };
+      modelMock.findOne.mockResolvedValue(task);
+
+      await repo.markCompletedIfAllDone(taskId, session);
+
+      expect(task.status).toBe(PutAwayTaskStatus.PENDING);
+      expect(saveMock).not.toHaveBeenCalled();
+    });
+
+    it('không làm gì khi không tìm thấy task', async () => {
+      const taskId = new Types.ObjectId().toString();
+      const session = {} as never;
+      modelMock.findOne.mockResolvedValue(null);
+
+      await expect(
+        repo.markCompletedIfAllDone(taskId, session),
+      ).resolves.toBeUndefined();
+    });
+  });
 });
