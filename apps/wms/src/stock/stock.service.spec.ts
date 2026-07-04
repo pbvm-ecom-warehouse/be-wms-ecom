@@ -33,9 +33,9 @@ describe('StockService', () => {
 
     it('throw STOCK_ITEM_SKU_CONFLICT khi sku đã tồn tại', async () => {
       repo.findItemBySku.mockResolvedValue({ sku: 'SKU-1' });
-      await expect(
-        svc.createWarehouseItem(dto, actorId),
-      ).rejects.toMatchObject({ code: 'STOCK_ITEM_SKU_CONFLICT' });
+      await expect(svc.createWarehouseItem(dto, actorId)).rejects.toMatchObject(
+        { code: 'STOCK_ITEM_SKU_CONFLICT' },
+      );
       expect(repo.createItem).not.toHaveBeenCalled();
     });
 
@@ -44,9 +44,9 @@ describe('StockService', () => {
         sku: 'SKU-1',
         deletedAt: new Date(),
       });
-      await expect(
-        svc.createWarehouseItem(dto, actorId),
-      ).rejects.toMatchObject({ code: 'STOCK_ITEM_SKU_CONFLICT' });
+      await expect(svc.createWarehouseItem(dto, actorId)).rejects.toMatchObject(
+        { code: 'STOCK_ITEM_SKU_CONFLICT' },
+      );
     });
 
     it('tạo item mới khi sku chưa tồn tại', async () => {
