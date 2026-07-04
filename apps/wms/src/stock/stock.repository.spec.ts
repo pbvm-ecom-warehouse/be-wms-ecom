@@ -167,4 +167,40 @@ describe('StockRepository', () => {
       expect(result).toEqual({ sku: 'SKU-1' });
     });
   });
+
+  describe('findItemBySku', () => {
+    it('gọi findOne với sku và trả về item', async () => {
+      warehouseItemModel.exec.mockResolvedValueOnce({ sku: 'SKU-1' });
+      const result = await repo.findItemBySku('SKU-1');
+      expect(warehouseItemModel.findOne).toHaveBeenCalledWith({
+        sku: 'SKU-1',
+      });
+      expect(result).toEqual({ sku: 'SKU-1' });
+    });
+
+    it('trả về null khi không tìm thấy', async () => {
+      warehouseItemModel.exec.mockResolvedValueOnce(null);
+      const result = await repo.findItemBySku('SKU-X');
+      expect(result).toBeNull();
+    });
+  });
+
+  describe('createItem', () => {
+    it('gọi create với data + createdBy, isActive mặc định true', async () => {
+      const createdBy = new Types.ObjectId();
+      const data = {
+        sku: 'SKU-1',
+        name: 'Ly nhựa 500ml',
+        type: 'CUP_BLANK' as const,
+        unit: 'cái',
+      };
+      const mockDoc = { _id: new Types.ObjectId(), ...data };
+      warehouseItemModel.create.mockResolvedValueOnce([mockDoc]);
+      const result = await repo.createItem(data, createdBy);
+      expect(warehouseItemModel.create).toHaveBeenCalledWith([
+        { ...data, createdBy, isActive: true },
+      ]);
+      expect(result).toBe(mockDoc);
+    });
+  });
 });

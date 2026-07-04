@@ -11,7 +11,7 @@ import {
   StockBalance,
   StockBalanceDocument,
 } from './schemas/stock-balance.schema';
-import { WarehouseItem } from './schemas/warehouse-item.schema';
+import { ItemType, WarehouseItem, WarehouseItemDocument } from './schemas/warehouse-item.schema';
 
 type InsertMovementData = {
   itemId: Types.ObjectId;
@@ -23,6 +23,19 @@ type InsertMovementData = {
   refType: string;
   refId: Types.ObjectId;
   createdBy: Types.ObjectId;
+};
+
+export type CreateWarehouseItemData = {
+  sku: string;
+  barcode?: string;
+  altBarcodes?: string[];
+  name: string;
+  type: ItemType;
+  unit: string;
+  altUnits?: { unit: string; factor: number }[];
+  attributes?: { name: string; value: string; code: string }[];
+  isPerishable?: boolean;
+  nearExpiryDays?: number;
 };
 
 @Injectable()
@@ -155,5 +168,21 @@ export class StockRepository {
     session?: ClientSession,
   ): Promise<void> {
     await this.movementModel.create([data], { session });
+  }
+
+  /** Tra WarehouseItem theo sku — dùng khi tạo mới để chặn trùng sku (kể cả đã soft-delete). */
+  findItemBySku(sku: string) {
+    return this.itemModel.findOne({ sku }).lean().exec();
+  }
+
+  /** Tạo mới WarehouseItem (master data). isActive mặc định true. */
+  async createItem(
+    data: CreateWarehouseItemData,
+    createdBy: Types.ObjectId,
+  ): Promise<WarehouseItemDocument> {
+    const [doc] = await this.itemModel.create([
+      { ...data, createdBy, isActive: true },
+    ]);
+    return doc;
   }
 }
