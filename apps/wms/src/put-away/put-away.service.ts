@@ -7,6 +7,7 @@ import {
   QueryPutAwayTaskInput,
 } from './put-away.repository';
 import { StockRepository } from '../stock/stock.repository';
+import { WarehouseRepository } from '../warehouse/warehouse.repository';
 import { WarehouseService } from '../warehouse/warehouse.service';
 import { StockTransactionHelper } from '../stock/helpers/with-stock-transaction.helper';
 import { MovementType } from '../stock/schemas/stock-movement.schema';
@@ -30,6 +31,7 @@ export class PutAwayService {
   constructor(
     private readonly repo: PutAwayRepository,
     private readonly stockRepo: StockRepository,
+    private readonly warehouseRepo: WarehouseRepository,
     private readonly warehouseService: WarehouseService,
     private readonly stockTransactionHelper: StockTransactionHelper,
   ) {}
@@ -72,7 +74,11 @@ export class PutAwayService {
     const item = await this.stockRepo.findItemByBarcode(dto.itemBarcode);
     if (!item) throw new AppException('PUTAWAY_ITEM_NOT_FOUND');
 
-    const shelf = await this.warehouseService.findShelfByCode(dto.shelfCode);
+    // Gọi thẳng WarehouseRepository (không qua WarehouseService.findShelfByCode) vì
+    // shelf-not-found ở luồng put-away phải throw code domain riêng PUTAWAY_SHELF_NOT_FOUND,
+    // không phải SHELF_NOT_FOUND cross-cutting của module warehouse (xem spec S2-04 dòng 77).
+    const shelf = await this.warehouseRepo.findShelfByCode(dto.shelfCode);
+    if (!shelf) throw new AppException('PUTAWAY_SHELF_NOT_FOUND');
     if (shelf.isStaging) throw new AppException('PUTAWAY_SHELF_IS_STAGING');
 
     const lotId = dto.lotId ? new Types.ObjectId(dto.lotId) : null;

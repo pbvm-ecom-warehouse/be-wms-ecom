@@ -15,8 +15,13 @@ const makeStockRepo = () => ({
   insertMovement: jest.fn(),
 });
 
-const makeWarehouseService = () => ({
+// findShelfByCode giờ gọi thẳng WarehouseRepository (trả về document hoặc null,
+// không tự throw) — PutAwayService tự throw PUTAWAY_SHELF_NOT_FOUND khi null.
+const makeWarehouseRepo = () => ({
   findShelfByCode: jest.fn(),
+});
+
+const makeWarehouseService = () => ({
   findStagingShelf: jest.fn(),
 });
 
@@ -28,6 +33,7 @@ describe('PutAwayService', () => {
   let svc: PutAwayService;
   let repo: ReturnType<typeof makeRepo>;
   let stockRepo: ReturnType<typeof makeStockRepo>;
+  let warehouseRepo: ReturnType<typeof makeWarehouseRepo>;
   let warehouseService: ReturnType<typeof makeWarehouseService>;
   let txHelper: ReturnType<typeof makeTxHelper>;
 
@@ -39,11 +45,13 @@ describe('PutAwayService', () => {
   beforeEach(() => {
     repo = makeRepo();
     stockRepo = makeStockRepo();
+    warehouseRepo = makeWarehouseRepo();
     warehouseService = makeWarehouseService();
     txHelper = makeTxHelper();
     svc = new PutAwayService(
       repo as never,
       stockRepo as never,
+      warehouseRepo as never,
       warehouseService as never,
       txHelper as never,
     );
@@ -106,10 +114,26 @@ describe('PutAwayService', () => {
       ).rejects.toMatchObject({ code: 'PUTAWAY_ITEM_NOT_FOUND' });
     });
 
+    it('throw PUTAWAY_SHELF_NOT_FOUND khi shelf code không khớp shelf nào', async () => {
+      // Gap reviewer chỉ ra: nhánh shelf-not-found trước đây rơi vào SHELF_NOT_FOUND
+      // (generic, cross-cutting) do gọi qua WarehouseService.findShelfByCode. Đúng
+      // spec (dòng 77), phải throw PUTAWAY_SHELF_NOT_FOUND (domain riêng của put-away).
+      repo.findTaskById.mockResolvedValue(baseTask());
+      stockRepo.findItemByBarcode.mockResolvedValue({ _id: itemId });
+      warehouseRepo.findShelfByCode.mockResolvedValue(null);
+      await expect(
+        svc.confirmLine(
+          taskId,
+          { itemBarcode: 'X', shelfCode: 'UNKNOWN', quantity: 5 },
+          actorId,
+        ),
+      ).rejects.toMatchObject({ code: 'PUTAWAY_SHELF_NOT_FOUND' });
+    });
+
     it('throw PUTAWAY_SHELF_IS_STAGING khi quét đúng shelf staging', async () => {
       repo.findTaskById.mockResolvedValue(baseTask());
       stockRepo.findItemByBarcode.mockResolvedValue({ _id: itemId });
-      warehouseService.findShelfByCode.mockResolvedValue({
+      warehouseRepo.findShelfByCode.mockResolvedValue({
         _id: shelfId,
         isStaging: true,
       });
@@ -125,7 +149,7 @@ describe('PutAwayService', () => {
     it('throw PUTAWAY_ITEM_MISMATCH khi item không thuộc task (lotId khác)', async () => {
       repo.findTaskById.mockResolvedValue(baseTask());
       stockRepo.findItemByBarcode.mockResolvedValue({ _id: itemId });
-      warehouseService.findShelfByCode.mockResolvedValue({
+      warehouseRepo.findShelfByCode.mockResolvedValue({
         _id: shelfId,
         isStaging: false,
       });
@@ -146,7 +170,7 @@ describe('PutAwayService', () => {
     it('throw PUTAWAY_QTY_EXCEEDS khi quantity > remainingQty', async () => {
       repo.findTaskById.mockResolvedValue(baseTask());
       stockRepo.findItemByBarcode.mockResolvedValue({ _id: itemId });
-      warehouseService.findShelfByCode.mockResolvedValue({
+      warehouseRepo.findShelfByCode.mockResolvedValue({
         _id: shelfId,
         isStaging: false,
       });
@@ -164,7 +188,7 @@ describe('PutAwayService', () => {
         .mockResolvedValueOnce(baseTask())
         .mockResolvedValueOnce({ ...baseTask(), status: 'COMPLETED' });
       stockRepo.findItemByBarcode.mockResolvedValue({ _id: itemId });
-      warehouseService.findShelfByCode.mockResolvedValue({
+      warehouseRepo.findShelfByCode.mockResolvedValue({
         _id: shelfId,
         isStaging: false,
       });

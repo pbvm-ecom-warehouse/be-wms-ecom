@@ -20,6 +20,9 @@ import { WarehouseController } from './warehouse.controller';
   ],
   providers: [WarehouseRepository, WarehouseService],
   controllers: [WarehouseController],
-  exports: [WarehouseService], // Sprint 2 (StockBalance / put-away) sẽ dùng
+  // WarehouseRepository export riêng để PutAwayService gọi thẳng findShelfByCode
+  // (trả về null khi không thấy) và tự throw PUTAWAY_SHELF_NOT_FOUND — tránh
+  // code lỗi generic SHELF_NOT_FOUND của WarehouseService rò vào domain put-away.
+  exports: [WarehouseService, WarehouseRepository],
 })
 export class WarehouseModule {}
