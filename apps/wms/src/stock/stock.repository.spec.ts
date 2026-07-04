@@ -157,7 +157,7 @@ describe('StockRepository', () => {
       const findOneMock = jest.fn().mockReturnValue({ lean: leanMock });
       (repo as unknown as { itemModel: { findOne: jest.Mock } }).itemModel = {
         findOne: findOneMock,
-      } as never;
+      };
 
       const result = await repo.findItemByBarcode('CUP-001');
 
