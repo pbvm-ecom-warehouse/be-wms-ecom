@@ -20,6 +20,7 @@ import {
   WarehouseItemSchema,
 } from './schemas/warehouse-item.schema';
 import { StockTransactionHelper } from './helpers/with-stock-transaction.helper';
+import { StockController } from './stock.controller';
 import { StockRepository } from './stock.repository';
 import { StockService } from './stock.service';
 
@@ -34,6 +35,7 @@ import { StockService } from './stock.service';
       { name: StockMovement.name, schema: StockMovementSchema },
     ]),
   ],
+  controllers: [StockController],
   providers: [StockRepository, StockService, StockTransactionHelper],
   exports: [StockService, StockTransactionHelper, StockRepository],
 })
