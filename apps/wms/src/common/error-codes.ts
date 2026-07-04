@@ -15,6 +15,10 @@ export const WMS_ERRORS = {
     status: HttpStatus.NOT_FOUND,
     message: 'Không tìm thấy mặt hàng trong kho',
   },
+  STOCK_ITEM_SKU_CONFLICT: {
+    status: HttpStatus.CONFLICT,
+    message: 'SKU đã tồn tại trong hệ thống',
+  },
   STOCK_INSUFFICIENT: {
     status: HttpStatus.CONFLICT,
     message: 'Số lượng tồn kho không đủ',
