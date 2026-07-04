@@ -171,6 +171,40 @@ describe('PutAwayService', () => {
       ).rejects.toMatchObject({ code: 'PUTAWAY_SHELF_IS_STAGING' });
     });
 
+    it('throw PUTAWAY_ITEM_MISMATCH sớm khi item.isPerishable nhưng dto không gửi lotId — kể cả khi (vô tình) có dòng task lotId null trùng khớp', async () => {
+      // Finding mức thấp ở final review: trước đây thiếu lotId với item isPerishable
+      // thường vẫn bị chặn đúng vì rơi vào nhánh ITEM_MISMATCH khi tìm `line` — NHƯNG
+      // đó là hệ quả gián tiếp (do lotId thật của task khác null), không phải validate
+      // tường minh. Nếu (giả thuyết) task có 1 dòng lotId=null cho item đó — dữ liệu lẽ
+      // ra không nên xảy ra nhưng minh hoạ rằng match-theo-lotId=null vẫn có thể khớp
+      // "trùng lặp giả" — thì code CŨ sẽ cho qua vì line match được (cả 2 đều null),
+      // dẫn tới ghi nhận put-away cho hàng perishable mà không có lotId. Check mới validate
+      // NGAY sau khi có `item`, trước khi dò `line`, nên luôn chặn đúng bất kể task.items
+      // chứa gì.
+      const taskWithNullLotLine = {
+        _id: taskId,
+        warehouseId,
+        items: [{ itemId, lotId: null, quantity: 20, remainingQty: 20 }],
+      };
+      repo.findTaskById.mockResolvedValue(taskWithNullLotLine);
+      stockRepo.findItemByBarcode.mockResolvedValue({
+        _id: itemId,
+        isPerishable: true,
+      });
+      warehouseRepo.findShelfByCode.mockResolvedValue({
+        _id: shelfId,
+        isStaging: false,
+        warehouseId,
+      });
+      await expect(
+        svc.confirmLine(
+          taskId,
+          { itemBarcode: 'X', shelfCode: 'A1', quantity: 5 }, // không có lotId
+          actorId,
+        ),
+      ).rejects.toMatchObject({ code: 'PUTAWAY_ITEM_MISMATCH' });
+    });
+
     it('throw PUTAWAY_ITEM_MISMATCH khi item không thuộc task (lotId khác)', async () => {
       repo.findTaskById.mockResolvedValue(baseTask());
       stockRepo.findItemByBarcode.mockResolvedValue({ _id: itemId });

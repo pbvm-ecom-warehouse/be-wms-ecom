@@ -90,6 +90,16 @@ export class PutAwayService {
     }
     if (shelf.isStaging) throw new AppException('PUTAWAY_SHELF_IS_STAGING');
 
+    // Validate tường minh: item isPerishable bắt buộc phải quét kèm lotId.
+    // Không có check này, thiếu lotId thường VẪN bị chặn gián tiếp (vì lotId thật
+    // của dòng task khác null nên không match ở bước tìm `line` bên dưới) — nhưng
+    // đó là hệ quả tình cờ của dữ liệu, không phải validate rõ ràng. Chặn sớm ở
+    // đây để không phụ thuộc vào việc task.items có tồn tại dòng lotId=null trùng
+    // khớp hay không (dùng chung code lỗi PUTAWAY_ITEM_MISMATCH, không cần code mới).
+    if (item.isPerishable && !dto.lotId) {
+      throw new AppException('PUTAWAY_ITEM_MISMATCH');
+    }
+
     const lotId = dto.lotId ? new Types.ObjectId(dto.lotId) : null;
     const line = task.items.find(
       (i) =>
