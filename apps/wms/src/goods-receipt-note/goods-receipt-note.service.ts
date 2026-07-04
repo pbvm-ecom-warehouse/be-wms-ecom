@@ -11,6 +11,7 @@ import { WarehouseService } from '../warehouse/warehouse.service';
 import { StockRepository } from '../stock/stock.repository';
 import { StockService } from '../stock/stock.service';
 import { StockTransactionHelper } from '../stock/helpers/with-stock-transaction.helper';
+import { PutAwayService } from '../put-away/put-away.service';
 import { MovementType } from '../stock/schemas/stock-movement.schema';
 import {
   GoodsReceiptNoteStatus,
@@ -36,6 +37,7 @@ export class GoodsReceiptNoteService {
     private readonly stockRepo: StockRepository,
     private readonly stockService: StockService,
     private readonly stockTransactionHelper: StockTransactionHelper,
+    private readonly putAwayService: PutAwayService,
   ) {}
 
   async createGoodsReceiptNote(
@@ -145,6 +147,14 @@ export class GoodsReceiptNoteService {
     );
 
     await this.stockTransactionHelper.withStockTransaction(async (session) => {
+      // Tích lũy dòng put-away trong cùng vòng lặp — cần lotId ĐÃ RESOLVE (không phải
+      // lotNumber gốc từ GRN), vì PutAwayTask xếp hàng theo lô thật đã tạo/tìm thấy ở dưới.
+      const putAwayLines: {
+        itemId: string;
+        lotId: Types.ObjectId | null;
+        quantity: number;
+      }[] = [];
+
       for (const line of resolvedLines) {
         const itemObjectId = new Types.ObjectId(line.itemId);
         const warehouseObjectId = new Types.ObjectId(
@@ -171,6 +181,12 @@ export class GoodsReceiptNoteService {
             ));
           lotId = lot._id;
         }
+
+        putAwayLines.push({
+          itemId: line.itemId,
+          lotId,
+          quantity: line.baseQty,
+        });
 
         await this.stockRepo.upsertBalance(
           itemObjectId,
@@ -209,6 +225,16 @@ export class GoodsReceiptNoteService {
           session,
         );
       }
+
+      // Sinh PutAwayTask cùng transaction cộng tồn — nếu rollback thì task cũng không
+      // được tạo, tránh việc GRN chưa confirm mà đã có task xếp hàng "ma".
+      await this.putAwayService.createTaskFromGrn(
+        grn._id,
+        new Types.ObjectId(grn.warehouseId.toString()),
+        putAwayLines,
+        actorId,
+        session,
+      );
 
       await this.repo.updateStatusConfirmed(id, actorId, session);
     });

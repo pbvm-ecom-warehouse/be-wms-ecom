@@ -11,6 +11,7 @@ import { GoodsReceiptNoteController } from './goods-receipt-note.controller';
 import { PurchaseOrderModule } from '../purchase-order/purchase-order.module';
 import { WarehouseModule } from '../warehouse/warehouse.module';
 import { StockModule } from '../stock/stock.module';
+import { PutAwayModule } from '../put-away/put-away.module';
 
 @Module({
   imports: [
@@ -20,6 +21,7 @@ import { StockModule } from '../stock/stock.module';
     PurchaseOrderModule, // getPurchaseOrder + applyReceivedQty
     WarehouseModule, // findStagingShelf
     StockModule, // StockRepository/StockService/StockTransactionHelper — cộng tồn 2 lớp
+    PutAwayModule, // createTaskFromGrn — sinh việc put-away khi GRN CONFIRMED
   ],
   providers: [GoodsReceiptNoteRepository, GoodsReceiptNoteService],
   controllers: [GoodsReceiptNoteController],

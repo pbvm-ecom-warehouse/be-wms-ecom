@@ -38,6 +38,10 @@ const makeStockTransactionHelper = () => ({
   withStockTransaction: jest.fn((fn: (session: unknown) => unknown) => fn({})),
 });
 
+const makePutAwayService = () => ({
+  createTaskFromGrn: jest.fn(),
+});
+
 describe('GoodsReceiptNoteService', () => {
   let svc: GoodsReceiptNoteService;
   let repo: ReturnType<typeof makeRepo>;
@@ -46,6 +50,7 @@ describe('GoodsReceiptNoteService', () => {
   let stockRepo: ReturnType<typeof makeStockRepository>;
   let stockService: ReturnType<typeof makeStockService>;
   let txHelper: ReturnType<typeof makeStockTransactionHelper>;
+  let putAwayService: ReturnType<typeof makePutAwayService>;
 
   const actorId = new Types.ObjectId().toString();
   const purchaseOrderId = new Types.ObjectId().toString();
@@ -60,6 +65,7 @@ describe('GoodsReceiptNoteService', () => {
     stockRepo = makeStockRepository();
     stockService = makeStockService();
     txHelper = makeStockTransactionHelper();
+    putAwayService = makePutAwayService();
     svc = new GoodsReceiptNoteService(
       repo as never,
       poService as never,
@@ -67,6 +73,7 @@ describe('GoodsReceiptNoteService', () => {
       stockRepo as never,
       stockService as never,
       txHelper as never,
+      putAwayService as never,
     );
     repo.countByGrnNumberPrefix.mockResolvedValue(0);
   });
@@ -268,6 +275,21 @@ describe('GoodsReceiptNoteService', () => {
         purchaseOrderId,
         itemId,
         20,
+        expect.anything(),
+      );
+      // Sinh PutAwayTask ngay trong transaction — cùng session, dùng đúng
+      // lotId đã resolve (null ở case này vì item không perishable/không có lô)
+      expect(putAwayService.createTaskFromGrn).toHaveBeenCalledWith(
+        grnId,
+        new Types.ObjectId(warehouseId),
+        [
+          {
+            itemId: itemId,
+            lotId: null,
+            quantity: 20,
+          },
+        ],
+        actorId,
         expect.anything(),
       );
       expect(repo.updateStatusConfirmed).toHaveBeenCalledWith(
