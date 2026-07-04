@@ -1,9 +1,5 @@
 import { Types } from 'mongoose';
-import {
-  PutAwayTask,
-  PutAwayTaskSchema,
-  PutAwayTaskStatus,
-} from './put-away-task.schema';
+import { PutAwayTaskSchema, PutAwayTaskStatus } from './put-away-task.schema';
 
 describe('PutAwayTaskSchema', () => {
   it('mặc định status = PENDING khi tạo mới', () => {
