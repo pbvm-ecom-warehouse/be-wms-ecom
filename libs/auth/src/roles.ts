@@ -13,4 +13,5 @@ export enum WmsRole {
 
 export enum EcomRole {
   ECOM_MANAGER = 'ECOM_MANAGER',
+  CUSTOMER = 'customer',
 }

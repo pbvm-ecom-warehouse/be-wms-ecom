@@ -65,7 +65,7 @@ export class AuthService {
       name: dto.name,
       phone: dto.phone,
       type: 'customer',
-      roles: [],
+      roles: ['customer'],
     });
 
     await this.sendEmailAction(
@@ -147,7 +147,7 @@ export class AuthService {
           name: typeof decoded.name === 'string' ? decoded.name : undefined,
           phone: decoded.phone_number ?? undefined,
           type: 'customer',
-          roles: [],
+          roles: ['customer'],
         });
 
     if (!user) {

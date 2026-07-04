@@ -35,7 +35,7 @@ import {
   AddressResponseDto,
   AuthTokenResponseDto,
   ChangePasswordDto,
-  CustomerResponseDto,
+  UserResponseDto,
   ForgotPasswordDto,
   GoogleLoginDto,
   LoginDto,
@@ -100,13 +100,13 @@ export class AuthController {
 
   @Post('register')
   @AuthThrottle()
-  @ApiOperation({ summary: 'Dang ky tai khoan khach moi' })
+  @ApiOperation({ summary: 'Dang ky tai khoan moi' })
   @ApiBody({
     type: RegisterDto,
     examples: {
-      customer: {
+      user: {
         value: {
-          email: 'khach@example.com',
+          email: 'user@example.com',
           password: 'P@ssw0rd123!',
           name: 'Nguyen Thi B',
           phone: '0901234567',
@@ -130,12 +130,12 @@ export class AuthController {
   @Post('login')
   @HttpCode(200)
   @AuthThrottle()
-  @ApiOperation({ summary: 'Dang nhap khach hang' })
+  @ApiOperation({ summary: 'Dang nhap' })
   @ApiBody({
     type: LoginDto,
     examples: {
-      customer: {
-        value: { email: 'khach@example.com', password: 'P@ssw0rd123!' },
+      user: {
+        value: { email: 'user@example.com', password: 'P@ssw0rd123!' },
       },
     },
   })
@@ -185,31 +185,25 @@ export class AuthController {
 
   @Post('refresh')
   @HttpCode(200)
-  @AuthThrottle()
-  @ApiOperation({
-    summary: 'Doi access token moi bang refresh token (body hoac cookie)',
-  })
+  @ApiOperation({ summary: 'Lam moi cap access/refresh token' })
   @ApiBody({
     type: RefreshDto,
     examples: {
-      bearer: {
-        summary: 'Bearer mode',
-        value: { refreshToken: 'paste-refresh-token-here' },
-      },
-      cookie: { summary: 'Cookie mode', value: {} },
+      refresh: { value: { refreshToken: 'opaque-refresh-token-value' } },
     },
   })
   @ApiOkResponse({
     type: AuthTokenResponseDto,
-    description: 'Trả token mới trong body VÀ set cookie mới (rotate)',
+    description: 'Set cookie moi va tra token cap nhat',
   })
+  @ApiUnauthorizedResponse({ description: 'Refresh token khong hop le hoac het han' })
   async refresh(
     @Body() dto: RefreshDto,
-    @Res({ passthrough: true }) res: Response,
     @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
   ) {
-    const refreshToken = this.extractRefreshToken(dto, req);
-    const result = await this.auth.refresh(refreshToken);
+    const token = this.extractRefreshToken(dto, req);
+    const result = await this.auth.refresh(token);
     this.setAuthCookies(res, result);
     return plainToInstance(AuthTokenResponseDto, result, {
       excludeExtraneousValues: true,
@@ -218,24 +212,18 @@ export class AuthController {
 
   @Post('logout')
   @HttpCode(200)
-  @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth()
-  @ApiOperation({ summary: 'Dang xuat va thu hoi refresh token' })
+  @ApiOperation({ summary: 'Dang xuat (thu hoi refresh token va xoa cookie)' })
   @ApiBody({
     type: LogoutDto,
     examples: {
-      bearer: {
-        summary: 'Bearer mode',
-        value: { refreshToken: 'paste-refresh-token-here' },
-      },
-      cookie: { summary: 'Cookie mode', value: {} },
+      logout: { value: { refreshToken: 'opaque-refresh-token-value' } },
     },
   })
   @ApiOkResponse({ type: SuccessResponseDto })
   async logout(
     @Body() dto: LogoutDto,
-    @Res({ passthrough: true }) res: Response,
     @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
   ) {
     const refreshToken = this.extractRefreshToken(dto, req);
     const result = await this.auth.logout(refreshToken);
@@ -248,11 +236,11 @@ export class AuthController {
   @Get('me')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Thong tin khach dang dang nhap' })
-  @ApiOkResponse({ type: CustomerResponseDto })
-  async me(@CurrentUser('sub') customerId: string) {
-    const result = await this.auth.me(customerId);
-    return plainToInstance(CustomerResponseDto, result, {
+  @ApiOperation({ summary: 'Thong tin nguoi dung dang dang nhap' })
+  @ApiOkResponse({ type: UserResponseDto })
+  async me(@CurrentUser('sub') userId: string) {
+    const result = await this.auth.me(userId);
+    return plainToInstance(UserResponseDto, result, {
       excludeExtraneousValues: true,
     });
   }
@@ -264,7 +252,7 @@ export class AuthController {
   @ApiBody({
     type: VerifyEmailDto,
     examples: {
-      verify: { value: { email: 'khach@example.com', code: '123456' } },
+      verify: { value: { email: 'user@example.com', code: '123456' } },
     },
   })
   @ApiOkResponse({ type: SuccessResponseDto })
@@ -280,10 +268,10 @@ export class AuthController {
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @AuthThrottle()
-  @ApiOperation({ summary: 'Gui lai email xac minh cho khach dang dang nhap' })
+  @ApiOperation({ summary: 'Gui lai email xac minh cho nguoi dung dang dang nhap' })
   @ApiOkResponse({ type: SuccessResponseDto })
-  async resendVerifyEmail(@CurrentUser('sub') customerId: string) {
-    const result = await this.auth.resendVerifyEmail(customerId);
+  async resendVerifyEmail(@CurrentUser('sub') userId: string) {
+    const result = await this.auth.resendVerifyEmail(userId);
     return plainToInstance(SuccessResponseDto, result, {
       excludeExtraneousValues: true,
     });
@@ -295,7 +283,7 @@ export class AuthController {
   @ApiOperation({ summary: 'Khoi tao luong quen mat khau' })
   @ApiBody({
     type: ForgotPasswordDto,
-    examples: { forgot: { value: { email: 'khach@example.com' } } },
+    examples: { forgot: { value: { email: 'user@example.com' } } },
   })
   @ApiOkResponse({ type: SuccessResponseDto })
   async forgotPassword(@Body() dto: ForgotPasswordDto) {
@@ -314,7 +302,7 @@ export class AuthController {
     examples: {
       reset: {
         value: {
-          email: 'khach@example.com',
+          email: 'user@example.com',
           code: '123456',
           newPassword: 'NewP@ssw0rd123!',
         },
@@ -337,7 +325,7 @@ export class AuthController {
   @HttpCode(200)
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Khach doi mat khau' })
+  @ApiOperation({ summary: 'Nguoi dung doi mat khau' })
   @ApiBody({
     type: ChangePasswordDto,
     examples: {
@@ -348,10 +336,10 @@ export class AuthController {
   })
   @ApiOkResponse({ type: SuccessResponseDto })
   async changePassword(
-    @CurrentUser('sub') customerId: string,
+    @CurrentUser('sub') userId: string,
     @Body() dto: ChangePasswordDto,
   ) {
-    const result = await this.auth.changePassword(customerId, dto);
+    const result = await this.auth.changePassword(userId, dto);
     return plainToInstance(SuccessResponseDto, result, {
       excludeExtraneousValues: true,
     });
@@ -362,8 +350,8 @@ export class AuthController {
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Danh sach so dia chi' })
   @ApiOkResponse({ type: [AddressResponseDto] })
-  async listAddresses(@CurrentUser('sub') customerId: string) {
-    const result = await this.auth.listAddresses(customerId);
+  async listAddresses(@CurrentUser('sub') userId: string) {
+    const result = await this.auth.listAddresses(userId);
     return plainToInstance(AddressResponseDto, result, {
       excludeExtraneousValues: true,
     });
@@ -392,10 +380,10 @@ export class AuthController {
   })
   @ApiCreatedResponse({ type: [AddressResponseDto] })
   async addAddress(
-    @CurrentUser('sub') customerId: string,
+    @CurrentUser('sub') userId: string,
     @Body() dto: AddressDto,
   ) {
-    const result = await this.auth.addAddress(customerId, dto);
+    const result = await this.auth.addAddress(userId, dto);
     return plainToInstance(AddressResponseDto, result, {
       excludeExtraneousValues: true,
     });
@@ -412,11 +400,11 @@ export class AuthController {
   })
   @ApiOkResponse({ type: [AddressResponseDto] })
   async updateAddress(
-    @CurrentUser('sub') customerId: string,
+    @CurrentUser('sub') userId: string,
     @Param('id') id: string,
     @Body() dto: UpdateAddressDto,
   ) {
-    const result = await this.auth.updateAddress(customerId, id, dto);
+    const result = await this.auth.updateAddress(userId, id, dto);
     return plainToInstance(AddressResponseDto, result, {
       excludeExtraneousValues: true,
     });
@@ -430,10 +418,10 @@ export class AuthController {
   @ApiParam({ name: 'id', description: 'ObjectId cua address embedded' })
   @ApiOkResponse({ type: [AddressResponseDto] })
   async setDefaultAddress(
-    @CurrentUser('sub') customerId: string,
+    @CurrentUser('sub') userId: string,
     @Param('id') id: string,
   ) {
-    const result = await this.auth.setDefaultAddress(customerId, id);
+    const result = await this.auth.setDefaultAddress(userId, id);
     return plainToInstance(AddressResponseDto, result, {
       excludeExtraneousValues: true,
     });
@@ -446,10 +434,10 @@ export class AuthController {
   @ApiParam({ name: 'id', description: 'ObjectId cua address embedded' })
   @ApiOkResponse({ type: [AddressResponseDto] })
   async deleteAddress(
-    @CurrentUser('sub') customerId: string,
+    @CurrentUser('sub') userId: string,
     @Param('id') id: string,
   ) {
-    const result = await this.auth.deleteAddress(customerId, id);
+    const result = await this.auth.deleteAddress(userId, id);
     return plainToInstance(AddressResponseDto, result, {
       excludeExtraneousValues: true,
     });
