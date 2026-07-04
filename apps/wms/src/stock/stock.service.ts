@@ -1,8 +1,12 @@
 import { InjectQueue } from '@nestjs/bullmq';
 import { Injectable, Logger } from '@nestjs/common';
 import { EVENTS, QUEUES, type StockChangedPayload } from '@app/events';
+import { AppException } from '@app/common';
 import { Queue } from 'bullmq';
+import { Types } from 'mongoose';
 import { StockRepository } from './stock.repository';
+import type { CreateWarehouseItemData } from './stock.repository';
+import type { WarehouseItemDocument } from './schemas/warehouse-item.schema';
 
 /**
  * Ví dụ PRODUCER: khi `available` (= onHand - reserved - expired) của 1 SKU đổi
@@ -33,5 +37,17 @@ export class StockService {
     const item = await this.stockRepo.findSkuById(itemId);
     if (!item) return;
     await this.emitStockChanged(item.sku, delta);
+  }
+
+  /** Tạo WarehouseItem mới. Chặn trùng sku kể cả với bản ghi đã soft-delete. */
+  async createWarehouseItem(
+    data: CreateWarehouseItemData,
+    actorId: string,
+  ): Promise<WarehouseItemDocument> {
+    const existing = await this.stockRepo.findItemBySku(data.sku);
+    if (existing) {
+      throw new AppException('STOCK_ITEM_SKU_CONFLICT');
+    }
+    return this.stockRepo.createItem(data, new Types.ObjectId(actorId));
   }
 }
