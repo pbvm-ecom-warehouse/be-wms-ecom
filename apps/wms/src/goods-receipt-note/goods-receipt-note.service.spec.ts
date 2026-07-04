@@ -446,6 +446,21 @@ describe('GoodsReceiptNoteService', () => {
         itemId,
         35,
       );
+
+      // createTaskFromGrn được gọi đúng 1 lần với putAwayLines giữ đúng lotId riêng
+      // của từng dòng — dùng lotId1/lotId2 cụ thể (không phải expect.anything()) để
+      // bắt được lỗi hoán đổi/null hóa lotId giữa 2 dòng multi-lot nếu có.
+      expect(putAwayService.createTaskFromGrn).toHaveBeenCalledTimes(1);
+      expect(putAwayService.createTaskFromGrn).toHaveBeenCalledWith(
+        grnId,
+        new Types.ObjectId(warehouseId),
+        [
+          { itemId: itemId, lotId: lotId1, quantity: 20 },
+          { itemId: itemId, lotId: lotId2, quantity: 15 },
+        ],
+        actorId,
+        expect.anything(),
+      );
     });
 
     it('quy đổi baseQty theo altUnits khi dòng GRN dùng đơn vị thay thế (thùng → cái)', async () => {
