@@ -85,6 +85,14 @@ export class PutAwayRepository {
    * Dùng positional operator `items.$` để chỉ $inc đúng 1 phần tử mảng khớp
    * (itemId, lotId) trong filter — nếu chỉ filter theo _id thì Mongo không biết
    * item nào trong mảng cần cập nhật, dễ sửa nhầm phần tử đầu tiên.
+   *
+   * Bug đã sửa (final review): filter { 'items.itemId': x, 'items.lotId': y } là
+   * 2 điều kiện ĐỘC LẬP trên mảng trong MongoDB — document khớp nếu tồn tại MỘT
+   * phần tử có itemId đó VÀ tồn tại MỘT phần tử (có thể KHÁC) có lotId đó. Với
+   * task multi-lot cùng item (VD [{itemId:A,lotId:L1},{itemId:A,lotId:L2}]),
+   * $ có thể trỏ nhầm phần tử đầu thay vì phần tử đúng cả itemId+lotId. Dùng
+   * $elemMatch buộc Mongo chỉ khớp document khi có 1 phần tử thỏa CẢ HAI điều
+   * kiện cùng lúc — khi đó `$` chắc chắn trỏ đúng phần tử đó.
    */
   decrementRemainingQty(
     taskId: string,
@@ -95,7 +103,7 @@ export class PutAwayRepository {
   ): Promise<PutAwayTaskDocument | null> {
     return this.model
       .findOneAndUpdate(
-        { _id: taskId, 'items.itemId': itemId, 'items.lotId': lotId },
+        { _id: taskId, items: { $elemMatch: { itemId, lotId } } },
         { $inc: { 'items.$.remainingQty': -quantity } },
         { new: true, session },
       )

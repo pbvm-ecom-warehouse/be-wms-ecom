@@ -56,7 +56,7 @@ describe('PutAwayRepository', () => {
   });
 
   describe('decrementRemainingQty', () => {
-    it('filter đúng cả _id, items.itemId VÀ items.lotId; $inc âm để giảm remainingQty', async () => {
+    it('filter dùng $elemMatch(itemId, lotId) trên cùng 1 phần tử; $inc âm để giảm remainingQty', async () => {
       const taskId = new Types.ObjectId().toString();
       const itemId = new Types.ObjectId();
       const lotId = new Types.ObjectId();
@@ -69,8 +69,7 @@ describe('PutAwayRepository', () => {
       expect(modelMock.findOneAndUpdate).toHaveBeenCalledWith(
         {
           _id: taskId,
-          'items.itemId': itemId,
-          'items.lotId': lotId,
+          items: { $elemMatch: { itemId, lotId } },
         },
         { $inc: { 'items.$.remainingQty': -5 } },
         { new: true, session },
@@ -78,7 +77,7 @@ describe('PutAwayRepository', () => {
       expect(execMock).toHaveBeenCalled();
     });
 
-    it('lotId null vẫn được đưa vào filter (item không thuộc lô cụ thể)', async () => {
+    it('lotId null vẫn được đưa vào $elemMatch (item không thuộc lô cụ thể)', async () => {
       const taskId = new Types.ObjectId().toString();
       const itemId = new Types.ObjectId();
       const session = {} as never;
@@ -90,12 +89,52 @@ describe('PutAwayRepository', () => {
       expect(modelMock.findOneAndUpdate).toHaveBeenCalledWith(
         {
           _id: taskId,
-          'items.itemId': itemId,
-          'items.lotId': null,
+          items: { $elemMatch: { itemId, lotId: null } },
         },
         { $inc: { 'items.$.remainingQty': -3 } },
         { new: true, session },
       );
+    });
+
+    // Bug tìm thấy ở final review: filter cũ dùng 2 field rời 'items.itemId'/'items.lotId'
+    // là 2 điều kiện ĐỘC LẬP trên mảng — Mongo khớp document nếu có bất kỳ phần tử nào có
+    // itemId đó VÀ bất kỳ phần tử nào (có thể KHÁC) có lotId đó. Với task có 2 dòng cùng
+    // itemId khác lotId (multi-lot cùng item — kịch bản chính của feature), xác nhận lô L2
+    // dễ bị $ trỏ nhầm về phần tử L1. Test này khoá lại: filter gửi đi phải là $elemMatch
+    // để đảm bảo match đúng 1 phần tử có ĐỦ CẢ HAI điều kiện.
+    it('task có 2 items cùng itemId khác lotId — filter phải $elemMatch đúng lotId thứ 2, không lẫn 2 field rời', async () => {
+      const taskId = new Types.ObjectId().toString();
+      const itemId = new Types.ObjectId();
+      const lotId1 = new Types.ObjectId();
+      const lotId2 = new Types.ObjectId();
+      const session = {} as never;
+      const execMock = jest.fn().mockResolvedValue({ _id: taskId });
+      modelMock.findOneAndUpdate.mockReturnValue({ exec: execMock });
+
+      // Xác nhận dòng THỨ HAI (lotId2) của task đa lô cùng item
+      await repo.decrementRemainingQty(taskId, itemId, lotId2, 7, session);
+
+      const [filterArg] = modelMock.findOneAndUpdate.mock.calls[0] as [
+        Record<string, unknown>,
+      ];
+
+      // Filter đúng phải gộp itemId + lotId2 trong cùng 1 $elemMatch
+      expect(filterArg).toEqual({
+        _id: taskId,
+        items: { $elemMatch: { itemId, lotId: lotId2 } },
+      });
+      // Không được là filter kiểu 2-field-rời (lỗi cũ) — dù có lotId1 hay lotId2 thì
+      // dạng field rời không phân biệt được item nào khớp cả 2 điều kiện cùng lúc.
+      expect(filterArg).not.toEqual({
+        _id: taskId,
+        'items.itemId': itemId,
+        'items.lotId': lotId1,
+      });
+      expect(filterArg).not.toEqual({
+        _id: taskId,
+        'items.itemId': itemId,
+        'items.lotId': lotId2,
+      });
     });
   });
 
