@@ -2,23 +2,25 @@ import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import {
-  Customer,
-  CustomerAddress,
-  CustomerStatus,
-} from '../schemas/customer.schema';
+  User,
+  UserAddress,
+  UserStatus,
+} from '../schemas/user.schema';
 
-export interface CreateCustomerInput {
+export interface CreateUserInput {
   email: string;
   firebaseUid?: string;
   passwordHash: string;
   name?: string;
   phone?: string;
+  type?: 'customer' | 'admin';
+  roles?: string[];
 }
 
 @Injectable()
-export class CustomerRepository {
+export class UserRepository {
   constructor(
-    @InjectModel(Customer.name) private readonly model: Model<Customer>,
+    @InjectModel(User.name) private readonly model: Model<User>,
   ) {}
 
   findByEmail(email: string) {
@@ -43,7 +45,7 @@ export class CustomerRepository {
     const q = this.model.findOne({
       email,
       deletedAt: null,
-      status: CustomerStatus.ACTIVE,
+      status: UserStatus.ACTIVE,
     });
     return (includePasswordHash ? q.select('+passwordHash') : q).exec();
   }
@@ -52,19 +54,19 @@ export class CustomerRepository {
     const q = this.model.findOne({
       _id: id,
       deletedAt: null,
-      status: CustomerStatus.ACTIVE,
+      status: UserStatus.ACTIVE,
     });
     return (includePasswordHash ? q.select('+passwordHash') : q).exec();
   }
 
-  create(data: CreateCustomerInput) {
+  create(data: CreateUserInput) {
     return this.model.create(data);
   }
 
   markEmailVerified(id: string | Types.ObjectId) {
     return this.model
       .findOneAndUpdate(
-        { _id: id, deletedAt: null, status: CustomerStatus.ACTIVE },
+        { _id: id, deletedAt: null, status: UserStatus.ACTIVE },
         { $set: { emailVerified: true } },
         { new: true },
       )
@@ -74,17 +76,17 @@ export class CustomerRepository {
   updatePassword(id: string | Types.ObjectId, passwordHash: string) {
     return this.model
       .findOneAndUpdate(
-        { _id: id, deletedAt: null, status: CustomerStatus.ACTIVE },
+        { _id: id, deletedAt: null, status: UserStatus.ACTIVE },
         { $set: { passwordHash } },
         { new: true },
       )
       .exec();
   }
 
-  replaceAddresses(id: string | Types.ObjectId, addresses: CustomerAddress[]) {
+  replaceAddresses(id: string | Types.ObjectId, addresses: UserAddress[]) {
     return this.model
       .findOneAndUpdate(
-        { _id: id, deletedAt: null, status: CustomerStatus.ACTIVE },
+        { _id: id, deletedAt: null, status: UserStatus.ACTIVE },
         { $set: { addresses } },
         { new: true },
       )

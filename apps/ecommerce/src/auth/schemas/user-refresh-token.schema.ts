@@ -2,16 +2,16 @@ import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { HydratedDocument, SchemaTypes, Types } from 'mongoose';
 
 /**
- * Refresh token khách (rotation). Nhóm TOKEN → chỉ createdAt + revokedAt.
- * Lưu HASH (sha256) của token, không lưu token gốc.
+ * Refresh token cho cả customer và admin trong Ecommerce.
+ * Lưu HASH (sha256) của token.
  */
 @Schema({
-  collection: 'customer_refresh_tokens',
+  collection: 'user_refresh_tokens',
   timestamps: { createdAt: true, updatedAt: false },
 })
-export class CustomerRefreshToken {
+export class UserRefreshToken {
   @Prop({ type: SchemaTypes.ObjectId, required: true, index: true })
-  customerId: Types.ObjectId;
+  userId: Types.ObjectId;
 
   @Prop({ required: true, index: true })
   tokenHash: string;
@@ -23,7 +23,5 @@ export class CustomerRefreshToken {
   revokedAt?: Date | null;
 }
 
-export type CustomerRefreshTokenDocument =
-  HydratedDocument<CustomerRefreshToken>;
-export const CustomerRefreshTokenSchema =
-  SchemaFactory.createForClass(CustomerRefreshToken);
+export type UserRefreshTokenDocument = HydratedDocument<UserRefreshToken>;
+export const UserRefreshTokenSchema = SchemaFactory.createForClass(UserRefreshToken);

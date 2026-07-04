@@ -7,7 +7,7 @@ import { AppException } from '@app/common';
 import { CartService } from '../cart/cart.service';
 import { OrderRepository } from './order.repository';
 import { CheckoutDto } from './dto/checkout.dto';
-import { CustomerRepository } from '../auth/repositories/customer.repository';
+import { UserRepository } from '../auth/repositories/user.repository';
 import { CacheService } from '../cache/cache.service';
 import {
   FulfillmentStatus,
@@ -24,7 +24,7 @@ export class CheckoutService {
   constructor(
     private readonly cartService: CartService,
     private readonly orderRepo: OrderRepository,
-    private readonly customerRepo: CustomerRepository,
+    private readonly userRepo: UserRepository,
     private readonly config: ConfigService,
     @InjectQueue(QUEUES.ORDER) private readonly orderQueue: Queue,
     private readonly cacheService: CacheService,
@@ -48,7 +48,7 @@ export class CheckoutService {
     }
 
     // Kiểm tra và lấy địa chỉ giao nhận của khách
-    const customer = await this.customerRepo.findActiveById(customerId);
+    const customer = await this.userRepo.findActiveById(customerId);
     if (!customer) {
       throw new AppException(
         'UNAUTHENTICATED',

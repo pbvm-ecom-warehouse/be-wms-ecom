@@ -1,13 +1,13 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { HydratedDocument, Types } from 'mongoose';
 
-export enum CustomerStatus {
+export enum UserStatus {
   ACTIVE = 'ACTIVE',
   LOCKED = 'LOCKED',
 }
 
 @Schema({ _id: true })
-export class CustomerAddress {
+export class UserAddress {
   _id?: Types.ObjectId;
 
   @Prop({ required: true })
@@ -35,11 +35,10 @@ export class CustomerAddress {
   isDefault: boolean;
 }
 
-export const CustomerAddressSchema =
-  SchemaFactory.createForClass(CustomerAddress);
+export const UserAddressSchema = SchemaFactory.createForClass(UserAddress);
 
-@Schema({ collection: 'customers', timestamps: true })
-export class Customer {
+@Schema({ collection: 'users', timestamps: true })
+export class User {
   @Prop({ required: true, unique: true })
   email: string;
 
@@ -58,15 +57,21 @@ export class Customer {
   @Prop({ default: false })
   emailVerified: boolean;
 
-  @Prop({ enum: CustomerStatus, default: CustomerStatus.ACTIVE })
-  status: CustomerStatus;
+  @Prop({ enum: UserStatus, default: UserStatus.ACTIVE })
+  status: UserStatus;
 
-  @Prop({ type: [CustomerAddressSchema], default: [] })
-  addresses: CustomerAddress[];
+  @Prop({ type: [UserAddressSchema], default: [] })
+  addresses: UserAddress[];
+
+  @Prop({ type: String, enum: ['customer', 'admin'], default: 'customer' })
+  type: 'customer' | 'admin';
+
+  @Prop({ type: [String], default: [] })
+  roles: string[];
 
   @Prop({ type: Date, default: null })
   deletedAt?: Date | null;
 }
 
-export type CustomerDocument = HydratedDocument<Customer>;
-export const CustomerSchema = SchemaFactory.createForClass(Customer);
+export type UserDocument = HydratedDocument<User>;
+export const UserSchema = SchemaFactory.createForClass(User);

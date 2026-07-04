@@ -9,13 +9,13 @@ import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { OtpStore } from './otp.store';
 import { JwtStrategy } from './jwt.strategy';
-import { CustomerRefreshTokenRepository } from './repositories/customer-refresh-token.repository';
-import { CustomerRepository } from './repositories/customer.repository';
-import { Customer, CustomerSchema } from './schemas/customer.schema';
+import { UserRefreshTokenRepository } from './repositories/user-refresh-token.repository';
+import { UserRepository } from './repositories/user.repository';
+import { User, UserSchema } from './schemas/user.schema';
 import {
-  CustomerRefreshToken,
-  CustomerRefreshTokenSchema,
-} from './schemas/customer-refresh-token.schema';
+  UserRefreshToken,
+  UserRefreshTokenSchema,
+} from './schemas/user-refresh-token.schema';
 
 /**
  * Module auth Ecommerce. Đăng ký queue NOTIFICATION để phát event
@@ -28,18 +28,18 @@ import {
     FirebaseAdminModule,
     BullModule.registerQueue({ name: QUEUES.NOTIFICATION }),
     MongooseModule.forFeature([
-      { name: Customer.name, schema: CustomerSchema },
-      { name: CustomerRefreshToken.name, schema: CustomerRefreshTokenSchema },
+      { name: User.name, schema: UserSchema },
+      { name: UserRefreshToken.name, schema: UserRefreshTokenSchema },
     ]),
   ],
   controllers: [AuthController],
   providers: [
     AuthService,
     JwtStrategy,
-    CustomerRepository,
-    CustomerRefreshTokenRepository,
+    UserRepository,
+    UserRefreshTokenRepository,
     OtpStore,
   ],
-  exports: [AuthService, CustomerRepository],
+  exports: [AuthService, UserRepository],
 })
 export class AuthModule {}
