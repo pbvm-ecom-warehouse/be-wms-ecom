@@ -79,6 +79,15 @@ export class PutAwayService {
     // không phải SHELF_NOT_FOUND cross-cutting của module warehouse (xem spec S2-04 dòng 77).
     const shelf = await this.warehouseRepo.findShelfByCode(dto.shelfCode);
     if (!shelf) throw new AppException('PUTAWAY_SHELF_NOT_FOUND');
+    // findShelfByCode tra theo code TOÀN CỤC (unique toàn hệ thống, không lọc
+    // theo kho) — nếu RECEIVER quét nhầm 1 shelf hợp lệ nhưng thuộc kho khác
+    // với task.warehouseId, phải chặn ở đây. Nếu không chặn, InventoryStock sẽ
+    // được ghi với warehouseId=task.warehouseId nhưng shelfId thực tế thuộc kho
+    // khác → dữ liệu tồn kho mâu thuẫn. Tái dùng PUTAWAY_SHELF_NOT_FOUND vì với
+    // kho của task này, shelf đó coi như không hợp lệ/không tồn tại.
+    if (shelf.warehouseId.toString() !== task.warehouseId.toString()) {
+      throw new AppException('PUTAWAY_SHELF_NOT_FOUND');
+    }
     if (shelf.isStaging) throw new AppException('PUTAWAY_SHELF_IS_STAGING');
 
     const lotId = dto.lotId ? new Types.ObjectId(dto.lotId) : null;

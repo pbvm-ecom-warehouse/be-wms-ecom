@@ -130,12 +130,37 @@ describe('PutAwayService', () => {
       ).rejects.toMatchObject({ code: 'PUTAWAY_SHELF_NOT_FOUND' });
     });
 
+    it('throw PUTAWAY_SHELF_NOT_FOUND khi shelf tìm được thuộc kho KHÁC với task.warehouseId', async () => {
+      // Bug tìm thấy ở final review: findShelfByCode tra theo code toàn cục
+      // (unique toàn hệ thống), KHÔNG lọc theo warehouseId. Nếu RECEIVER quét
+      // nhầm shelf hợp lệ nhưng thuộc kho khác, trước đây vẫn cho qua vì không
+      // phải staging → ghi InventoryStock với warehouseId=task.warehouseId
+      // nhưng shelfId thực tế ở kho khác → dữ liệu tồn kho mâu thuẫn.
+      // Tái dùng PUTAWAY_SHELF_NOT_FOUND vì với kho của task, shelf này coi như
+      // "không tồn tại"/không hợp lệ — không tạo code mới.
+      repo.findTaskById.mockResolvedValue(baseTask());
+      stockRepo.findItemByBarcode.mockResolvedValue({ _id: itemId });
+      warehouseRepo.findShelfByCode.mockResolvedValue({
+        _id: shelfId,
+        isStaging: false,
+        warehouseId: new Types.ObjectId(), // kho khác với task.warehouseId
+      });
+      await expect(
+        svc.confirmLine(
+          taskId,
+          { itemBarcode: 'X', shelfCode: 'OTHER-WH-A1', quantity: 5 },
+          actorId,
+        ),
+      ).rejects.toMatchObject({ code: 'PUTAWAY_SHELF_NOT_FOUND' });
+    });
+
     it('throw PUTAWAY_SHELF_IS_STAGING khi quét đúng shelf staging', async () => {
       repo.findTaskById.mockResolvedValue(baseTask());
       stockRepo.findItemByBarcode.mockResolvedValue({ _id: itemId });
       warehouseRepo.findShelfByCode.mockResolvedValue({
         _id: shelfId,
         isStaging: true,
+        warehouseId,
       });
       await expect(
         svc.confirmLine(
@@ -152,6 +177,7 @@ describe('PutAwayService', () => {
       warehouseRepo.findShelfByCode.mockResolvedValue({
         _id: shelfId,
         isStaging: false,
+        warehouseId,
       });
       await expect(
         svc.confirmLine(
@@ -173,6 +199,7 @@ describe('PutAwayService', () => {
       warehouseRepo.findShelfByCode.mockResolvedValue({
         _id: shelfId,
         isStaging: false,
+        warehouseId,
       });
       await expect(
         svc.confirmLine(
@@ -191,6 +218,7 @@ describe('PutAwayService', () => {
       warehouseRepo.findShelfByCode.mockResolvedValue({
         _id: shelfId,
         isStaging: false,
+        warehouseId,
       });
       warehouseService.findStagingShelf.mockResolvedValue({
         _id: stagingShelfId,
