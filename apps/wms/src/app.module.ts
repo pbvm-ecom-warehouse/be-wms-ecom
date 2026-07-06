@@ -19,6 +19,7 @@ import { WarehouseModule } from './warehouse/warehouse.module';
 import { SupplierModule } from './supplier/supplier.module';
 import { PurchaseOrderModule } from './purchase-order/purchase-order.module';
 import { GoodsReceiptNoteModule } from './goods-receipt-note/goods-receipt-note.module';
+import { PutAwaySuggestionModule } from './put-away-suggestion/put-away-suggestion.module';
 import { appConfig } from './config/app.config';
 import { authConfig } from './config/auth.config';
 import { validateEnv } from './config/env.validation';
@@ -48,6 +49,7 @@ import { validateEnv } from './config/env.validation';
     SupplierModule, // CRUD NCC + bảng giá SupplierItem
     PurchaseOrderModule, // UC-01: tạo/xem PO — dùng SupplierModule + WarehouseModule
     GoodsReceiptNoteModule, // UC-02: nhận hàng theo PO, cộng tồn 2 lớp — dùng PurchaseOrderModule + StockModule + WarehouseModule
+    PutAwaySuggestionModule, // S2-05: gợi ý vị trí put-away theo thể tích — dùng StockModule + WarehouseModule
   ],
   controllers: [AppController],
   providers: [
