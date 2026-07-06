@@ -198,6 +198,10 @@ export class StockRepository {
    * tổng hợp Σ(quantity × unitVolume) trên mọi SKU/lô của shelf đó. Dòng
    * InventoryStock có item thiếu depth/width/height bị loại khỏi tổng (không
    * throw) — occupied chỉ tính trên item đã khai đủ kích thước.
+   * Cố ý KHÔNG lọc item.deletedAt: soft-delete là khái niệm catalog (ẩn khỏi
+   * danh mục active), không liên quan việc tồn kho vật lý còn chiếm chỗ trên
+   * shelf hay không — occupied phải phản ánh đúng quantity thật trong
+   * InventoryStock bất kể item đã soft-delete.
    */
   async findOccupiedVolumeByWarehouse(
     warehouseId: Types.ObjectId,
