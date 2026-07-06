@@ -225,6 +225,21 @@ export class WarehouseRepository {
       .exec();
   }
 
+  /** Liệt kê shelf ứng viên cho gợi ý put-away: non-staging, chưa xoá, đã khai đủ 3 chiều. */
+  async findShelvesByWarehouse(warehouseId: string): Promise<ShelfDocument[]> {
+    return this.shelfModel
+      .find({
+        warehouseId: new Types.ObjectId(warehouseId),
+        isStaging: false,
+        deletedAt: null,
+        innerDepth: { $exists: true, $ne: null },
+        innerWidth: { $exists: true, $ne: null },
+        innerHeight: { $exists: true, $ne: null },
+      })
+      .sort({ code: 1 })
+      .exec();
+  }
+
   async findShelfById(id: string): Promise<ShelfDocument | null> {
     return this.shelfModel.findOne({ _id: id, ...SOFT_DELETE_FILTER }).exec();
   }

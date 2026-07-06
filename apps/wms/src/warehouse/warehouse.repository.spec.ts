@@ -57,4 +57,21 @@ describe('WarehouseRepository', () => {
       expect(result).toEqual(shelf);
     });
   });
+
+  describe('findShelvesByWarehouse', () => {
+    it('lọc đúng warehouseId, isStaging=false, deletedAt=null, đã khai đủ 3 chiều', async () => {
+      shelfModel.exec.mockResolvedValue([]);
+
+      await repo.findShelvesByWarehouse(warehouseId);
+
+      expect(shelfModel.find).toHaveBeenCalledWith({
+        warehouseId: new Types.ObjectId(warehouseId),
+        isStaging: false,
+        deletedAt: null,
+        innerDepth: { $exists: true, $ne: null },
+        innerWidth: { $exists: true, $ne: null },
+        innerHeight: { $exists: true, $ne: null },
+      });
+    });
+  });
 });
