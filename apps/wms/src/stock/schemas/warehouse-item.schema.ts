@@ -75,6 +75,18 @@ export class WarehouseItem {
   @Prop({ type: Number })
   nearExpiryDays?: number;
 
+  /** Chiều sâu 1 đơn vị cơ sở (cm) — dùng tính unitVolume cho gợi ý put-away */
+  @Prop({ type: Number })
+  depth?: number;
+
+  /** Chiều rộng 1 đơn vị cơ sở (cm) */
+  @Prop({ type: Number })
+  width?: number;
+
+  /** Chiều cao 1 đơn vị cơ sở (cm) */
+  @Prop({ type: Number })
+  height?: number;
+
   @Prop({ default: true })
   isActive!: boolean;
 

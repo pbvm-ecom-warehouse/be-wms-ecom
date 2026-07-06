@@ -78,6 +78,18 @@ export class WarehouseItemResponseDto {
   nearExpiryDays?: number;
 
   @Expose()
+  @ApiPropertyOptional()
+  depth?: number;
+
+  @Expose()
+  @ApiPropertyOptional()
+  width?: number;
+
+  @Expose()
+  @ApiPropertyOptional()
+  height?: number;
+
+  @Expose()
   @ApiProperty()
   isActive!: boolean;
 

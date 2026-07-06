@@ -5,6 +5,7 @@ import {
   IsBoolean,
   IsEnum,
   IsInt,
+  IsNumber,
   IsOptional,
   IsString,
   Min,
@@ -100,4 +101,22 @@ export class CreateWarehouseItemDto {
   @IsInt()
   @Min(0)
   nearExpiryDays?: number;
+
+  @ApiPropertyOptional({ example: 10, description: 'Chiều sâu 1 đơn vị cơ sở (cm)' })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  depth?: number;
+
+  @ApiPropertyOptional({ example: 8, description: 'Chiều rộng 1 đơn vị cơ sở (cm)' })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  width?: number;
+
+  @ApiPropertyOptional({ example: 12, description: 'Chiều cao 1 đơn vị cơ sở (cm)' })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  height?: number;
 }
