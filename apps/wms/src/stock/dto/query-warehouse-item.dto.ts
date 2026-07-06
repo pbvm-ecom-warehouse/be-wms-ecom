@@ -1,5 +1,5 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { Type } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 import {
   IsBoolean,
   IsEnum,
@@ -24,7 +24,13 @@ export class QueryWarehouseItemDto {
 
   @ApiPropertyOptional()
   @IsOptional()
-  @Type(() => Boolean)
+  @Transform(({ value }: { value: unknown }) => {
+    // Query-string luôn là string: "false" vẫn truthy nếu ép bằng Boolean(value),
+    // nên phải so sánh tường minh với 'true'/'false'. Giữ nguyên undefined/null
+    // để filter isActive không bị áp khi client không truyền param này.
+    if (value === undefined || value === null) return value;
+    return value === 'true' || value === true;
+  })
   @IsBoolean()
   isActive?: boolean;
 
