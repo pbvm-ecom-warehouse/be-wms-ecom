@@ -1,4 +1,9 @@
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import {
+  ApiProperty,
+  ApiPropertyOptional,
+  OmitType,
+  PartialType,
+} from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import {
   IsArray,
@@ -120,3 +125,7 @@ export class CreateWarehouseItemDto {
   @Min(0)
   height?: number;
 }
+
+export class UpdateWarehouseItemDto extends PartialType(
+  OmitType(CreateWarehouseItemDto, ['sku'] as const),
+) {}
