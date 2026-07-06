@@ -63,4 +63,51 @@ describe('StockService', () => {
       expect(result).toBe(mockDoc);
     });
   });
+
+  describe('emitStockChanged', () => {
+    it('gọi queue.add với jobId deterministic refType:refId:sku', async () => {
+      await svc.emitStockChanged('SKU-1', 20, 'grn', 'grn1');
+
+      expect(queue.add).toHaveBeenCalledWith(
+        'stock.changed',
+        { sku: 'SKU-1', delta: 20 },
+        { jobId: 'grn:grn1:SKU-1' },
+      );
+    });
+
+    it('chấp nhận refId dạng ObjectId, chuyển sang string trong jobId', async () => {
+      const refId = new Types.ObjectId();
+
+      await svc.emitStockChanged('SKU-2', -5, 'stock-count', refId);
+
+      expect(queue.add).toHaveBeenCalledWith(
+        'stock.changed',
+        { sku: 'SKU-2', delta: -5 },
+        { jobId: `stock-count:${refId.toString()}:SKU-2` },
+      );
+    });
+  });
+
+  describe('publishAvailableForItem', () => {
+    it('tra sku qua findSkuById rồi forward refType/refId xuống emitStockChanged', async () => {
+      repo.findSkuById.mockResolvedValue({ sku: 'SKU-3' });
+
+      await svc.publishAvailableForItem('item1', 35, 'grn', 'grn1');
+
+      expect(repo.findSkuById).toHaveBeenCalledWith('item1');
+      expect(queue.add).toHaveBeenCalledWith(
+        'stock.changed',
+        { sku: 'SKU-3', delta: 35 },
+        { jobId: 'grn:grn1:SKU-3' },
+      );
+    });
+
+    it('không gọi emitStockChanged khi findSkuById trả null', async () => {
+      repo.findSkuById.mockResolvedValue(null);
+
+      await svc.publishAvailableForItem('item-not-found', 10, 'grn', 'grn1');
+
+      expect(queue.add).not.toHaveBeenCalled();
+    });
+  });
 });

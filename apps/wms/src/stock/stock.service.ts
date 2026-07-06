@@ -22,21 +22,36 @@ export class StockService {
     @InjectQueue(QUEUES.STOCK) private readonly stockQueue: Queue,
   ) {}
 
-  /** Phát event báo Ecommerce cộng/trừ availableQty theo delta (đã gộp mọi kho). */
-  async emitStockChanged(sku: string, delta: number): Promise<void> {
+  /** Phát event báo Ecommerce cộng/trừ availableQty theo delta (đã gộp mọi kho).
+   * jobId = refType:refId:sku — deterministic theo đúng chứng từ nguồn (khớp
+   * StockMovement.refType/refId), để BullMQ tự chặn tạo job trùng nếu bị gọi
+   * lặp cho cùng 1 biến động thật (vd retry ở tầng trên) — tránh Ecom cộng
+   * dồn availableQty 2 lần cho cùng 1 sự kiện. */
+  async emitStockChanged(
+    sku: string,
+    delta: number,
+    refType: string,
+    refId: Types.ObjectId | string,
+  ): Promise<void> {
     const payload: StockChangedPayload = { sku, delta };
-    await this.stockQueue.add(EVENTS.STOCK_CHANGED, payload);
-    this.logger.log(`stock.changed → sku=${sku} delta=${delta}`);
+    const jobId = `${refType}:${refId.toString()}:${sku}`;
+    await this.stockQueue.add(EVENTS.STOCK_CHANGED, payload, { jobId });
+    this.logger.log(`stock.changed → sku=${sku} delta=${delta} jobId=${jobId}`);
   }
 
   /**
    * Tính lại available tổng (mọi kho) của 1 item rồi báo Ecommerce.
    * Dùng sau khi ghi stock_balances trong các nghiệp vụ WMS.
    */
-  async publishAvailableForItem(itemId: string, delta: number): Promise<void> {
+  async publishAvailableForItem(
+    itemId: string,
+    delta: number,
+    refType: string,
+    refId: Types.ObjectId | string,
+  ): Promise<void> {
     const item = await this.stockRepo.findSkuById(itemId);
     if (!item) return;
-    await this.emitStockChanged(item.sku, delta);
+    await this.emitStockChanged(item.sku, delta, refType, refId);
   }
 
   /** Tạo WarehouseItem mới. Chặn trùng sku kể cả với bản ghi đã soft-delete. */
