@@ -245,4 +245,15 @@ export class StockRepository {
 
     return new Map(rows.map((r) => [r.shelfId, r.occupied]));
   }
+
+  /** Danh sách shelf đã có tồn (>0) của 1 item trong kho — dùng xếp hạng ưu tiên SKU-affinity khi gợi ý put-away. */
+  async findShelfIdsWithItem(
+    itemId: Types.ObjectId,
+    warehouseId: Types.ObjectId,
+  ): Promise<Set<string>> {
+    const shelfIds = await this.inventoryModel
+      .distinct('shelfId', { itemId, warehouseId, quantity: { $gt: 0 } })
+      .exec();
+    return new Set(shelfIds.map((id: Types.ObjectId) => id.toString()));
+  }
 }

@@ -62,9 +62,15 @@ export class PutAwaySuggestionService {
       return { suggestions: [], warning: 'NO_SHELF_FITS' };
     }
 
-    const occupiedByShelf = await this.stockRepo.findOccupiedVolumeByWarehouse(
-      new Types.ObjectId(warehouseId),
-    );
+    const [occupiedByShelf, shelfIdsWithSameSku] = await Promise.all([
+      this.stockRepo.findOccupiedVolumeByWarehouse(
+        new Types.ObjectId(warehouseId),
+      ),
+      this.stockRepo.findShelfIdsWithItem(
+        item._id,
+        new Types.ObjectId(warehouseId),
+      ),
+    ]);
     const defaultFillFactor =
       this.configService.get<number>('PUTAWAY_DEFAULT_FILL_FACTOR') ??
       DEFAULT_FILL_FACTOR;
@@ -84,7 +90,7 @@ export class PutAwaySuggestionService {
         shelf,
         capacity,
         free,
-        hasSameSku: occupiedByShelf.has(shelf._id.toString()) && occupied > 0,
+        hasSameSku: shelfIdsWithSameSku.has(shelf._id.toString()),
       });
     }
 

@@ -4,6 +4,7 @@ import { PutAwaySuggestionService } from './put-away-suggestion.service';
 const makeStockRepo = () => ({
   findItemBySku: jest.fn(),
   findOccupiedVolumeByWarehouse: jest.fn(),
+  findShelfIdsWithItem: jest.fn(),
 });
 
 const makeWarehouseRepo = () => ({
@@ -105,6 +106,11 @@ describe('PutAwaySuggestionService', () => {
     // shelfSameSku đã chiếm 1 chút thể tích (bởi chính SKU này) — vẫn còn đủ chỗ.
     stockRepo.findOccupiedVolumeByWarehouse.mockResolvedValue(
       new Map([[shelfSameSku._id.toString(), 1000]]),
+    );
+    // findShelfIdsWithItem xác định chính xác shelf nào có ĐÚNG itemId này
+    // (không suy diễn từ occupied>0, vốn gộp mọi SKU trên shelf).
+    stockRepo.findShelfIdsWithItem.mockResolvedValue(
+      new Set([shelfSameSku._id.toString()]),
     );
 
     const result = await svc.suggest('SKU-A', 10, warehouseId);

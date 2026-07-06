@@ -220,4 +220,24 @@ describe('StockRepository', () => {
       expect(result.has('shelf-c')).toBe(false);
     });
   });
+
+  describe('findShelfIdsWithItem', () => {
+    it('trả về Set các shelfId có InventoryStock của itemId trong kho', async () => {
+      const itemId = new Types.ObjectId();
+      const warehouseId = new Types.ObjectId();
+      const shelfA = new Types.ObjectId();
+      inventoryModel.distinct = jest
+        .fn()
+        .mockReturnValue({ exec: jest.fn().mockResolvedValue([shelfA]) });
+
+      const result = await repo.findShelfIdsWithItem(itemId, warehouseId);
+
+      expect(inventoryModel.distinct).toHaveBeenCalledWith('shelfId', {
+        itemId,
+        warehouseId,
+        quantity: { $gt: 0 },
+      });
+      expect(result.has(shelfA.toString())).toBe(true);
+    });
+  });
 });
