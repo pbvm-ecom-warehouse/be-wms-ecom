@@ -7,6 +7,8 @@ import { Types } from 'mongoose';
 import { StockRepository } from './stock.repository';
 import type { CreateWarehouseItemData } from './stock.repository';
 import type { WarehouseItemDocument } from './schemas/warehouse-item.schema';
+import type { QueryWarehouseItemDto } from './dto/query-warehouse-item.dto';
+import type { UpdateWarehouseItemDto } from './dto/create-warehouse-item.dto';
 
 /**
  * Ví dụ PRODUCER: khi `available` (= onHand - reserved - expired) của 1 SKU đổi
@@ -64,5 +66,32 @@ export class StockService {
       throw new AppException('STOCK_ITEM_SKU_CONFLICT');
     }
     return this.stockRepo.createItem(data, new Types.ObjectId(actorId));
+  }
+
+  async listWarehouseItems(
+    query: QueryWarehouseItemDto,
+  ): Promise<{ data: WarehouseItemDocument[]; total: number }> {
+    return this.stockRepo.findItems(query);
+  }
+
+  async getWarehouseItem(id: string): Promise<WarehouseItemDocument> {
+    const doc = await this.stockRepo.findItemByIdDocument(id);
+    if (!doc) throw new AppException('STOCK_ITEM_NOT_FOUND');
+    return doc;
+  }
+
+  async updateWarehouseItem(
+    id: string,
+    dto: UpdateWarehouseItemDto,
+    actorId: string,
+  ): Promise<WarehouseItemDocument> {
+    const doc = await this.stockRepo.updateItem(id, dto, actorId);
+    if (!doc) throw new AppException('STOCK_ITEM_NOT_FOUND');
+    return doc;
+  }
+
+  async deleteWarehouseItem(id: string, actorId: string): Promise<void> {
+    const deleted = await this.stockRepo.softDeleteItem(id, actorId);
+    if (!deleted) throw new AppException('STOCK_ITEM_NOT_FOUND');
   }
 }

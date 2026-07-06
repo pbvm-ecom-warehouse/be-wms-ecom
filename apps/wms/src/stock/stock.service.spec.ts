@@ -5,6 +5,10 @@ const makeRepo = () => ({
   findSkuById: jest.fn(),
   findItemBySku: jest.fn(),
   createItem: jest.fn(),
+  findItems: jest.fn(),
+  findItemByIdDocument: jest.fn(),
+  updateItem: jest.fn(),
+  softDeleteItem: jest.fn(),
 });
 
 const makeQueue = () => ({
@@ -108,6 +112,89 @@ describe('StockService', () => {
       await svc.publishAvailableForItem('item-not-found', 10, 'grn', 'grn1');
 
       expect(queue.add).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('listWarehouseItems', () => {
+    it('forward query xuống repo.findItems, trả nguyên kết quả', async () => {
+      const mockResult = { data: [{ sku: 'A' }], total: 1 };
+      repo.findItems.mockResolvedValue(mockResult);
+
+      const result = await svc.listWarehouseItems({ search: 'a' });
+
+      expect(repo.findItems).toHaveBeenCalledWith({ search: 'a' });
+      expect(result).toBe(mockResult);
+    });
+  });
+
+  describe('getWarehouseItem', () => {
+    it('trả document khi tìm thấy', async () => {
+      const mockDoc = { _id: new Types.ObjectId(), sku: 'SKU-1' };
+      repo.findItemByIdDocument.mockResolvedValue(mockDoc);
+
+      const result = await svc.getWarehouseItem('item1');
+
+      expect(repo.findItemByIdDocument).toHaveBeenCalledWith('item1');
+      expect(result).toBe(mockDoc);
+    });
+
+    it('throw STOCK_ITEM_NOT_FOUND khi không tìm thấy', async () => {
+      repo.findItemByIdDocument.mockResolvedValue(null);
+
+      await expect(svc.getWarehouseItem('missing')).rejects.toMatchObject({
+        code: 'STOCK_ITEM_NOT_FOUND',
+      });
+    });
+  });
+
+  describe('updateWarehouseItem', () => {
+    const actorId = new Types.ObjectId().toString();
+
+    it('trả document đã cập nhật khi thành công', async () => {
+      const mockDoc = { _id: new Types.ObjectId(), name: 'Tên mới' };
+      repo.updateItem.mockResolvedValue(mockDoc);
+
+      const result = await svc.updateWarehouseItem(
+        'item1',
+        { name: 'Tên mới' },
+        actorId,
+      );
+
+      expect(repo.updateItem).toHaveBeenCalledWith(
+        'item1',
+        { name: 'Tên mới' },
+        actorId,
+      );
+      expect(result).toBe(mockDoc);
+    });
+
+    it('throw STOCK_ITEM_NOT_FOUND khi không tìm thấy/đã xoá', async () => {
+      repo.updateItem.mockResolvedValue(null);
+
+      await expect(
+        svc.updateWarehouseItem('missing', { name: 'X' }, actorId),
+      ).rejects.toMatchObject({ code: 'STOCK_ITEM_NOT_FOUND' });
+    });
+  });
+
+  describe('deleteWarehouseItem', () => {
+    const actorId = new Types.ObjectId().toString();
+
+    it('gọi softDeleteItem, không throw khi thành công', async () => {
+      repo.softDeleteItem.mockResolvedValue(true);
+
+      await expect(
+        svc.deleteWarehouseItem('item1', actorId),
+      ).resolves.toBeUndefined();
+      expect(repo.softDeleteItem).toHaveBeenCalledWith('item1', actorId);
+    });
+
+    it('throw STOCK_ITEM_NOT_FOUND khi không tìm thấy/đã xoá', async () => {
+      repo.softDeleteItem.mockResolvedValue(false);
+
+      await expect(
+        svc.deleteWarehouseItem('missing', actorId),
+      ).rejects.toMatchObject({ code: 'STOCK_ITEM_NOT_FOUND' });
     });
   });
 });
