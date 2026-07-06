@@ -192,4 +192,53 @@ export class StockRepository {
     ]);
     return doc;
   }
+
+  /**
+   * Tính thể tích đã chiếm (cm³) của mọi shelf trong 1 kho, group theo shelfId,
+   * tổng hợp Σ(quantity × unitVolume) trên mọi SKU/lô của shelf đó. Dòng
+   * InventoryStock có item thiếu depth/width/height bị loại khỏi tổng (không
+   * throw) — occupied chỉ tính trên item đã khai đủ kích thước.
+   */
+  async findOccupiedVolumeByWarehouse(
+    warehouseId: Types.ObjectId,
+  ): Promise<Map<string, number>> {
+    const rows = await this.inventoryModel.aggregate<{
+      shelfId: string;
+      occupied: number;
+    }>([
+      { $match: { warehouseId } },
+      {
+        $lookup: {
+          from: 'warehouse_items',
+          localField: 'itemId',
+          foreignField: '_id',
+          as: 'item',
+        },
+      },
+      { $unwind: '$item' },
+      {
+        $match: {
+          'item.depth': { $exists: true, $ne: null },
+          'item.width': { $exists: true, $ne: null },
+          'item.height': { $exists: true, $ne: null },
+        },
+      },
+      {
+        $group: {
+          _id: '$shelfId',
+          occupied: {
+            $sum: {
+              $multiply: [
+                '$quantity',
+                { $multiply: ['$item.depth', '$item.width', '$item.height'] },
+              ],
+            },
+          },
+        },
+      },
+      { $project: { _id: 0, shelfId: { $toString: '$_id' }, occupied: 1 } },
+    ]);
+
+    return new Map(rows.map((r) => [r.shelfId, r.occupied]));
+  }
 }

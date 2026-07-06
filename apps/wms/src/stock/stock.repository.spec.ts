@@ -203,4 +203,21 @@ describe('StockRepository', () => {
       expect(result).toBe(mockDoc);
     });
   });
+
+  describe('findOccupiedVolumeByWarehouse', () => {
+    it('gọi aggregate với pipeline lookup warehouse_items và group theo shelfId', async () => {
+      const warehouseId = new Types.ObjectId();
+      inventoryModel.aggregate = jest.fn().mockResolvedValue([
+        { shelfId: 'shelf-a', occupied: 240 },
+        { shelfId: 'shelf-b', occupied: 0 },
+      ]);
+
+      const result = await repo.findOccupiedVolumeByWarehouse(warehouseId);
+
+      expect(inventoryModel.aggregate).toHaveBeenCalledTimes(1);
+      expect(result.get('shelf-a')).toBe(240);
+      expect(result.get('shelf-b')).toBe(0);
+      expect(result.has('shelf-c')).toBe(false);
+    });
+  });
 });
