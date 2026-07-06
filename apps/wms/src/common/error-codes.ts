@@ -51,6 +51,26 @@ export const WMS_ERRORS = {
     status: HttpStatus.BAD_REQUEST,
     message: 'Số lượng quét vượt quá số lượng còn lại cần xếp',
   },
+  GOODS_ISSUE_NOT_FOUND: {
+    status: HttpStatus.NOT_FOUND,
+    message: 'Không tìm thấy phiếu xuất kho',
+  },
+  GOODS_ISSUE_ITEM_NOT_FOUND: {
+    status: HttpStatus.NOT_FOUND,
+    message: 'Không tìm thấy mặt hàng theo barcode đã quét',
+  },
+  GOODS_ISSUE_SHELF_NOT_FOUND: {
+    status: HttpStatus.NOT_FOUND,
+    message: 'Không tìm thấy vị trí theo barcode đã quét',
+  },
+  GOODS_ISSUE_ITEM_MISMATCH: {
+    status: HttpStatus.BAD_REQUEST,
+    message: 'Mặt hàng quét được không thuộc phiếu xuất kho này',
+  },
+  GOODS_ISSUE_QTY_EXCEEDS: {
+    status: HttpStatus.BAD_REQUEST,
+    message: 'Số lượng quét vượt quá số lượng còn lại cần xuất',
+  },
 } as const satisfies Record<
   string,
   { status: HttpStatusType; message: string }
