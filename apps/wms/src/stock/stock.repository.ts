@@ -202,6 +202,14 @@ export class StockRepository {
    * danh mục active), không liên quan việc tồn kho vật lý còn chiếm chỗ trên
    * shelf hay không — occupied phải phản ánh đúng quantity thật trong
    * InventoryStock bất kể item đã soft-delete.
+   * quantity > 0 — nhất quán với findShelfIdsWithItem, tránh 2 query cùng đọc
+   * InventoryStock nhưng khác điều kiện lọc ngầm định.
+   * Map trả về là warehouse-wide (bao gồm cả shelf staging/đã soft-delete),
+   * KHÔNG lọc theo trạng thái shelf ở đây vì sẽ cần join thêm sang collection
+   * `shelves` mà không đổi kết quả dùng thực tế: caller (PutAwaySuggestionService)
+   * chỉ tra map này cho các shelfId đã lấy từ findShelvesByWarehouse (nơi đã lọc
+   * staging/deleted/thiếu kích thước) nên các entry ngoài phạm vi candidate
+   * đơn giản là không bao giờ được .get().
    */
   async findOccupiedVolumeByWarehouse(
     warehouseId: Types.ObjectId,
@@ -210,7 +218,7 @@ export class StockRepository {
       shelfId: string;
       occupied: number;
     }>([
-      { $match: { warehouseId } },
+      { $match: { warehouseId, quantity: { $gt: 0 } } },
       {
         $lookup: {
           from: 'warehouse_items',
@@ -246,7 +254,12 @@ export class StockRepository {
     return new Map(rows.map((r) => [r.shelfId, r.occupied]));
   }
 
-  /** Danh sách shelf đã có tồn (>0) của 1 item trong kho — dùng xếp hạng ưu tiên SKU-affinity khi gợi ý put-away. */
+  /**
+   * Danh sách shelf đã có tồn (>0) của 1 item trong kho — dùng xếp hạng ưu tiên
+   * SKU-affinity khi gợi ý put-away.
+   * quantity > 0 — nhất quán với findOccupiedVolumeByWarehouse, tránh 2 query
+   * cùng đọc InventoryStock nhưng khác điều kiện lọc ngầm định.
+   */
   async findShelfIdsWithItem(
     itemId: Types.ObjectId,
     warehouseId: Types.ObjectId,
