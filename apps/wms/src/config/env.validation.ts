@@ -43,6 +43,13 @@ const envSchema = z.object({
   // ở main.ts (không cho mở allow-all kèm credentials).
   WMS_CORS_ORIGINS: z.string().optional(),
 
+  // Fill factor mặc định khi Shelf.fillFactor = null — dùng cho gợi ý put-away (S2-05).
+  PUTAWAY_DEFAULT_FILL_FACTOR: z.coerce
+    .number()
+    .min(0)
+    .max(1)
+    .default(0.75),
+
   WMS_PORT: z.coerce.number().int().positive(),
 });
 
