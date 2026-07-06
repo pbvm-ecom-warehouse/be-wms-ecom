@@ -241,7 +241,12 @@ export class GoodsReceiptNoteService {
 
     // Ngoài transaction — BullMQ không tham gia Mongo transaction
     for (const [itemId, totalBaseQty] of baseQtyByItem) {
-      await this.stockService.publishAvailableForItem(itemId, totalBaseQty);
+      await this.stockService.publishAvailableForItem(
+        itemId,
+        totalBaseQty,
+        'grn',
+        grn._id,
+      );
     }
 
     const confirmed = await this.repo.findGoodsReceiptNoteById(id);

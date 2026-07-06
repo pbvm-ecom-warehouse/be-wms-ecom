@@ -300,6 +300,8 @@ describe('GoodsReceiptNoteService', () => {
       expect(stockService.publishAvailableForItem).toHaveBeenCalledWith(
         itemId,
         20,
+        'grn',
+        grnId,
       );
       expect(result).toEqual(confirmed);
     });
@@ -445,6 +447,8 @@ describe('GoodsReceiptNoteService', () => {
       expect(stockService.publishAvailableForItem).toHaveBeenCalledWith(
         itemId,
         35,
+        'grn',
+        grnId,
       );
 
       // createTaskFromGrn được gọi đúng 1 lần với putAwayLines giữ đúng lotId riêng
@@ -521,6 +525,8 @@ describe('GoodsReceiptNoteService', () => {
       expect(stockService.publishAvailableForItem).toHaveBeenCalledWith(
         itemId,
         100,
+        'grn',
+        grnId,
       );
     });
   });
