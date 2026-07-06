@@ -45,6 +45,18 @@ export type CreateWarehouseItemData = {
   height?: number;
 };
 
+export type QueryWarehouseItemInput = {
+  search?: string;
+  type?: ItemType;
+  isActive?: boolean;
+  page?: number;
+  limit?: number;
+};
+
+export type UpdateWarehouseItemData = Partial<
+  Omit<CreateWarehouseItemData, 'sku'>
+>;
+
 @Injectable()
 export class StockRepository {
   constructor(
@@ -68,6 +80,11 @@ export class StockRepository {
   /** Đọc đầy đủ WarehouseItem theo id — dùng khi GRN cần isPerishable/altUnits/unit. */
   findItemById(itemId: string) {
     return this.itemModel.findById(itemId).lean().exec();
+  }
+
+  /** Đọc WarehouseItem theo id, KHÔNG lean — dùng cho controller (cần .toObject() cho response DTO). */
+  findItemByIdDocument(itemId: string) {
+    return this.itemModel.findById(itemId).exec();
   }
 
   /** Tra WarehouseItem theo barcode chính hoặc altBarcodes — dùng khi RECEIVER quét SKU lúc put-away. */
@@ -268,5 +285,61 @@ export class StockRepository {
       .distinct('shelfId', { itemId, warehouseId, quantity: { $gt: 0 } })
       .exec();
     return new Set(shelfIds.map((id: Types.ObjectId) => id.toString()));
+  }
+
+  /** Danh sách WarehouseItem — filter search (sku/name/barcode) + type + isActive, phân trang. */
+  async findItems(
+    query: QueryWarehouseItemInput,
+  ): Promise<{ data: WarehouseItemDocument[]; total: number }> {
+    const page = query.page ?? 1;
+    const limit = query.limit ?? 20;
+    const filter: Record<string, unknown> = { deletedAt: null };
+
+    if (query.type) filter['type'] = query.type;
+    if (query.isActive !== undefined) filter['isActive'] = query.isActive;
+    if (query.search) {
+      filter['$or'] = [
+        { sku: { $regex: query.search, $options: 'i' } },
+        { name: { $regex: query.search, $options: 'i' } },
+        { barcode: { $regex: query.search, $options: 'i' } },
+      ];
+    }
+
+    const [data, total] = await Promise.all([
+      this.itemModel
+        .find(filter)
+        .sort({ sku: 1 })
+        .skip((page - 1) * limit)
+        .limit(limit)
+        .exec(),
+      this.itemModel.countDocuments(filter).exec(),
+    ]);
+    return { data, total };
+  }
+
+  /** Cập nhật WarehouseItem — không sửa sku (bất biến sau khi tạo). */
+  async updateItem(
+    id: string,
+    data: UpdateWarehouseItemData,
+    actorId: string,
+  ): Promise<WarehouseItemDocument | null> {
+    return this.itemModel
+      .findOneAndUpdate(
+        { _id: id, deletedAt: null },
+        { ...data, updatedBy: new Types.ObjectId(actorId) },
+        { new: true },
+      )
+      .exec();
+  }
+
+  /** Soft-delete WarehouseItem — tự do, không check tham chiếu PO/GRN/InventoryStock. */
+  async softDeleteItem(id: string, actorId: string): Promise<boolean> {
+    const res = await this.itemModel
+      .updateOne(
+        { _id: id, deletedAt: null },
+        { deletedAt: new Date(), updatedBy: new Types.ObjectId(actorId) },
+      )
+      .exec();
+    return res.modifiedCount > 0;
   }
 }

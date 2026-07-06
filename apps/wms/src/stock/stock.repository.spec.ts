@@ -6,7 +6,7 @@ import { InventoryStock } from './schemas/inventory-stock.schema';
 import { Lot } from './schemas/lot.schema';
 import { StockBalance } from './schemas/stock-balance.schema';
 import { StockMovement } from './schemas/stock-movement.schema';
-import { WarehouseItem } from './schemas/warehouse-item.schema';
+import { ItemType, WarehouseItem } from './schemas/warehouse-item.schema';
 
 const itemId = new Types.ObjectId();
 const warehouseId = new Types.ObjectId();
@@ -238,6 +238,147 @@ describe('StockRepository', () => {
         quantity: { $gt: 0 },
       });
       expect(result.has(shelfA.toString())).toBe(true);
+    });
+  });
+
+  describe('findItems', () => {
+    it('lọc theo search (sku/name/barcode), type, isActive; luôn kèm deletedAt:null', async () => {
+      warehouseItemModel.find = jest.fn().mockReturnThis();
+      warehouseItemModel.sort = jest.fn().mockReturnThis();
+      warehouseItemModel.skip = jest.fn().mockReturnThis();
+      warehouseItemModel.limit = jest.fn().mockReturnThis();
+      warehouseItemModel.exec = jest.fn().mockResolvedValue([]);
+      warehouseItemModel.countDocuments = jest.fn().mockReturnThis();
+
+      await repo.findItems({
+        search: 'cup',
+        type: ItemType.CUP_BLANK,
+        isActive: true,
+        page: 2,
+        limit: 10,
+      });
+
+      expect(warehouseItemModel.find).toHaveBeenCalledWith({
+        deletedAt: null,
+        type: ItemType.CUP_BLANK,
+        isActive: true,
+        $or: [
+          { sku: { $regex: 'cup', $options: 'i' } },
+          { name: { $regex: 'cup', $options: 'i' } },
+          { barcode: { $regex: 'cup', $options: 'i' } },
+        ],
+      });
+      expect(warehouseItemModel.sort).toHaveBeenCalledWith({ sku: 1 });
+      expect(warehouseItemModel.skip).toHaveBeenCalledWith(10); // (page-1)*limit = (2-1)*10
+      expect(warehouseItemModel.limit).toHaveBeenCalledWith(10);
+    });
+
+    it('mặc định page=1, limit=20, không filter gì khi query rỗng', async () => {
+      warehouseItemModel.find = jest.fn().mockReturnThis();
+      warehouseItemModel.sort = jest.fn().mockReturnThis();
+      warehouseItemModel.skip = jest.fn().mockReturnThis();
+      warehouseItemModel.limit = jest.fn().mockReturnThis();
+      warehouseItemModel.exec = jest.fn().mockResolvedValue([]);
+      warehouseItemModel.countDocuments = jest.fn().mockReturnThis();
+
+      await repo.findItems({});
+
+      expect(warehouseItemModel.find).toHaveBeenCalledWith({ deletedAt: null });
+      expect(warehouseItemModel.skip).toHaveBeenCalledWith(0);
+      expect(warehouseItemModel.limit).toHaveBeenCalledWith(20);
+    });
+
+    it('trả về data + total từ countDocuments', async () => {
+      const mockDocs = [{ sku: 'A' }, { sku: 'B' }];
+      warehouseItemModel.find = jest.fn().mockReturnThis();
+      warehouseItemModel.sort = jest.fn().mockReturnThis();
+      warehouseItemModel.skip = jest.fn().mockReturnThis();
+      warehouseItemModel.limit = jest.fn().mockReturnThis();
+      warehouseItemModel.exec = jest
+        .fn()
+        .mockResolvedValueOnce(mockDocs)
+        .mockResolvedValueOnce(2);
+      warehouseItemModel.countDocuments = jest.fn().mockReturnThis();
+
+      const result = await repo.findItems({});
+
+      expect(result).toEqual({ data: mockDocs, total: 2 });
+    });
+  });
+
+  describe('updateItem', () => {
+    it('gọi findOneAndUpdate với filter deletedAt:null, set updatedBy', async () => {
+      const id = itemId.toString();
+      const actorId = new Types.ObjectId().toString();
+      warehouseItemModel.findOneAndUpdate = jest.fn().mockReturnThis();
+      warehouseItemModel.exec = jest.fn().mockResolvedValue({ _id: itemId });
+
+      await repo.updateItem(id, { name: 'Tên mới' }, actorId);
+
+      expect(warehouseItemModel.findOneAndUpdate).toHaveBeenCalledWith(
+        { _id: id, deletedAt: null },
+        { name: 'Tên mới', updatedBy: new Types.ObjectId(actorId) },
+        { new: true },
+      );
+    });
+
+    it('trả null khi item không tồn tại hoặc đã xoá', async () => {
+      warehouseItemModel.findOneAndUpdate = jest.fn().mockReturnThis();
+      warehouseItemModel.exec = jest.fn().mockResolvedValue(null);
+
+      const result = await repo.updateItem(
+        itemId.toString(),
+        { name: 'X' },
+        new Types.ObjectId().toString(),
+      );
+
+      expect(result).toBeNull();
+    });
+  });
+
+  describe('softDeleteItem', () => {
+    it('set deletedAt + updatedBy khi tìm thấy item chưa xoá', async () => {
+      const id = itemId.toString();
+      const actorId = new Types.ObjectId().toString();
+      warehouseItemModel.updateOne = jest.fn().mockReturnValue({
+        exec: jest.fn().mockResolvedValue({ modifiedCount: 1 }),
+      });
+
+      const result = await repo.softDeleteItem(id, actorId);
+
+      expect(warehouseItemModel.updateOne).toHaveBeenCalledWith(
+        { _id: id, deletedAt: null },
+        { deletedAt: expect.any(Date), updatedBy: new Types.ObjectId(actorId) },
+      );
+      expect(result).toBe(true);
+    });
+
+    it('trả false khi không tìm thấy item (đã xoá hoặc không tồn tại)', async () => {
+      warehouseItemModel.updateOne = jest.fn().mockReturnValue({
+        exec: jest.fn().mockResolvedValue({ modifiedCount: 0 }),
+      });
+
+      const result = await repo.softDeleteItem(
+        itemId.toString(),
+        new Types.ObjectId().toString(),
+      );
+
+      expect(result).toBe(false);
+    });
+  });
+
+  describe('findItemByIdDocument', () => {
+    it('gọi findById không lean, trả document đầy đủ', async () => {
+      const id = itemId.toString();
+      const mockDoc = { _id: itemId, sku: 'SKU-1' };
+      warehouseItemModel.findById = jest.fn().mockReturnThis();
+      warehouseItemModel.exec = jest.fn().mockResolvedValue(mockDoc);
+
+      const result = await repo.findItemByIdDocument(id);
+
+      expect(warehouseItemModel.findById).toHaveBeenCalledWith(id);
+      expect(warehouseItemModel.lean).not.toHaveBeenCalled();
+      expect(result).toBe(mockDoc);
     });
   });
 });
