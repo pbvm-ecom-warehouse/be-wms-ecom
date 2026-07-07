@@ -1,4 +1,8 @@
-import { GoodsIssue, GoodsIssueSchema, GoodsIssueStatus } from './goods-issue.schema';
+import {
+  GoodsIssue,
+  GoodsIssueSchema,
+  GoodsIssueStatus,
+} from './goods-issue.schema';
 
 describe('GoodsIssueSchema', () => {
   it('default status là PENDING', () => {

@@ -29,7 +29,9 @@ describe('GoodsIssueRepository', () => {
 
   describe('findByOrderId', () => {
     it('gọi findOne với đúng orderId', async () => {
-      model.findOne.mockReturnValue({ exec: jest.fn().mockResolvedValue(null) });
+      model.findOne.mockReturnValue({
+        exec: jest.fn().mockResolvedValue(null),
+      });
       const result = await repo.findByOrderId(orderId);
       expect(model.findOne).toHaveBeenCalledWith({ orderId });
       expect(result).toBeNull();

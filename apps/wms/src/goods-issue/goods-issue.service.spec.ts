@@ -82,11 +82,9 @@ describe('GoodsIssueService', () => {
         { sku: 'SKU-1', quantity: 5 },
         { sku: 'SKU-UNKNOWN', quantity: 3 },
       ]);
-      expect(repo.createGoodsIssue).toHaveBeenCalledWith(
-        orderId,
-        warehouseId,
-        [{ itemId, sku: 'SKU-1', quantity: 5 }],
-      );
+      expect(repo.createGoodsIssue).toHaveBeenCalledWith(orderId, warehouseId, [
+        { itemId, sku: 'SKU-1', quantity: 5 },
+      ]);
     });
 
     it('không tạo phiếu nếu không có dòng nào khớp sku', async () => {
@@ -269,9 +267,10 @@ describe('GoodsIssueService', () => {
     });
 
     it('trừ onHand+reserved, ghi movement ISSUE âm, KHÔNG emit goods.issued khi còn dòng chưa xong', async () => {
-      repo.findById
-        .mockResolvedValueOnce(baseGi())
-        .mockResolvedValueOnce({ ...baseGi(), status: GoodsIssueStatus.PENDING });
+      repo.findById.mockResolvedValueOnce(baseGi()).mockResolvedValueOnce({
+        ...baseGi(),
+        status: GoodsIssueStatus.PENDING,
+      });
       stockRepo.findItemByBarcode.mockResolvedValue({ _id: itemId });
       warehouseRepo.findShelfByCode.mockResolvedValue({
         _id: shelfId,
@@ -323,9 +322,10 @@ describe('GoodsIssueService', () => {
     });
 
     it('emit goods.issued đúng 1 lần khi markConfirmedIfAllDone trả true', async () => {
-      repo.findById
-        .mockResolvedValueOnce(baseGi())
-        .mockResolvedValueOnce({ ...baseGi(), status: GoodsIssueStatus.CONFIRMED });
+      repo.findById.mockResolvedValueOnce(baseGi()).mockResolvedValueOnce({
+        ...baseGi(),
+        status: GoodsIssueStatus.CONFIRMED,
+      });
       stockRepo.findItemByBarcode.mockResolvedValue({ _id: itemId });
       warehouseRepo.findShelfByCode.mockResolvedValue({
         _id: shelfId,

@@ -445,9 +445,7 @@ describe('StockRepository', () => {
       inventoryModel.sort = jest.fn().mockReturnThis();
       inventoryModel.exec = jest
         .fn()
-        .mockResolvedValue([
-          { shelfId: shelfA, lotId: null, quantity: 20 },
-        ]);
+        .mockResolvedValue([{ shelfId: shelfA, lotId: null, quantity: 20 }]);
 
       const result = await repo.findAvailableStockForPick(
         pickItemId,
