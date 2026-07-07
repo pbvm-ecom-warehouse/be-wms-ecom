@@ -383,7 +383,7 @@ describe('StockRepository', () => {
   });
 
   describe('findAvailableStockForPick', () => {
-    it('hàng perishable: dùng aggregate join Lot, sắp expiryDate tăng dần (FEFO), loại EXPIRED trong pipeline', async () => {
+    it('hàng perishable: dùng aggregate join Lot + Shelf, sắp expiryDate tăng dần (FEFO), loại EXPIRED trong pipeline, trả kèm shelfCode', async () => {
       const pickItemId = new Types.ObjectId();
       const pickWarehouseId = new Types.ObjectId();
       const lotAShelf = new Types.ObjectId();
@@ -392,6 +392,7 @@ describe('StockRepository', () => {
       inventoryModel.aggregate = jest.fn().mockResolvedValue([
         {
           shelfId: lotAShelf,
+          shelfCode: 'A1-1',
           lotId: lotA,
           lotNumber: 'LOT-A',
           expiryDate: new Date('2026-07-01'),
@@ -425,9 +426,19 @@ describe('StockRepository', () => {
               'ACTIVE',
         ),
       ).toBe(true);
+      // Phải join sang collection shelves để lấy code (barcode PICKER đọc/quét) —
+      // không chỉ trả shelfId (ObjectId nội bộ, người dùng không đọc được).
+      expect(
+        pipeline.some(
+          (stage) =>
+            '$lookup' in stage &&
+            (stage['$lookup'] as Record<string, unknown>)['from'] === 'shelves',
+        ),
+      ).toBe(true);
       expect(result).toEqual([
         {
           shelfId: lotAShelf,
+          shelfCode: 'A1-1',
           lotId: lotA,
           lotNumber: 'LOT-A',
           expiryDate: new Date('2026-07-01'),
@@ -436,16 +447,16 @@ describe('StockRepository', () => {
       ]);
     });
 
-    it('hàng không perishable: query lotId=null, sắp quantity giảm dần', async () => {
+    it('hàng không perishable: dùng aggregate join Shelf, lotId=null, sắp quantity giảm dần, trả kèm shelfCode', async () => {
       const pickItemId = new Types.ObjectId();
       const pickWarehouseId = new Types.ObjectId();
       const shelfA = new Types.ObjectId();
 
-      inventoryModel.find = jest.fn().mockReturnThis();
-      inventoryModel.sort = jest.fn().mockReturnThis();
-      inventoryModel.exec = jest
+      inventoryModel.aggregate = jest
         .fn()
-        .mockResolvedValue([{ shelfId: shelfA, lotId: null, quantity: 20 }]);
+        .mockResolvedValue([
+          { shelfId: shelfA, shelfCode: 'B2-3', quantity: 20 },
+        ]);
 
       const result = await repo.findAvailableStockForPick(
         pickItemId,
@@ -453,16 +464,29 @@ describe('StockRepository', () => {
         false,
       );
 
-      expect(inventoryModel.find).toHaveBeenCalledWith({
-        itemId: pickItemId,
-        warehouseId: pickWarehouseId,
-        lotId: null,
-        quantity: { $gt: 0 },
+      expect(inventoryModel.aggregate).toHaveBeenCalledTimes(1);
+      const pipeline = (inventoryModel.aggregate as jest.Mock).mock
+        .calls[0][0] as Record<string, unknown>[];
+      expect(pipeline[0]).toMatchObject({
+        $match: {
+          itemId: pickItemId,
+          warehouseId: pickWarehouseId,
+          lotId: null,
+          quantity: { $gt: 0 },
+        },
       });
-      expect(inventoryModel.sort).toHaveBeenCalledWith({ quantity: -1 });
+      expect(
+        pipeline.some(
+          (stage) =>
+            '$lookup' in stage &&
+            (stage['$lookup'] as Record<string, unknown>)['from'] === 'shelves',
+        ),
+      ).toBe(true);
+      expect(pipeline.some((stage) => '$sort' in stage)).toBe(true);
       expect(result).toEqual([
         {
           shelfId: shelfA,
+          shelfCode: 'B2-3',
           lotId: null,
           lotNumber: null,
           expiryDate: null,

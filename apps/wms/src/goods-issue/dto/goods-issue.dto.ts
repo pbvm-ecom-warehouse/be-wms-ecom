@@ -127,6 +127,12 @@ export class PickSuggestionResponseDto {
   shelfId!: string;
 
   @Expose()
+  @ApiProperty({
+    description: 'Barcode dán trên kệ — PICKER quét/đọc để tìm vị trí',
+  })
+  shelfCode!: string;
+
+  @Expose()
   @Transform(({ obj }: { obj: { lotId?: Types.ObjectId | null } }) =>
     obj.lotId ? obj.lotId.toString() : null,
   )

@@ -59,6 +59,8 @@ export type UpdateWarehouseItemData = Partial<
 
 export interface PickSuggestion {
   shelfId: Types.ObjectId;
+  /** Barcode dán trên kệ (Shelf.code) — PICKER quét/đọc để tìm đúng vị trí. */
+  shelfCode: string;
   lotId: Types.ObjectId | null;
   lotNumber: string | null;
   expiryDate: Date | null;
@@ -352,8 +354,10 @@ export class StockRepository {
   }
 
   /**
-   * Gợi ý vị trí pick cho 1 item tại 1 kho (UC-05).
-   * isPerishable=true: join Lot (status=ACTIVE, loại EXPIRED), sắp expiryDate tăng dần (FEFO).
+   * Gợi ý vị trí pick cho 1 item tại 1 kho (UC-05). Luôn join sang collection
+   * `shelves` để trả kèm `code` (barcode dán trên kệ) — PICKER cần mã đọc/quét
+   * được để tìm đúng vị trí, không phải `shelfId` (ObjectId nội bộ Mongo).
+   * isPerishable=true: join thêm Lot (status=ACTIVE, loại EXPIRED), sắp expiryDate tăng dần (FEFO).
    * isPerishable=false: chỉ lotId=null, sắp quantity giảm dần (ưu tiên shelf nhiều hàng nhất).
    */
   async findAvailableStockForPick(
@@ -361,13 +365,45 @@ export class StockRepository {
     warehouseId: Types.ObjectId,
     isPerishable: boolean,
   ): Promise<PickSuggestion[]> {
+    const shelfLookupStage = {
+      $lookup: {
+        from: 'shelves',
+        localField: 'shelfId',
+        foreignField: '_id',
+        as: 'shelf',
+      },
+    };
+    const unwindShelfStage = { $unwind: '$shelf' };
+
     if (!isPerishable) {
-      const rows = await this.inventoryModel
-        .find({ itemId, warehouseId, lotId: null, quantity: { $gt: 0 } })
-        .sort({ quantity: -1 })
-        .exec();
+      const rows = await this.inventoryModel.aggregate<{
+        shelfId: Types.ObjectId;
+        shelfCode: string;
+        quantity: number;
+      }>([
+        {
+          $match: {
+            itemId,
+            warehouseId,
+            lotId: null,
+            quantity: { $gt: 0 },
+          },
+        },
+        shelfLookupStage,
+        unwindShelfStage,
+        { $sort: { quantity: -1 } },
+        {
+          $project: {
+            _id: 0,
+            shelfId: 1,
+            shelfCode: '$shelf.code',
+            quantity: 1,
+          },
+        },
+      ]);
       return rows.map((r) => ({
         shelfId: r.shelfId,
+        shelfCode: r.shelfCode,
         lotId: null,
         lotNumber: null,
         expiryDate: null,
@@ -377,6 +413,7 @@ export class StockRepository {
 
     const rows = await this.inventoryModel.aggregate<{
       shelfId: Types.ObjectId;
+      shelfCode: string;
       lotId: Types.ObjectId;
       lotNumber: string;
       expiryDate: Date;
@@ -400,11 +437,14 @@ export class StockRepository {
       },
       { $unwind: '$lot' },
       { $match: { 'lot.status': LotStatus.ACTIVE } },
+      shelfLookupStage,
+      unwindShelfStage,
       { $sort: { 'lot.expiryDate': 1 } },
       {
         $project: {
           _id: 0,
           shelfId: 1,
+          shelfCode: '$shelf.code',
           lotId: 1,
           lotNumber: '$lot.lotNumber',
           expiryDate: '$lot.expiryDate',
@@ -415,6 +455,7 @@ export class StockRepository {
 
     return rows.map((r) => ({
       shelfId: r.shelfId,
+      shelfCode: r.shelfCode,
       lotId: r.lotId,
       lotNumber: r.lotNumber,
       expiryDate: r.expiryDate,
