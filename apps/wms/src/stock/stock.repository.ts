@@ -57,6 +57,14 @@ export type UpdateWarehouseItemData = Partial<
   Omit<CreateWarehouseItemData, 'sku'>
 >;
 
+export interface PickSuggestion {
+  shelfId: Types.ObjectId;
+  lotId: Types.ObjectId | null;
+  lotNumber: string | null;
+  expiryDate: Date | null;
+  quantity: number;
+}
+
 @Injectable()
 export class StockRepository {
   constructor(
@@ -341,5 +349,76 @@ export class StockRepository {
       )
       .exec();
     return res.modifiedCount > 0;
+  }
+
+  /**
+   * Gợi ý vị trí pick cho 1 item tại 1 kho (UC-05).
+   * isPerishable=true: join Lot (status=ACTIVE, loại EXPIRED), sắp expiryDate tăng dần (FEFO).
+   * isPerishable=false: chỉ lotId=null, sắp quantity giảm dần (ưu tiên shelf nhiều hàng nhất).
+   */
+  async findAvailableStockForPick(
+    itemId: Types.ObjectId,
+    warehouseId: Types.ObjectId,
+    isPerishable: boolean,
+  ): Promise<PickSuggestion[]> {
+    if (!isPerishable) {
+      const rows = await this.inventoryModel
+        .find({ itemId, warehouseId, lotId: null, quantity: { $gt: 0 } })
+        .sort({ quantity: -1 })
+        .exec();
+      return rows.map((r) => ({
+        shelfId: r.shelfId,
+        lotId: null,
+        lotNumber: null,
+        expiryDate: null,
+        quantity: r.quantity,
+      }));
+    }
+
+    const rows = await this.inventoryModel.aggregate<{
+      shelfId: Types.ObjectId;
+      lotId: Types.ObjectId;
+      lotNumber: string;
+      expiryDate: Date;
+      quantity: number;
+    }>([
+      {
+        $match: {
+          itemId,
+          warehouseId,
+          quantity: { $gt: 0 },
+          lotId: { $ne: null },
+        },
+      },
+      {
+        $lookup: {
+          from: 'lots',
+          localField: 'lotId',
+          foreignField: '_id',
+          as: 'lot',
+        },
+      },
+      { $unwind: '$lot' },
+      { $match: { 'lot.status': LotStatus.ACTIVE } },
+      { $sort: { 'lot.expiryDate': 1 } },
+      {
+        $project: {
+          _id: 0,
+          shelfId: 1,
+          lotId: 1,
+          lotNumber: '$lot.lotNumber',
+          expiryDate: '$lot.expiryDate',
+          quantity: 1,
+        },
+      },
+    ]);
+
+    return rows.map((r) => ({
+      shelfId: r.shelfId,
+      lotId: r.lotId,
+      lotNumber: r.lotNumber,
+      expiryDate: r.expiryDate,
+      quantity: r.quantity,
+    }));
   }
 }
