@@ -19,94 +19,101 @@ async function seed() {
     console.log('Connected successfully.');
 
     const db = mongoose.connection.db;
-    const userCollection = db.collection('users');
 
-    // 1. Seed ECOM_MANAGER (admin)
-    const managerUsername = 'ecom_manager';
-    const managerEmail = 'manager@ecom.com';
-    const managerPassword = 'ManagerPass123!';
-    const managerHash = await bcrypt.hash(managerPassword, 12);
+    // Seed both collections to ensure compatibility with old/new code versions
+    const collections = ['users', 'customers'];
 
-    const existingManager = await userCollection.findOne({ email: managerEmail });
-    if (existingManager) {
-      console.log(`Manager "${managerEmail}" already exists. Updating...`);
-      await userCollection.updateOne(
-        { email: managerEmail },
-        {
-          $set: {
-            username: managerUsername,
-            passwordHash: managerHash,
-            name: 'Ecommerce Manager',
-            type: 'admin',
-            roles: ['ECOM_MANAGER'],
-            status: 'ACTIVE',
-            mustChangePassword: false,
-            updatedAt: new Date(),
-          },
-        }
-      );
-      console.log('Manager updated.');
-    } else {
-      console.log(`Creating new Manager "${managerEmail}"...`);
-      await userCollection.insertOne({
-        username: managerUsername,
-        email: managerEmail,
-        passwordHash: managerHash,
-        name: 'Ecommerce Manager',
-        type: 'admin',
-        roles: ['ECOM_MANAGER'],
-        status: 'ACTIVE',
-        mustChangePassword: false,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      });
-      console.log('Manager created.');
-    }
+    for (const collName of collections) {
+      console.log(`\n--- Seeding collection: ${collName} ---`);
+      const collection = db.collection(collName);
 
-    // 2. Seed Customer
-    const customerEmail = 'customer@ecom.com';
-    const customerPassword = 'CustomerPass123!';
-    const customerHash = await bcrypt.hash(customerPassword, 12);
+      // 1. Seed Manager
+      const managerUsername = 'ecom_manager';
+      const managerEmail = 'manager@ecom.com';
+      const managerPassword = 'ManagerPass123!';
+      const managerHash = await bcrypt.hash(managerPassword, 12);
 
-    const existingCustomer = await userCollection.findOne({ email: customerEmail });
-    if (existingCustomer) {
-      console.log(`Customer "${customerEmail}" already exists. Updating...`);
-      await userCollection.updateOne(
-        { email: customerEmail },
-        {
-          $set: {
-            passwordHash: customerHash,
-            name: 'Ecommerce Customer',
-            type: 'customer',
-            roles: ['customer'],
-            status: 'ACTIVE',
-            emailVerified: true,
-            updatedAt: new Date(),
-          },
-        }
-      );
-      console.log('Customer updated.');
-    } else {
-      console.log(`Creating new Customer "${customerEmail}"...`);
-      await userCollection.insertOne({
-        email: customerEmail,
-        passwordHash: customerHash,
-        name: 'Ecommerce Customer',
-        type: 'customer',
-        roles: ['customer'],
-        status: 'ACTIVE',
-        emailVerified: true,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      });
-      console.log('Customer created.');
+      const existingManager = await collection.findOne({ email: managerEmail });
+      if (existingManager) {
+        console.log(`Manager "${managerEmail}" already exists. Updating in ${collName}...`);
+        await collection.updateOne(
+          { email: managerEmail },
+          {
+            $set: {
+              username: managerUsername,
+              passwordHash: managerHash,
+              name: 'Ecommerce Manager',
+              type: 'admin',
+              roles: ['ECOM_MANAGER'],
+              status: 'ACTIVE',
+              mustChangePassword: false,
+              deletedAt: null,
+              updatedAt: new Date(),
+            },
+          }
+        );
+      } else {
+        console.log(`Creating new Manager "${managerEmail}" in ${collName}...`);
+        await collection.insertOne({
+          username: managerUsername,
+          email: managerEmail,
+          passwordHash: managerHash,
+          name: 'Ecommerce Manager',
+          type: 'admin',
+          roles: ['ECOM_MANAGER'],
+          status: 'ACTIVE',
+          mustChangePassword: false,
+          deletedAt: null,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        });
+      }
+
+      // 2. Seed Customer
+      const customerEmail = 'customer@ecom.com';
+      const customerPassword = 'CustomerPass123!';
+      const customerHash = await bcrypt.hash(customerPassword, 12);
+
+      const existingCustomer = await collection.findOne({ email: customerEmail });
+      if (existingCustomer) {
+        console.log(`Customer "${customerEmail}" already exists. Updating in ${collName}...`);
+        await collection.updateOne(
+          { email: customerEmail },
+          {
+            $set: {
+              passwordHash: customerHash,
+              name: 'Ecommerce Customer',
+              type: 'customer',
+              roles: ['customer'],
+              status: 'ACTIVE',
+              emailVerified: true,
+              deletedAt: null,
+              updatedAt: new Date(),
+            },
+          }
+        );
+      } else {
+        console.log(`Creating new Customer "${customerEmail}" in ${collName}...`);
+        await collection.insertOne({
+          email: customerEmail,
+          passwordHash: customerHash,
+          name: 'Ecommerce Customer',
+          type: 'customer',
+          roles: ['customer'],
+          status: 'ACTIVE',
+          emailVerified: true,
+          deletedAt: null,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        });
+      }
     }
 
   } catch (error) {
     console.error('Seeding failed:', error);
   } finally {
     await mongoose.disconnect();
-    console.log('Database connection closed.');
+    console.log('\nDatabase connection closed.');
   }
 }
 
