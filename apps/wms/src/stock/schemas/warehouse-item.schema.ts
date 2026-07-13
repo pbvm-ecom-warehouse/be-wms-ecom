@@ -90,6 +90,10 @@ export class WarehouseItem {
   @Prop({ default: true })
   isActive!: boolean;
 
+  /** Chỉ có ý nghĩa khi type=CUP_PRINTED — trỏ về WarehouseItem CUP_BLANK gốc dùng làm nguyên liệu in (UC-04). */
+  @Prop({ type: Types.ObjectId })
+  blankItemId?: Types.ObjectId;
+
   // audit master data (5 field theo data-and-mongoose.md)
   @Prop({ type: Types.ObjectId })
   createdBy?: Types.ObjectId;
