@@ -14,12 +14,16 @@ import { Category } from './schemas/category.schema';
 import { Product, ProductStatus } from './schemas/product.schema';
 import { ProductVariant } from './schemas/product-variant.schema';
 import { Types } from 'mongoose';
+import { CacheService } from '../cache/cache.service';
 
 const DUPLICATE_KEY_CODE = 11000;
 
 @Injectable()
 export class CatalogService {
-  constructor(private readonly repo: CatalogRepository) {}
+  constructor(
+    private readonly repo: CatalogRepository,
+    private readonly cacheService: CacheService,
+  ) {}
 
   // ── CATEGORY ─────────────────────────────────────────────────────────────
 
@@ -32,12 +36,14 @@ export class CatalogService {
     }
 
     try {
-      return await this.repo.createCategory({
+      const created = await this.repo.createCategory({
         name: dto.name,
         slug: dto.slug,
         parentId: dto.parentId ? new Types.ObjectId(dto.parentId) : null,
         position: dto.position ?? 0,
       });
+      await this.cacheService.delPattern('ecom:catalog:categories:*');
+      return created;
     } catch (err: unknown) {
       const mongoErr = err as { code?: number };
       if (mongoErr.code === DUPLICATE_KEY_CODE) {
@@ -54,9 +60,17 @@ export class CatalogService {
         'ID danh mục cha không hợp lệ',
       );
     }
+    const cacheKey = `ecom:catalog:categories:parent:${parentId ?? 'all'}`;
+    const cached = await this.cacheService.get<Category[]>(cacheKey);
+    if (cached) return cached;
+
     // parentId='root' -> lấy root (parentId=null); không truyền -> lấy tất cả
-    if (parentId === 'root') return this.repo.listCategories(null);
-    return this.repo.listCategories(parentId);
+    const result = parentId === 'root'
+      ? await this.repo.listCategories(null)
+      : await this.repo.listCategories(parentId);
+
+    await this.cacheService.set(cacheKey, result, 86400); // Cache 24h
+    return result;
   }
 
   async updateCategory(id: string, dto: UpdateCategoryDto) {
@@ -76,6 +90,7 @@ export class CatalogService {
         dto as unknown as Partial<Category>,
       );
       if (!updated) throw new AppException('CATALOG_CATEGORY_NOT_FOUND');
+      await this.cacheService.delPattern('ecom:catalog:categories:*');
       return updated;
     } catch (err: unknown) {
       if (err instanceof AppException) throw err;
@@ -94,6 +109,7 @@ export class CatalogService {
 
     const deleted = await this.repo.deleteCategory(id);
     if (!deleted) throw new AppException('CATALOG_CATEGORY_NOT_FOUND');
+    await this.cacheService.delPattern('ecom:catalog:categories:*');
     return { message: 'Đã xóa danh mục thành công' };
   }
 
@@ -131,12 +147,18 @@ export class CatalogService {
   }
 
   async getProductDetail(slug: string) {
+    const cacheKey = `ecom:catalog:products:detail:${slug}`;
+    const cached = await this.cacheService.get<unknown>(cacheKey);
+    if (cached) return cached;
+
     const product = await this.repo.getProductBySlug(slug);
     if (!product) throw new AppException('CATALOG_PRODUCT_NOT_FOUND');
     const variants = await this.repo.listVariantsByProduct(
       product._id.toString(),
     );
-    return { ...product, variants };
+    const result = { ...product, variants };
+    await this.cacheService.set(cacheKey, result, 3600); // Cache 1h
+    return result;
   }
 
   async updateProduct(id: string, dto: UpdateProductDto) {
@@ -148,11 +170,19 @@ export class CatalogService {
     }
 
     try {
+      const oldProduct = await this.repo.getProductById(id);
+      if (oldProduct) {
+        await this.cacheService.del(`ecom:catalog:products:detail:${oldProduct.slug}`);
+      }
+
       const updated = await this.repo.updateProduct(
         id,
         dto as unknown as Partial<Product>,
       );
       if (!updated) throw new AppException('CATALOG_PRODUCT_NOT_FOUND');
+      if (updated.slug !== oldProduct?.slug) {
+        await this.cacheService.del(`ecom:catalog:products:detail:${updated.slug}`);
+      }
       return updated;
     } catch (err: unknown) {
       if (err instanceof AppException) throw err;
@@ -173,6 +203,7 @@ export class CatalogService {
       status: ProductStatus.ACTIVE,
     });
     if (!updated) throw new AppException('CATALOG_PRODUCT_NOT_FOUND');
+    await this.cacheService.del(`ecom:catalog:products:detail:${updated.slug}`);
     return updated;
   }
 
@@ -188,13 +219,15 @@ export class CatalogService {
     if (!product) throw new AppException('CATALOG_PRODUCT_NOT_FOUND');
 
     try {
-      return await this.repo.createVariant({
+      const created = await this.repo.createVariant({
         sku: dto.sku,
         productId: new Types.ObjectId(dto.productId),
         attributes: dto.attributes ?? {},
         price: dto.price,
         fulfillmentType: dto.fulfillmentType,
       });
+      await this.cacheService.del(`ecom:catalog:products:detail:${product.slug}`);
+      return created;
     } catch (err: unknown) {
       const mongoErr = err as { code?: number };
       if (mongoErr.code === DUPLICATE_KEY_CODE) {
@@ -215,6 +248,10 @@ export class CatalogService {
         dto as unknown as Partial<ProductVariant>,
       );
       if (!updated) throw new AppException('CATALOG_VARIANT_NOT_FOUND');
+      const product = await this.repo.getProductById(updated.productId.toString());
+      if (product) {
+        await this.cacheService.del(`ecom:catalog:products:detail:${product.slug}`);
+      }
       return updated;
     } catch (err: unknown) {
       if (err instanceof AppException) throw err;

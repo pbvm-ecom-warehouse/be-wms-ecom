@@ -1,21 +1,21 @@
 import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
-import { CustomerRefreshToken } from '../schemas/customer-refresh-token.schema';
+import { UserRefreshToken } from '../schemas/user-refresh-token.schema';
 
 @Injectable()
-export class CustomerRefreshTokenRepository {
+export class UserRefreshTokenRepository {
   constructor(
-    @InjectModel(CustomerRefreshToken.name)
-    private readonly model: Model<CustomerRefreshToken>,
+    @InjectModel(UserRefreshToken.name)
+    private readonly model: Model<UserRefreshToken>,
   ) {}
 
   findValid(tokenHash: string) {
     return this.model.findOne({ tokenHash, revokedAt: null }).exec();
   }
 
-  create(customerId: Types.ObjectId, tokenHash: string, expiresAt: Date) {
-    return this.model.create({ customerId, tokenHash, expiresAt });
+  create(userId: Types.ObjectId, tokenHash: string, expiresAt: Date) {
+    return this.model.create({ userId, tokenHash, expiresAt });
   }
 
   revoke(tokenHash: string) {
@@ -25,9 +25,9 @@ export class CustomerRefreshTokenRepository {
     );
   }
 
-  revokeAllForCustomer(customerId: string | Types.ObjectId) {
+  revokeAllForUser(userId: string | Types.ObjectId) {
     return this.model.updateMany(
-      { customerId, revokedAt: null },
+      { userId, revokedAt: null },
       { $set: { revokedAt: new Date() } },
     );
   }

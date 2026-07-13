@@ -238,7 +238,7 @@ export class AddressResponseDto {
   isDefault!: boolean;
 }
 
-export class CustomerResponseDto {
+export class UserResponseDto {
   @Expose()
   @ApiProperty()
   @Transform(({ obj }: { obj: { _id?: { toString(): string } } }) =>
@@ -247,7 +247,7 @@ export class CustomerResponseDto {
   id!: string;
 
   @Expose()
-  @ApiProperty({ example: 'khach@example.com' })
+  @ApiProperty({ example: 'user@example.com' })
   email!: string;
 
   @Expose()
@@ -265,6 +265,14 @@ export class CustomerResponseDto {
   @Expose()
   @ApiProperty({ enum: ['ACTIVE', 'LOCKED'], example: 'ACTIVE' })
   status!: string;
+
+  @Expose()
+  @ApiProperty({ enum: ['customer', 'admin'], example: 'customer' })
+  type!: string;
+
+  @Expose()
+  @ApiProperty({ type: [String], example: [] })
+  roles!: string[];
 
   @Expose()
   @Type(() => AddressResponseDto)

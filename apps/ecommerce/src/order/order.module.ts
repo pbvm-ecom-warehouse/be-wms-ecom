@@ -17,6 +17,7 @@ import { OrderController } from './order.controller';
 import { PaymentController } from './payment.controller';
 import { ReserveConsumer } from './reserve.consumer';
 import { ShipmentConsumer } from './order.consumer';
+import { CacheModule } from '../cache/cache.module';
 
 @Module({
   imports: [
@@ -27,6 +28,7 @@ import { ShipmentConsumer } from './order.consumer';
     BullModule.registerQueue({ name: QUEUES.ORDER }, { name: QUEUES.SHIPMENT }),
     AuthModule,
     CartModule,
+    CacheModule,
   ],
   controllers: [OrderController, PaymentController],
   providers: [

@@ -7,7 +7,7 @@ import {
 import { Reflector } from '@nestjs/core';
 import type { Request } from 'express';
 import { ROLES_KEY } from '../decorators/roles.decorator';
-import { WmsRole } from '../roles';
+import { WmsRole, EcomRole } from '../roles';
 import { AuthUser } from '../jwt-payload.interface';
 
 /**
@@ -33,7 +33,7 @@ export class RolesGuard implements CanActivate {
       .getRequest<Request & { user?: AuthUser }>();
     const roles = req.user?.roles ?? [];
 
-    if (roles.includes(WmsRole.ADMIN)) return true; // ADMIN toàn quyền
+    if (roles.includes(WmsRole.ADMIN) || roles.includes(EcomRole.ECOM_MANAGER)) return true; // ADMIN/ECOM_MANAGER toàn quyền
     if (roles.some((r) => required.includes(r))) return true;
 
     throw new ForbiddenException('Không đủ quyền truy cập tài nguyên này');

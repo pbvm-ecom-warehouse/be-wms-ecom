@@ -21,15 +21,15 @@ import { AppException } from '@app/common';
 import { AuthService } from './auth.service';
 
 function makeService(overrides: Partial<Record<string, any>> = {}) {
-  const customer = { _id: { toString: () => 'c1' }, email: 'a@b.com' };
-  const customerRepo = {
-    findActiveByEmail: jest.fn().mockResolvedValue(customer),
-    markEmailVerified: jest.fn().mockResolvedValue(customer),
-    updatePassword: jest.fn().mockResolvedValue(customer),
-    ...overrides.customerRepo,
+  const user = { _id: { toString: () => 'c1' }, email: 'a@b.com' };
+  const userRepo = {
+    findActiveByEmail: jest.fn().mockResolvedValue(user),
+    markEmailVerified: jest.fn().mockResolvedValue(user),
+    updatePassword: jest.fn().mockResolvedValue(user),
+    ...overrides.userRepo,
   };
   const refreshRepo = {
-    revokeAllForCustomer: jest.fn().mockResolvedValue(undefined),
+    revokeAllForUser: jest.fn().mockResolvedValue(undefined),
   };
   const otpStore = {
     issue: jest.fn().mockResolvedValue(undefined),
@@ -38,7 +38,7 @@ function makeService(overrides: Partial<Record<string, any>> = {}) {
   };
   const notifyQueue = { add: jest.fn().mockResolvedValue(undefined) };
   const svc = new AuthService(
-    customerRepo,
+    userRepo as any,
     refreshRepo as any,
     notifyQueue as any,
     {} as any, // jwt
@@ -46,19 +46,19 @@ function makeService(overrides: Partial<Record<string, any>> = {}) {
     { jwtSecret: 's', jwtExpiresIn: '30d', refreshExpiresIn: '60d' },
     otpStore,
   );
-  return { svc, customerRepo, refreshRepo, otpStore };
+  return { svc, userRepo, refreshRepo, otpStore };
 }
 
 describe('AuthService OTP', () => {
   it('verifyEmail mã đúng → markEmailVerified', async () => {
-    const { svc, customerRepo, otpStore } = makeService();
+    const { svc, userRepo, otpStore } = makeService();
     const res = await svc.verifyEmail('a@b.com', '123456');
     expect(otpStore.verify).toHaveBeenCalledWith(
       'c1',
       'verify_email',
       '123456',
     );
-    expect(customerRepo.markEmailVerified).toHaveBeenCalled();
+    expect(userRepo.markEmailVerified).toHaveBeenCalled();
     expect(res).toEqual({ success: true, emailVerified: true });
   });
 
@@ -72,16 +72,16 @@ describe('AuthService OTP', () => {
   });
 
   it('resetPassword mã đúng → updatePassword + revoke refresh', async () => {
-    const { svc, customerRepo, refreshRepo } = makeService();
+    const { svc, userRepo, refreshRepo } = makeService();
     const res = await svc.resetPassword('a@b.com', '123456', 'NewP@ssw0rd123!');
-    expect(customerRepo.updatePassword).toHaveBeenCalled();
-    expect(refreshRepo.revokeAllForCustomer).toHaveBeenCalled();
+    expect(userRepo.updatePassword).toHaveBeenCalled();
+    expect(refreshRepo.revokeAllForUser).toHaveBeenCalled();
     expect(res).toEqual({ success: true });
   });
 
   it('resetPassword email không tồn tại → AUTH_OTP_INVALID trung lập (không lộ)', async () => {
     const { svc } = makeService({
-      customerRepo: { findActiveByEmail: jest.fn().mockResolvedValue(null) },
+      userRepo: { findActiveByEmail: jest.fn().mockResolvedValue(null) },
     });
     await expect(
       svc.resetPassword('x@y.com', '123456', 'NewP@ssw0rd123!'),
