@@ -168,12 +168,14 @@ export class OrderService {
       // Đơn ly in -> Phát lệnh in sang WMS xưởng in
       await this.orderQueue.add(EVENTS.PRINT_REQUESTED, {
         orderId,
+        warehouseId: order.fulfillWarehouseId,
         items: order.items
           .filter((i) => i.isPrintItem)
           .map((i) => ({
             sku: i.sku,
             quantity: i.quantity,
             designFile: i.designFile,
+            blankSku: i.blankSku,
           })),
       });
       this.logger.log(
