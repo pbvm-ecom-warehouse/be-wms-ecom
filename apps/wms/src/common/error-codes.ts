@@ -71,6 +71,30 @@ export const WMS_ERRORS = {
     status: HttpStatus.BAD_REQUEST,
     message: 'Số lượng quét vượt quá số lượng còn lại cần xuất',
   },
+  PRINT_JOB_NOT_FOUND: {
+    status: HttpStatus.NOT_FOUND,
+    message: 'Không tìm thấy lệnh in',
+  },
+  PRINT_JOB_ITEM_NOT_FOUND: {
+    status: HttpStatus.NOT_FOUND,
+    message: 'Không tìm thấy mặt hàng theo barcode đã quét',
+  },
+  PRINT_JOB_SHELF_NOT_FOUND: {
+    status: HttpStatus.NOT_FOUND,
+    message: 'Không tìm thấy vị trí theo barcode đã quét',
+  },
+  PRINT_JOB_ITEM_MISMATCH: {
+    status: HttpStatus.BAD_REQUEST,
+    message: 'Mặt hàng quét được không thuộc lệnh in này',
+  },
+  PRINT_JOB_QTY_EXCEEDS: {
+    status: HttpStatus.BAD_REQUEST,
+    message: 'Số lượng quét vượt quá số lượng còn lại/đã tiêu thụ',
+  },
+  PRINT_JOB_ITEM_NOT_CONSUMED: {
+    status: HttpStatus.BAD_REQUEST,
+    message: 'Dòng chưa tiêu thụ hết CUP_BLANK, chưa thể xác nhận in xong',
+  },
 } as const satisfies Record<
   string,
   { status: HttpStatusType; message: string }
