@@ -160,6 +160,72 @@ describe('StockCountRepository', () => {
       expect(result).toBe(doc);
     });
 
+    it('cùng itemId nhưng khác shelfId (1 SKU nằm nhiều kệ) — chỉ update đúng dòng theo shelfId', async () => {
+      const otherShelfId = new Types.ObjectId();
+      const otherLotId = new Types.ObjectId();
+      const doc = {
+        _id: 'sc1',
+        items: [
+          {
+            itemId,
+            shelfId,
+            lotId,
+            systemQty: 50,
+            // giả lập kết quả findOneAndUpdate đã $set actualQty/reason cho đúng dòng này
+            actualQty: 45,
+            delta: null,
+            reason: 'Hao hụt',
+          },
+          {
+            // cùng itemId, khác shelfId + khác lotId (null vs set) — dòng này KHÔNG được đụng tới
+            itemId,
+            shelfId: otherShelfId,
+            lotId: otherLotId,
+            systemQty: 30,
+            actualQty: null,
+            delta: null,
+            reason: null,
+          },
+        ],
+        save: jest.fn().mockResolvedValue(undefined),
+      };
+      model.findOneAndUpdate.mockReturnValue({
+        exec: jest.fn().mockResolvedValue(doc),
+      });
+
+      const result = await repo.countItem(
+        'sc1',
+        itemId,
+        shelfId,
+        lotId,
+        45,
+        'Hao hụt',
+      );
+
+      expect(model.findOneAndUpdate).toHaveBeenCalledWith(
+        {
+          _id: 'sc1',
+          items: { $elemMatch: { itemId, shelfId, lotId } },
+        },
+        {
+          $set: {
+            'items.$.actualQty': 45,
+            'items.$.reason': 'Hao hụt',
+          },
+        },
+        { new: true },
+      );
+      expect(doc.items[0].actualQty).toBe(45);
+      expect(doc.items[0].delta).toBe(-5);
+      expect(doc.items[0].reason).toBe('Hao hụt');
+      // dòng cùng itemId nhưng khác shelfId phải hoàn toàn không đổi
+      expect(doc.items[1].actualQty).toBeNull();
+      expect(doc.items[1].delta).toBeNull();
+      expect(doc.items[1].reason).toBeNull();
+      expect(doc.save).toHaveBeenCalled();
+      expect(result).toBe(doc);
+    });
+
     it('trả null nếu không tìm thấy document khớp', async () => {
       model.findOneAndUpdate.mockReturnValue({
         exec: jest.fn().mockResolvedValue(null),
