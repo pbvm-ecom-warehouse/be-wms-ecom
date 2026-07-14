@@ -1,4 +1,8 @@
-import { StockCount, StockCountSchema, StockCountStatus } from './stock-count.schema';
+import {
+  StockCount,
+  StockCountSchema,
+  StockCountStatus,
+} from './stock-count.schema';
 
 describe('StockCountSchema', () => {
   it('default status là DRAFT', () => {
