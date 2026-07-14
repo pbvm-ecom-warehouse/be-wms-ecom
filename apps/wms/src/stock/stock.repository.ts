@@ -88,6 +88,17 @@ export class StockRepository {
     return this.itemModel.findById(itemId).select('sku').lean().exec();
   }
 
+  /** Lấy sku của nhiều mặt hàng theo id (batch) — dùng khi tạo StockCount để tránh N+1 query. */
+  findItemsByIds(
+    itemIds: Types.ObjectId[],
+  ): Promise<{ _id: Types.ObjectId; sku: string }[]> {
+    return this.itemModel
+      .find({ _id: { $in: itemIds } })
+      .select('sku')
+      .lean()
+      .exec();
+  }
+
   /** Đọc đầy đủ WarehouseItem theo id — dùng khi GRN cần isPerishable/altUnits/unit. */
   findItemById(itemId: string) {
     return this.itemModel.findById(itemId).lean().exec();

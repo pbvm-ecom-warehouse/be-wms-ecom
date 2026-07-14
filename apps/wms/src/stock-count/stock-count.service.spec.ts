@@ -17,7 +17,7 @@ const makeStockRepo = () => ({
   upsertInventory: jest.fn(),
   upsertBalance: jest.fn(),
   insertMovement: jest.fn(),
-  findSkuById: jest.fn(),
+  findItemsByIds: jest.fn(),
 });
 
 const makeWarehouseRepo = () => ({
@@ -67,7 +67,9 @@ describe('StockCountService', () => {
       stockRepo.findInventoryByScope.mockResolvedValue([
         { itemId, shelfId, lotId: null, quantity: 50 },
       ]);
-      stockRepo.findSkuById = jest.fn().mockResolvedValue({ sku: 'SKU-1' });
+      stockRepo.findItemsByIds.mockResolvedValue([
+        { _id: itemId, sku: 'SKU-1' },
+      ]);
       repo.createStockCount.mockResolvedValue({ _id: 'sc1' });
 
       await svc.createStockCount(
@@ -80,6 +82,7 @@ describe('StockCountService', () => {
         warehouseId,
         undefined,
       );
+      expect(stockRepo.findItemsByIds).toHaveBeenCalledWith([itemId]);
       expect(repo.createStockCount).toHaveBeenCalledWith(
         warehouseId,
         null,
@@ -107,7 +110,9 @@ describe('StockCountService', () => {
       stockRepo.findInventoryByScope.mockResolvedValue([
         { itemId, shelfId, lotId: null, quantity: 30 },
       ]);
-      stockRepo.findSkuById = jest.fn().mockResolvedValue({ sku: 'SKU-1' });
+      stockRepo.findItemsByIds.mockResolvedValue([
+        { _id: itemId, sku: 'SKU-1' },
+      ]);
       repo.createStockCount.mockResolvedValue({ _id: 'sc1' });
 
       await svc.createStockCount(
@@ -123,6 +128,61 @@ describe('StockCountService', () => {
     it('phạm vi trống (không có InventoryStock nào) → throw STOCK_COUNT_EMPTY_SCOPE', async () => {
       warehouseRepo.findWarehouseById.mockResolvedValue({ _id: warehouseId });
       stockRepo.findInventoryByScope.mockResolvedValue([]);
+
+      await expect(
+        svc.createStockCount({ warehouseId: warehouseId.toString() }, actorId),
+      ).rejects.toThrow();
+      expect(repo.createStockCount).not.toHaveBeenCalled();
+    });
+
+    it('dòng InventoryStock mồ côi (itemId không khớp WarehouseItem nào) bị bỏ qua, các dòng hợp lệ khác vẫn tạo bình thường', async () => {
+      const orphanItemId = new Types.ObjectId();
+      const otherShelfId = new Types.ObjectId();
+      warehouseRepo.findWarehouseById.mockResolvedValue({ _id: warehouseId });
+      stockRepo.findInventoryByScope.mockResolvedValue([
+        { itemId, shelfId, lotId: null, quantity: 50 },
+        {
+          itemId: orphanItemId,
+          shelfId: otherShelfId,
+          lotId: null,
+          quantity: 10,
+        },
+      ]);
+      // Batch chỉ trả về item hợp lệ — orphanItemId không khớp WarehouseItem nào.
+      stockRepo.findItemsByIds.mockResolvedValue([
+        { _id: itemId, sku: 'SKU-1' },
+      ]);
+      repo.createStockCount.mockResolvedValue({ _id: 'sc1' });
+
+      await svc.createStockCount(
+        { warehouseId: warehouseId.toString() },
+        actorId,
+      );
+
+      expect(repo.createStockCount).toHaveBeenCalledWith(
+        warehouseId,
+        null,
+        undefined,
+        expect.anything(),
+        [
+          {
+            itemId,
+            sku: 'SKU-1',
+            shelfId,
+            lotId: null,
+            systemQty: 50,
+          },
+        ],
+      );
+    });
+
+    it('mọi dòng InventoryStock đều mồ côi → throw STOCK_COUNT_EMPTY_SCOPE, không tạo phiếu', async () => {
+      const orphanItemId = new Types.ObjectId();
+      warehouseRepo.findWarehouseById.mockResolvedValue({ _id: warehouseId });
+      stockRepo.findInventoryByScope.mockResolvedValue([
+        { itemId: orphanItemId, shelfId, lotId: null, quantity: 10 },
+      ]);
+      stockRepo.findItemsByIds.mockResolvedValue([]);
 
       await expect(
         svc.createStockCount({ warehouseId: warehouseId.toString() }, actorId),

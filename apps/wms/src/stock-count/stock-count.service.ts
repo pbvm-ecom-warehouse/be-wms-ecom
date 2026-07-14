@@ -1,5 +1,5 @@
 import { InjectQueue } from '@nestjs/bullmq';
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { AppException } from '@app/common';
 import { EVENTS, QUEUES, type StockChangedPayload } from '@app/events';
 import { Queue } from 'bullmq';
@@ -24,6 +24,8 @@ import { MovementType } from '../stock/schemas/stock-movement.schema';
 
 @Injectable()
 export class StockCountService {
+  private readonly logger = new Logger(StockCountService.name);
+
   constructor(
     private readonly repo: StockCountRepository,
     private readonly stockRepo: StockRepository,
@@ -66,18 +68,49 @@ export class StockCountService {
       throw new AppException('STOCK_COUNT_EMPTY_SCOPE');
     }
 
-    const lines = await Promise.all(
-      inventory.map(async (inv) => {
-        const item = await this.stockRepo.findSkuById(inv.itemId.toString());
-        return {
-          itemId: inv.itemId,
-          sku: item?.sku ?? '',
-          shelfId: inv.shelfId,
-          lotId: inv.lotId,
-          systemQty: inv.quantity,
-        };
-      }),
+    // Batch tra sku 1 lần cho mọi itemId thay vì N+1 query findSkuById từng
+    // dòng — quan trọng với kiểm kho toàn kho (có thể hàng trăm/nghìn dòng).
+    const distinctItemIds = [
+      ...new Map(
+        inventory.map((inv) => [inv.itemId.toString(), inv.itemId]),
+      ).values(),
+    ];
+    const items = await this.stockRepo.findItemsByIds(distinctItemIds);
+    const skuByItemId = new Map(
+      items.map((item) => [item._id.toString(), item.sku]),
     );
+
+    // InventoryStock có itemId không còn khớp WarehouseItem nào (dữ liệu mồ
+    // côi) bị bỏ qua — log warning thay vì mặc định sku:'' (sku rỗng sẽ làm
+    // hỏng payload stock.changed và có thể đụng jobId với dòng mồ côi khác
+    // lúc approve). Một dòng lỗi không nên chặn tạo phiếu cho phần còn lại.
+    const lines: {
+      itemId: Types.ObjectId;
+      sku: string;
+      shelfId: Types.ObjectId;
+      lotId: Types.ObjectId | null;
+      systemQty: number;
+    }[] = [];
+    for (const inv of inventory) {
+      const sku = skuByItemId.get(inv.itemId.toString());
+      if (!sku) {
+        this.logger.warn(
+          `itemId=${inv.itemId.toString()} không khớp WarehouseItem nào → bỏ qua dòng này khi tạo StockCount (warehouseId=${dto.warehouseId}).`,
+        );
+        continue;
+      }
+      lines.push({
+        itemId: inv.itemId,
+        sku,
+        shelfId: inv.shelfId,
+        lotId: inv.lotId,
+        systemQty: inv.quantity,
+      });
+    }
+
+    if (lines.length === 0) {
+      throw new AppException('STOCK_COUNT_EMPTY_SCOPE');
+    }
 
     return this.repo.createStockCount(
       warehouseId,

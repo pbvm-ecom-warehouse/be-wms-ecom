@@ -76,6 +76,38 @@ describe('StockRepository', () => {
     });
   });
 
+  describe('findItemsByIds', () => {
+    it('gọi find với $in trên danh sách itemId, select sku, lean', async () => {
+      const itemIds = [itemId, new Types.ObjectId()];
+      warehouseItemModel.find = jest.fn().mockReturnThis();
+      warehouseItemModel.exec.mockResolvedValueOnce([
+        { _id: itemIds[0], sku: 'SKU-1' },
+        { _id: itemIds[1], sku: 'SKU-2' },
+      ]);
+
+      const result = await repo.findItemsByIds(itemIds);
+
+      expect(warehouseItemModel.find).toHaveBeenCalledWith({
+        _id: { $in: itemIds },
+      });
+      expect(warehouseItemModel.select).toHaveBeenCalledWith('sku');
+      expect(warehouseItemModel.lean).toHaveBeenCalled();
+      expect(result).toEqual([
+        { _id: itemIds[0], sku: 'SKU-1' },
+        { _id: itemIds[1], sku: 'SKU-2' },
+      ]);
+    });
+
+    it('trả về mảng rỗng khi không có item nào khớp', async () => {
+      warehouseItemModel.find = jest.fn().mockReturnThis();
+      warehouseItemModel.exec.mockResolvedValueOnce([]);
+
+      const result = await repo.findItemsByIds([new Types.ObjectId()]);
+
+      expect(result).toEqual([]);
+    });
+  });
+
   describe('findBalanceByItemAndWarehouse', () => {
     it('gọi findOne với đúng filter', async () => {
       balanceModel.exec.mockResolvedValueOnce({
