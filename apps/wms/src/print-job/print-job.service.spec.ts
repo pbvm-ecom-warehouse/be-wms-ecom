@@ -506,7 +506,10 @@ describe('PrintJobService', () => {
       repo.findById.mockResolvedValue({
         ...consumedJob(),
         items: [
-          { ...consumedJob().items[0], lineStatus: PrintJobLineStatus.COMPLETED },
+          {
+            ...consumedJob().items[0],
+            lineStatus: PrintJobLineStatus.COMPLETED,
+          },
         ],
       });
       await expect(
