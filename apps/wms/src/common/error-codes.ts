@@ -95,6 +95,10 @@ export const WMS_ERRORS = {
     status: HttpStatus.BAD_REQUEST,
     message: 'Dòng chưa tiêu thụ hết CUP_BLANK, chưa thể xác nhận in xong',
   },
+  PRINT_JOB_ITEM_ALREADY_COMPLETED: {
+    status: HttpStatus.CONFLICT,
+    message: 'Dòng này đã được xác nhận in xong trước đó',
+  },
 } as const satisfies Record<
   string,
   { status: HttpStatusType; message: string }

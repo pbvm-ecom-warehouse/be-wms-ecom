@@ -14,7 +14,10 @@ import type {
   CompletePrintJobItemDto,
   ConsumePrintJobItemDto,
 } from './dto/print-job.dto';
-import type { PrintJobDocument } from './schemas/print-job.schema';
+import {
+  PrintJobLineStatus,
+  type PrintJobDocument,
+} from './schemas/print-job.schema';
 import { StockRepository } from '../stock/stock.repository';
 import { ItemType } from '../stock/schemas/warehouse-item.schema';
 import { WarehouseRepository } from '../warehouse/warehouse.repository';
@@ -100,17 +103,6 @@ export class PrintJobService {
         );
       }
 
-      if (reservedQty > 0) {
-        await this.stockRepo.upsertBalance(
-          inputItemId,
-          whId,
-          0,
-          reservedQty,
-          0,
-        );
-        await this.publishBlankStockChanged(inputItemId, -reservedQty, orderId);
-      }
-
       lines.push({
         inputItemId,
         outputItemId,
@@ -128,7 +120,37 @@ export class PrintJobService {
       return;
     }
 
-    await this.repo.createPrintJob(orderId, whId, lines);
+    // Reserve CUP_BLANK (upsertBalance) + tạo PrintJob phải atomic: nếu tạo
+    // PrintJob thất bại giữa chừng thì reserve cũng phải rollback theo, tránh
+    // giữ tồn "mồ côi" không có PrintJob nào tham chiếu tới (và bị reserve
+    // lại lần nữa khi BullMQ retry event print.requested).
+    await this.stockTransactionHelper.withStockTransaction(async (session) => {
+      for (const line of lines) {
+        if (line.reservedQty > 0) {
+          await this.stockRepo.upsertBalance(
+            line.inputItemId,
+            whId,
+            0,
+            line.reservedQty,
+            0,
+            session,
+          );
+        }
+      }
+      await this.repo.createPrintJob(orderId, whId, lines, session);
+    });
+
+    // Emit stock.changed CHỈ SAU KHI transaction đã commit thành công — job
+    // BullMQ là side-effect ngoài DB, không thể rollback nếu transaction fail.
+    for (const line of lines) {
+      if (line.reservedQty > 0) {
+        await this.publishBlankStockChanged(
+          line.inputItemId,
+          -line.reservedQty,
+          orderId,
+        );
+      }
+    }
   }
 
   private async resolveOutputItem(
@@ -306,6 +328,9 @@ export class PrintJobService {
     if (!line) throw new AppException('PRINT_JOB_ITEM_MISMATCH');
     if (line.remainingQty > 0) {
       throw new AppException('PRINT_JOB_ITEM_NOT_CONSUMED');
+    }
+    if (line.lineStatus === PrintJobLineStatus.COMPLETED) {
+      throw new AppException('PRINT_JOB_ITEM_ALREADY_COMPLETED');
     }
 
     const shelf = await this.warehouseRepo.findShelfByCode(dto.shelfCode);

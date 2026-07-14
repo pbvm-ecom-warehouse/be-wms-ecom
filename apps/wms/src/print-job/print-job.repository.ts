@@ -39,28 +39,34 @@ export class PrintJobRepository {
   }
 
   // remainingQty = reservedQty lúc khởi tạo — chưa consume gì nên còn lại đúng bằng số đã giữ
+  // session bắt buộc: gọi trong cùng transaction với reserve CUP_BLANK (upsertBalance)
+  // để tránh reserve "mồ côi" khi tạo PrintJob thất bại giữa chừng.
   async createPrintJob(
     orderId: string,
     warehouseId: Types.ObjectId,
     lines: CreatePrintJobLineInput[],
+    session: ClientSession,
   ): Promise<PrintJobDocument> {
-    const [doc] = await this.model.create([
-      {
-        orderId,
-        warehouseId,
-        status: PrintJobStatus.PENDING,
-        items: lines.map((l) => ({
-          inputItemId: l.inputItemId,
-          outputItemId: l.outputItemId,
-          sku: l.sku,
-          designFile: l.designFile,
-          quantity: l.quantity,
-          reservedQty: l.reservedQty,
-          remainingQty: l.reservedQty,
-          lineStatus: PrintJobLineStatus.PENDING,
-        })),
-      },
-    ]);
+    const [doc] = await this.model.create(
+      [
+        {
+          orderId,
+          warehouseId,
+          status: PrintJobStatus.PENDING,
+          items: lines.map((l) => ({
+            inputItemId: l.inputItemId,
+            outputItemId: l.outputItemId,
+            sku: l.sku,
+            designFile: l.designFile,
+            quantity: l.quantity,
+            reservedQty: l.reservedQty,
+            remainingQty: l.reservedQty,
+            lineStatus: PrintJobLineStatus.PENDING,
+          })),
+        },
+      ],
+      { session },
+    );
     return doc;
   }
 

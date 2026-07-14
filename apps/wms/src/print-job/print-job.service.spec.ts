@@ -112,17 +112,23 @@ describe('PrintJobService', () => {
         0,
         10,
         0,
+        expect.anything(),
       );
-      expect(repo.createPrintJob).toHaveBeenCalledWith(orderId, warehouseId, [
-        {
-          inputItemId: blankItemId,
-          outputItemId: printedItemId,
-          sku: 'CUP-PRINTED-1',
-          designFile: undefined,
-          quantity: 10,
-          reservedQty: 10,
-        },
-      ]);
+      expect(repo.createPrintJob).toHaveBeenCalledWith(
+        orderId,
+        warehouseId,
+        [
+          {
+            inputItemId: blankItemId,
+            outputItemId: printedItemId,
+            sku: 'CUP-PRINTED-1',
+            designFile: undefined,
+            quantity: 10,
+            reservedQty: 10,
+          },
+        ],
+        expect.anything(),
+      );
       expect(stockQueue.add).toHaveBeenCalledWith(
         'stock.changed',
         { sku: expect.any(String), delta: -10 },
@@ -149,9 +155,12 @@ describe('PrintJobService', () => {
       ]);
 
       // available = 5 → reservedQty = min(10, 5) = 5
-      expect(repo.createPrintJob).toHaveBeenCalledWith(orderId, warehouseId, [
-        expect.objectContaining({ quantity: 10, reservedQty: 5 }),
-      ]);
+      expect(repo.createPrintJob).toHaveBeenCalledWith(
+        orderId,
+        warehouseId,
+        [expect.objectContaining({ quantity: 10, reservedQty: 5 })],
+        expect.anything(),
+      );
     });
 
     it('design mới (chưa có CUP_PRINTED) + có blankSku → tạo item mới với blankItemId', async () => {
@@ -194,13 +203,18 @@ describe('PrintJobService', () => {
         }),
         expect.any(Types.ObjectId),
       );
-      expect(repo.createPrintJob).toHaveBeenCalledWith(orderId, warehouseId, [
-        expect.objectContaining({
-          inputItemId: newBlankItemId,
-          outputItemId: printedItemId,
-          designFile: 'design-042.png',
-        }),
-      ]);
+      expect(repo.createPrintJob).toHaveBeenCalledWith(
+        orderId,
+        warehouseId,
+        [
+          expect.objectContaining({
+            inputItemId: newBlankItemId,
+            outputItemId: printedItemId,
+            designFile: 'design-042.png',
+          }),
+        ],
+        expect.anything(),
+      );
     });
 
     it('bỏ qua dòng design mới thiếu blankSku, vẫn tạo job với dòng hợp lệ khác', async () => {
@@ -226,9 +240,12 @@ describe('PrintJobService', () => {
         { sku: 'CUP-PRINTED-NO-BLANK-SKU', quantity: 2 },
       ]);
 
-      expect(repo.createPrintJob).toHaveBeenCalledWith(orderId, warehouseId, [
-        expect.objectContaining({ sku: 'CUP-PRINTED-OK' }),
-      ]);
+      expect(repo.createPrintJob).toHaveBeenCalledWith(
+        orderId,
+        warehouseId,
+        [expect.objectContaining({ sku: 'CUP-PRINTED-OK' })],
+        expect.anything(),
+      );
       expect(stockRepo.createItem).not.toHaveBeenCalled();
     });
 
@@ -483,6 +500,24 @@ describe('PrintJobService', () => {
           actorId,
         ),
       ).rejects.toMatchObject({ code: 'PRINT_JOB_ITEM_NOT_CONSUMED' });
+    });
+
+    it('throw PRINT_JOB_ITEM_ALREADY_COMPLETED khi dòng đã COMPLETED từ trước (chặn double-complete)', async () => {
+      repo.findById.mockResolvedValue({
+        ...consumedJob(),
+        items: [
+          { ...consumedJob().items[0], lineStatus: PrintJobLineStatus.COMPLETED },
+        ],
+      });
+      await expect(
+        svc.completeItem(
+          pjId,
+          blankItemId.toString(),
+          { shelfCode: 'A1', quantity: 10 },
+          actorId,
+        ),
+      ).rejects.toMatchObject({ code: 'PRINT_JOB_ITEM_ALREADY_COMPLETED' });
+      expect(stockRepo.upsertBalance).not.toHaveBeenCalled();
     });
 
     it('throw PRINT_JOB_SHELF_NOT_FOUND khi shelf không khớp', async () => {

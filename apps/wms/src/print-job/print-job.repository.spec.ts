@@ -41,35 +41,44 @@ describe('PrintJobRepository', () => {
 
   describe('createPrintJob', () => {
     it('tạo document với remainingQty = reservedQty khởi tạo, status PENDING, lineStatus PENDING', async () => {
+      const session = {} as never;
       model.create.mockResolvedValue([{ _id: 'pj1' }]);
-      await repo.createPrintJob(orderId, warehouseId, [
-        {
-          inputItemId,
-          outputItemId,
-          sku: 'CUP-PRINTED-1',
-          quantity: 10,
-          reservedQty: 8,
-        },
-      ]);
-      expect(model.create).toHaveBeenCalledWith([
-        {
-          orderId,
-          warehouseId,
-          status: PrintJobStatus.PENDING,
-          items: [
-            {
-              inputItemId,
-              outputItemId,
-              sku: 'CUP-PRINTED-1',
-              designFile: undefined,
-              quantity: 10,
-              reservedQty: 8,
-              remainingQty: 8,
-              lineStatus: PrintJobLineStatus.PENDING,
-            },
-          ],
-        },
-      ]);
+      await repo.createPrintJob(
+        orderId,
+        warehouseId,
+        [
+          {
+            inputItemId,
+            outputItemId,
+            sku: 'CUP-PRINTED-1',
+            quantity: 10,
+            reservedQty: 8,
+          },
+        ],
+        session,
+      );
+      expect(model.create).toHaveBeenCalledWith(
+        [
+          {
+            orderId,
+            warehouseId,
+            status: PrintJobStatus.PENDING,
+            items: [
+              {
+                inputItemId,
+                outputItemId,
+                sku: 'CUP-PRINTED-1',
+                designFile: undefined,
+                quantity: 10,
+                reservedQty: 8,
+                remainingQty: 8,
+                lineStatus: PrintJobLineStatus.PENDING,
+              },
+            ],
+          },
+        ],
+        { session },
+      );
     });
   });
 
