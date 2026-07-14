@@ -119,6 +119,22 @@ export const WMS_ERRORS = {
     status: HttpStatus.CONFLICT,
     message: 'Phiếu chưa đếm xong, không thể duyệt',
   },
+  SCRAP_NOTE_NOT_FOUND: {
+    status: HttpStatus.NOT_FOUND,
+    message: 'Không tìm thấy phiếu hủy hàng',
+  },
+  SCRAP_NOTE_ITEM_ISPERISHABLE_NO_LOT: {
+    status: HttpStatus.BAD_REQUEST,
+    message: 'Mặt hàng có hạn sử dụng phải chọn lô khi đề xuất hủy',
+  },
+  SCRAP_NOTE_QTY_EXCEEDS: {
+    status: HttpStatus.BAD_REQUEST,
+    message: 'Số lượng đề xuất hủy vượt quá tồn thật tại vị trí này',
+  },
+  SCRAP_NOTE_ALREADY_DECIDED: {
+    status: HttpStatus.CONFLICT,
+    message: 'Phiếu đã được duyệt hoặc từ chối, không thể xử lý lại',
+  },
 } as const satisfies Record<
   string,
   { status: HttpStatusType; message: string }
