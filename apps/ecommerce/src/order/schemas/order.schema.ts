@@ -53,6 +53,9 @@ export class OrderItem {
   designId?: string; // ID thiết kế gốc
 
   @Prop({ default: null })
+  blankSku?: string; // SKU ly trống để in
+
+  @Prop({ default: null })
   printJobId?: string; // mã lệnh in WMS gán sau
 }
 

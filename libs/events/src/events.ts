@@ -120,7 +120,13 @@ export interface GoodsIssuedPayload {
 
 export interface PrintRequestedPayload {
   orderId: string;
-  items: { sku: string; quantity: number; designFile?: string }[];
+  warehouseId: string;
+  items: {
+    sku: string;
+    quantity: number;
+    designFile?: string;
+    blankSku?: string;
+  }[];
 }
 
 export interface PrintCompletedPayload {

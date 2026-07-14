@@ -1,4 +1,4 @@
-import { model, Model } from 'mongoose';
+import { model, Model, Types } from 'mongoose';
 import {
   ItemType,
   WarehouseItem,
@@ -63,5 +63,31 @@ describe('kích thước (depth/width/height)', () => {
     expect(doc.depth).toBe(10);
     expect(doc.width).toBe(20);
     expect(doc.height).toBe(5);
+  });
+});
+
+describe('blankItemId (CUP_PRINTED → CUP_BLANK gốc)', () => {
+  it('cho phép tạo CUP_PRINTED không khai blankItemId (optional)', () => {
+    const doc = new WarehouseItemModel({
+      sku: 'CUP-PRINTED-NO-BLANK',
+      name: 'Ly in chưa gắn blank',
+      type: ItemType.CUP_PRINTED,
+      unit: 'cái',
+    });
+    const err = doc.validateSync();
+    expect(err).toBeUndefined();
+    expect(doc.blankItemId).toBeUndefined();
+  });
+
+  it('lưu đúng blankItemId khi khai', () => {
+    const blankId = new Types.ObjectId();
+    const doc = new WarehouseItemModel({
+      sku: 'CUP-PRINTED-WITH-BLANK',
+      name: 'Ly in đã gắn blank',
+      type: ItemType.CUP_PRINTED,
+      unit: 'cái',
+      blankItemId: blankId,
+    });
+    expect(doc.blankItemId?.toString()).toBe(blankId.toString());
   });
 });
