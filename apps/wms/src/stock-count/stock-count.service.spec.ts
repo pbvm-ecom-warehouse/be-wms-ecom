@@ -129,6 +129,32 @@ describe('StockCountService', () => {
       ).rejects.toThrow();
       expect(repo.createStockCount).not.toHaveBeenCalled();
     });
+
+    it('không tìm thấy warehouse → throw WAREHOUSE_NOT_FOUND, không tạo phiếu', async () => {
+      warehouseRepo.findWarehouseById.mockResolvedValue(null);
+
+      await expect(
+        svc.createStockCount({ warehouseId: warehouseId.toString() }, actorId),
+      ).rejects.toThrow();
+      expect(repo.createStockCount).not.toHaveBeenCalled();
+    });
+
+    it('zoneId thuộc warehouse khác → throw ZONE_NOT_FOUND, không tạo phiếu', async () => {
+      warehouseRepo.findWarehouseById.mockResolvedValue({ _id: warehouseId });
+      const otherWarehouseId = new Types.ObjectId();
+      warehouseRepo.findZoneById.mockResolvedValue({
+        _id: zoneId,
+        warehouseId: otherWarehouseId,
+      });
+
+      await expect(
+        svc.createStockCount(
+          { warehouseId: warehouseId.toString(), zoneId: zoneId.toString() },
+          actorId,
+        ),
+      ).rejects.toThrow();
+      expect(repo.createStockCount).not.toHaveBeenCalled();
+    });
   });
 
   describe('countItem', () => {
@@ -196,6 +222,33 @@ describe('StockCountService', () => {
           actorId,
         ),
       ).rejects.toThrow();
+    });
+
+    it('phiếu đã IN_PROGRESS (đếm lần 2 trở đi) → không gọi lại setCountedByIfDraft, vẫn countItem/markCompletedIfAllCounted bình thường', async () => {
+      repo.findById.mockResolvedValue({
+        _id: 'sc1',
+        status: StockCountStatus.IN_PROGRESS,
+        items: [{ itemId, sku: 'SKU-1', shelfId, lotId: null, systemQty: 50 }],
+      });
+      repo.countItem.mockResolvedValue({ _id: 'sc1' });
+
+      await svc.countItem(
+        'sc1',
+        itemId.toString(),
+        { shelfId: shelfId.toString(), actualQty: 48, reason: 'Hao hụt' },
+        actorId,
+      );
+
+      expect(repo.setCountedByIfDraft).not.toHaveBeenCalled();
+      expect(repo.countItem).toHaveBeenCalledWith(
+        'sc1',
+        itemId,
+        shelfId,
+        null,
+        48,
+        'Hao hụt',
+      );
+      expect(repo.markCompletedIfAllCounted).toHaveBeenCalledWith('sc1');
     });
   });
 
@@ -287,6 +340,40 @@ describe('StockCountService', () => {
       expect(stockRepo.insertMovement).not.toHaveBeenCalled();
       expect(stockQueue.add).not.toHaveBeenCalled();
       expect(repo.setApproved).toHaveBeenCalled();
+    });
+  });
+
+  describe('getStockCount', () => {
+    it('tìm thấy phiếu → trả về document', async () => {
+      const doc = { _id: 'sc1', status: StockCountStatus.DRAFT, items: [] };
+      repo.findById.mockResolvedValue(doc);
+
+      const result = await svc.getStockCount('sc1');
+
+      expect(result).toBe(doc);
+      expect(repo.findById).toHaveBeenCalledWith('sc1');
+    });
+
+    it('không tìm thấy phiếu → throw STOCK_COUNT_NOT_FOUND', async () => {
+      repo.findById.mockResolvedValue(null);
+
+      await expect(svc.getStockCount('sc1')).rejects.toThrow();
+    });
+  });
+
+  describe('listStockCounts', () => {
+    it('trả về data + total từ repo.findAll, truyền nguyên query', async () => {
+      const query = { warehouseId: warehouseId.toString(), page: 1, limit: 20 };
+      const result = {
+        data: [{ _id: 'sc1' }, { _id: 'sc2' }],
+        total: 2,
+      };
+      repo.findAll.mockResolvedValue(result);
+
+      const actual = await svc.listStockCounts(query as never);
+
+      expect(actual).toBe(result);
+      expect(repo.findAll).toHaveBeenCalledWith(query);
     });
   });
 });
