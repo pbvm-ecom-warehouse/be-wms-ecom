@@ -59,6 +59,56 @@ describe('ScrapNoteService', () => {
   });
 
   describe('createScrapNote', () => {
+    it('không tìm thấy warehouse → throw WAREHOUSE_NOT_FOUND, không tạo phiếu', async () => {
+      warehouseRepo.findWarehouseById.mockResolvedValue(null);
+
+      await expect(
+        svc.createScrapNote(
+          {
+            warehouseId: warehouseId.toString(),
+            items: [
+              {
+                itemId: itemId.toString(),
+                shelfId: shelfId.toString(),
+                quantity: 5,
+                reason: 'Vỡ',
+              },
+            ],
+          },
+          actorId,
+        ),
+      ).rejects.toThrow();
+      expect(repo.createScrapNote).not.toHaveBeenCalled();
+    });
+
+    it('không tìm thấy shelf → throw SHELF_NOT_FOUND, không tạo phiếu', async () => {
+      warehouseRepo.findWarehouseById.mockResolvedValue({ _id: warehouseId });
+      stockRepo.findItemById.mockResolvedValue({
+        _id: itemId,
+        sku: 'SKU-1',
+        isPerishable: false,
+      });
+      warehouseRepo.findShelfById.mockResolvedValue(null);
+
+      await expect(
+        svc.createScrapNote(
+          {
+            warehouseId: warehouseId.toString(),
+            items: [
+              {
+                itemId: itemId.toString(),
+                shelfId: shelfId.toString(),
+                quantity: 5,
+                reason: 'Vỡ',
+              },
+            ],
+          },
+          actorId,
+        ),
+      ).rejects.toThrow();
+      expect(repo.createScrapNote).not.toHaveBeenCalled();
+    });
+
     it('tạo phiếu hợp lệ với dòng có lotId (hết hạn) và dòng không có lotId (hỏng)', async () => {
       warehouseRepo.findWarehouseById.mockResolvedValue({ _id: warehouseId });
       warehouseRepo.findShelfById.mockResolvedValue({ _id: shelfId });
@@ -164,6 +214,13 @@ describe('ScrapNoteService', () => {
   });
 
   describe('approveScrapNote', () => {
+    it('không tìm thấy phiếu → throw SCRAP_NOTE_NOT_FOUND, không mở transaction', async () => {
+      repo.findById.mockResolvedValue(null);
+
+      await expect(svc.approveScrapNote('sn1', actorId)).rejects.toThrow();
+      expect(txHelper.withStockTransaction).not.toHaveBeenCalled();
+    });
+
     it('phiếu không phải DRAFT → throw SCRAP_NOTE_ALREADY_DECIDED', async () => {
       repo.findById.mockResolvedValue({
         _id: 'sn1',
@@ -293,6 +350,15 @@ describe('ScrapNoteService', () => {
   });
 
   describe('rejectScrapNote', () => {
+    it('không tìm thấy phiếu → throw SCRAP_NOTE_NOT_FOUND, không set rejected', async () => {
+      repo.findById.mockResolvedValue(null);
+
+      await expect(
+        svc.rejectScrapNote('sn1', { rejectReason: 'x' }, actorId),
+      ).rejects.toThrow();
+      expect(repo.setRejected).not.toHaveBeenCalled();
+    });
+
     it('phiếu không phải DRAFT → throw SCRAP_NOTE_ALREADY_DECIDED', async () => {
       repo.findById.mockResolvedValue({
         _id: 'sn1',
