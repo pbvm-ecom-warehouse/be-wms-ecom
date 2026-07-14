@@ -173,6 +173,20 @@ export class StockRepository {
       .exec();
   }
 
+  /**
+   * Danh sách InventoryStock trong phạm vi 1 kho (toàn kho nếu không truyền
+   * shelfIds, hoặc giới hạn theo danh sách shelf nếu lọc theo zone) — dùng
+   * để auto-generate dòng khi MANAGER tạo StockCount (UC-06).
+   */
+  findInventoryByScope(
+    warehouseId: Types.ObjectId,
+    shelfIds?: Types.ObjectId[],
+  ): Promise<InventoryStockDocument[]> {
+    const filter: Record<string, unknown> = { warehouseId };
+    if (shelfIds) filter['shelfId'] = { $in: shelfIds };
+    return this.inventoryModel.find(filter).exec();
+  }
+
   findActiveLotByNumber(
     itemId: Types.ObjectId,
     lotNumber: string,

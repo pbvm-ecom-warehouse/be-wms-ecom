@@ -382,6 +382,45 @@ describe('StockRepository', () => {
     });
   });
 
+  describe('findInventoryByScope', () => {
+    it('lọc theo warehouseId, không kèm shelfId khi không truyền shelfIds', async () => {
+      const scopeWarehouseId = new Types.ObjectId();
+      inventoryModel.find = jest.fn().mockReturnThis();
+      inventoryModel.exec = jest.fn().mockResolvedValue([]);
+
+      await repo.findInventoryByScope(scopeWarehouseId);
+
+      expect(inventoryModel.find).toHaveBeenCalledWith({
+        warehouseId: scopeWarehouseId,
+      });
+    });
+
+    it('lọc thêm theo shelfId $in khi truyền shelfIds', async () => {
+      const scopeWarehouseId = new Types.ObjectId();
+      const shelfIds = [new Types.ObjectId(), new Types.ObjectId()];
+      inventoryModel.find = jest.fn().mockReturnThis();
+      inventoryModel.exec = jest.fn().mockResolvedValue([]);
+
+      await repo.findInventoryByScope(scopeWarehouseId, shelfIds);
+
+      expect(inventoryModel.find).toHaveBeenCalledWith({
+        warehouseId: scopeWarehouseId,
+        shelfId: { $in: shelfIds },
+      });
+    });
+
+    it('trả về danh sách InventoryStock từ query', async () => {
+      const scopeWarehouseId = new Types.ObjectId();
+      const mockDocs = [{ _id: new Types.ObjectId(), quantity: 10 }];
+      inventoryModel.find = jest.fn().mockReturnThis();
+      inventoryModel.exec = jest.fn().mockResolvedValue(mockDocs);
+
+      const result = await repo.findInventoryByScope(scopeWarehouseId);
+
+      expect(result).toEqual(mockDocs);
+    });
+  });
+
   describe('findAvailableStockForPick', () => {
     it('hàng perishable: dùng aggregate join Lot + Shelf, sắp expiryDate tăng dần (FEFO), loại EXPIRED trong pipeline, trả kèm shelfCode', async () => {
       const pickItemId = new Types.ObjectId();

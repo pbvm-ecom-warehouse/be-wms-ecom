@@ -248,6 +248,20 @@ export class WarehouseRepository {
     return this.shelfModel.findOne({ code, ...SOFT_DELETE_FILTER }).exec();
   }
 
+  /**
+   * Danh sách shelfId thuộc 1 zone — join 2 tầng Shelf.rackId → Rack.zoneId
+   * (Shelf không denormalize zoneId trực tiếp). Dùng khi StockCountService
+   * tạo phiếu giới hạn theo zone (UC-06).
+   */
+  async findShelfIdsByZone(zoneId: string): Promise<Types.ObjectId[]> {
+    const racks = await this.findRacksByZone(zoneId);
+    const rackIds = racks.map((r) => r._id.toString());
+    const shelvesByRack = await Promise.all(
+      rackIds.map((rackId) => this.findShelvesByRack(rackId)),
+    );
+    return shelvesByRack.flat().map((s) => s._id);
+  }
+
   /** Tìm shelf staging (khu nhận hàng tạm) của 1 kho — dùng khi GRN CONFIRMED cộng tồn. */
   async findStagingShelfByWarehouse(
     warehouseId: string,
