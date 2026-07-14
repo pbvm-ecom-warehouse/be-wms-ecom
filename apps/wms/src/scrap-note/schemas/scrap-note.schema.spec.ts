@@ -1,4 +1,8 @@
-import { ScrapNote, ScrapNoteSchema, ScrapNoteStatus } from './scrap-note.schema';
+import {
+  ScrapNote,
+  ScrapNoteSchema,
+  ScrapNoteStatus,
+} from './scrap-note.schema';
 
 describe('ScrapNoteSchema', () => {
   it('default status là DRAFT', () => {
@@ -7,9 +11,9 @@ describe('ScrapNoteSchema', () => {
   });
 
   it('warehouseId và createdBy là required', () => {
-    const warehouseIdPath = ScrapNoteSchema.paths[
-      'warehouseId'
-    ] as unknown as { isRequired: boolean };
+    const warehouseIdPath = ScrapNoteSchema.paths['warehouseId'] as unknown as {
+      isRequired: boolean;
+    };
     const createdByPath = ScrapNoteSchema.paths['createdBy'] as unknown as {
       isRequired: boolean;
     };
