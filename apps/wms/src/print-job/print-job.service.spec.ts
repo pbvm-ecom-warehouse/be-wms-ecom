@@ -515,9 +515,10 @@ describe('PrintJobService', () => {
     });
 
     it('cộng onHand+reserved của CUP_PRINTED, ghi movement PRINT_OUTPUT dương, KHÔNG bắn stock.changed, KHÔNG emit khi còn dòng khác chưa xong', async () => {
-      repo.findById
-        .mockResolvedValueOnce(consumedJob())
-        .mockResolvedValueOnce({ ...consumedJob(), status: PrintJobStatus.IN_PROGRESS });
+      repo.findById.mockResolvedValueOnce(consumedJob()).mockResolvedValueOnce({
+        ...consumedJob(),
+        status: PrintJobStatus.IN_PROGRESS,
+      });
       warehouseRepo.findShelfByCode.mockResolvedValue({
         _id: shelfId,
         warehouseId,
@@ -564,9 +565,10 @@ describe('PrintJobService', () => {
     });
 
     it('emit print.completed đúng 1 lần khi markLineCompleted trả allDone=true', async () => {
-      repo.findById
-        .mockResolvedValueOnce(consumedJob())
-        .mockResolvedValueOnce({ ...consumedJob(), status: PrintJobStatus.COMPLETED });
+      repo.findById.mockResolvedValueOnce(consumedJob()).mockResolvedValueOnce({
+        ...consumedJob(),
+        status: PrintJobStatus.COMPLETED,
+      });
       warehouseRepo.findShelfByCode.mockResolvedValue({
         _id: shelfId,
         warehouseId,

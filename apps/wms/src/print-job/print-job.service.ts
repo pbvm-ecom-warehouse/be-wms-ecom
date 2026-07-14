@@ -9,18 +9,13 @@ import {
 } from '@app/events';
 import { Queue } from 'bullmq';
 import { Types } from 'mongoose';
-import {
-  PrintJobRepository,
-  QueryPrintJobInput,
-} from './print-job.repository';
+import { PrintJobRepository, QueryPrintJobInput } from './print-job.repository';
 import type {
   CompletePrintJobItemDto,
   ConsumePrintJobItemDto,
 } from './dto/print-job.dto';
 import type { PrintJobDocument } from './schemas/print-job.schema';
-import {
-  StockRepository,
-} from '../stock/stock.repository';
+import { StockRepository } from '../stock/stock.repository';
 import { ItemType } from '../stock/schemas/warehouse-item.schema';
 import { WarehouseRepository } from '../warehouse/warehouse.repository';
 import { StockTransactionHelper } from '../stock/helpers/with-stock-transaction.helper';
@@ -106,7 +101,13 @@ export class PrintJobService {
       }
 
       if (reservedQty > 0) {
-        await this.stockRepo.upsertBalance(inputItemId, whId, 0, reservedQty, 0);
+        await this.stockRepo.upsertBalance(
+          inputItemId,
+          whId,
+          0,
+          reservedQty,
+          0,
+        );
         await this.publishBlankStockChanged(inputItemId, -reservedQty, orderId);
       }
 
@@ -133,7 +134,10 @@ export class PrintJobService {
   private async resolveOutputItem(
     item: PrintRequestedItem,
     orderId: string,
-  ): Promise<{ inputItemId: Types.ObjectId; outputItemId: Types.ObjectId } | null> {
+  ): Promise<{
+    inputItemId: Types.ObjectId;
+    outputItemId: Types.ObjectId;
+  } | null> {
     const existingOutput = await this.stockRepo.findItemBySku(item.sku);
 
     if (existingOutput) {

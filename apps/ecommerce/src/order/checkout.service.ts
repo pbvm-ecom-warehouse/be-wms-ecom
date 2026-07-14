@@ -125,7 +125,10 @@ export class CheckoutService {
     try {
       await this.cacheService.del(`ecom:orders:list:${customerId}`);
     } catch (cacheErr) {
-      this.logger.error(`Lỗi khi xóa cache orders list của khách ${customerId}:`, cacheErr);
+      this.logger.error(
+        `Lỗi khi xóa cache orders list của khách ${customerId}:`,
+        cacheErr,
+      );
     }
 
     // Gửi yêu cầu kiểm kho và giữ tồn kho vật lý sang WMS

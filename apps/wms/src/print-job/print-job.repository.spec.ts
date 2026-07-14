@@ -176,9 +176,7 @@ describe('PrintJobRepository', () => {
       const session = {} as never;
       const doc = {
         _id: 'pj1',
-        items: [
-          { inputItemId, lineStatus: PrintJobLineStatus.CONSUMED },
-        ],
+        items: [{ inputItemId, lineStatus: PrintJobLineStatus.CONSUMED }],
         save: jest.fn().mockResolvedValue(undefined),
       };
       model.findOne.mockResolvedValue(doc);

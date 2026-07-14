@@ -11,15 +11,24 @@ import {
   MinLength,
 } from 'class-validator';
 import { Types } from 'mongoose';
-import { PrintJobLineStatus, PrintJobStatus } from '../schemas/print-job.schema';
+import {
+  PrintJobLineStatus,
+  PrintJobStatus,
+} from '../schemas/print-job.schema';
 
 export class ConsumePrintJobItemDto {
-  @ApiProperty({ example: 'CUP-BLANK-500', description: 'Barcode quét SKU CUP_BLANK' })
+  @ApiProperty({
+    example: 'CUP-BLANK-500',
+    description: 'Barcode quét SKU CUP_BLANK',
+  })
   @IsString()
   @MinLength(1)
   itemBarcode!: string;
 
-  @ApiProperty({ example: 'A1-2', description: 'Barcode quét vị trí shelf lấy CUP_BLANK' })
+  @ApiProperty({
+    example: 'A1-2',
+    description: 'Barcode quét vị trí shelf lấy CUP_BLANK',
+  })
   @IsString()
   @MinLength(1)
   shelfCode!: string;
@@ -31,12 +40,19 @@ export class ConsumePrintJobItemDto {
 }
 
 export class CompletePrintJobItemDto {
-  @ApiProperty({ example: 'A1-2', description: 'Barcode quét vị trí shelf nhập CUP_PRINTED' })
+  @ApiProperty({
+    example: 'A1-2',
+    description: 'Barcode quét vị trí shelf nhập CUP_PRINTED',
+  })
   @IsString()
   @MinLength(1)
   shelfCode!: string;
 
-  @ApiProperty({ example: 20, description: 'Số lượng CUP_PRINTED nhập kho — phải bằng đúng reservedQty của dòng' })
+  @ApiProperty({
+    example: 20,
+    description:
+      'Số lượng CUP_PRINTED nhập kho — phải bằng đúng reservedQty của dòng',
+  })
   @IsNumber()
   @Min(1)
   quantity!: number;

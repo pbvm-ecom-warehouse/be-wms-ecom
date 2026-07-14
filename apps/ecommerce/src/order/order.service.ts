@@ -27,15 +27,22 @@ export class OrderService {
     private readonly cacheService: CacheService,
   ) {}
 
-  private async invalidateOrderCache(orderId: string, customerId?: string | Types.ObjectId) {
+  private async invalidateOrderCache(
+    orderId: string,
+    customerId?: string | Types.ObjectId,
+  ) {
     try {
       await this.cacheService.del(`ecom:orders:detail:${orderId}`);
       if (customerId) {
-        await this.cacheService.del(`ecom:orders:list:${customerId.toString()}`);
+        await this.cacheService.del(
+          `ecom:orders:list:${customerId.toString()}`,
+        );
       } else {
         const order = await this.repo.findById(orderId);
         if (order) {
-          await this.cacheService.del(`ecom:orders:list:${order.customerId.toString()}`);
+          await this.cacheService.del(
+            `ecom:orders:list:${order.customerId.toString()}`,
+          );
         }
       }
     } catch (err) {
