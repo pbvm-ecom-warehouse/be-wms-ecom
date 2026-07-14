@@ -21,17 +21,19 @@ const makeModel = (overrides: Record<string, jest.Mock> = {}) => ({
 
 describe('WarehouseRepository', () => {
   let repo: WarehouseRepository;
+  let rackModel: ReturnType<typeof makeModel>;
   let shelfModel: ReturnType<typeof makeModel>;
   const warehouseId = new Types.ObjectId().toString();
 
   beforeEach(async () => {
+    rackModel = makeModel();
     shelfModel = makeModel();
     const module = await Test.createTestingModule({
       providers: [
         WarehouseRepository,
         { provide: getModelToken(Warehouse.name), useValue: makeModel() },
         { provide: getModelToken(Zone.name), useValue: makeModel() },
-        { provide: getModelToken(Rack.name), useValue: makeModel() },
+        { provide: getModelToken(Rack.name), useValue: rackModel },
         { provide: getModelToken(Shelf.name), useValue: shelfModel },
       ],
     }).compile();
@@ -72,6 +74,59 @@ describe('WarehouseRepository', () => {
         innerWidth: { $exists: true, $ne: null },
         innerHeight: { $exists: true, $ne: null },
       });
+    });
+  });
+
+  describe('findShelfIdsByZone', () => {
+    it('trả về shelfId của mọi shelf thuộc mọi rack trong zone', async () => {
+      const zoneId = new Types.ObjectId().toString();
+      const rackA = new Types.ObjectId();
+      const rackB = new Types.ObjectId();
+      const shelfA1 = new Types.ObjectId();
+      const shelfB1 = new Types.ObjectId();
+
+      rackModel.find = jest.fn().mockReturnThis();
+      rackModel.sort = jest.fn().mockReturnThis();
+      rackModel.exec = jest
+        .fn()
+        .mockResolvedValue([{ _id: rackA }, { _id: rackB }]);
+
+      shelfModel.find = jest.fn().mockReturnThis();
+      shelfModel.sort = jest.fn().mockReturnThis();
+      shelfModel.exec = jest
+        .fn()
+        .mockResolvedValueOnce([{ _id: shelfA1 }])
+        .mockResolvedValueOnce([{ _id: shelfB1 }]);
+
+      const ids = await repo.findShelfIdsByZone(zoneId);
+
+      expect(rackModel.find).toHaveBeenCalledWith({
+        zoneId: new Types.ObjectId(zoneId),
+        deletedAt: null,
+      });
+      expect(shelfModel.find).toHaveBeenNthCalledWith(1, {
+        rackId: rackA,
+        deletedAt: null,
+      });
+      expect(shelfModel.find).toHaveBeenNthCalledWith(2, {
+        rackId: rackB,
+        deletedAt: null,
+      });
+      expect(ids).toEqual([shelfA1, shelfB1]);
+    });
+
+    it('trả về mảng rỗng khi zone không có rack nào', async () => {
+      const zoneId = new Types.ObjectId().toString();
+      rackModel.find = jest.fn().mockReturnThis();
+      rackModel.sort = jest.fn().mockReturnThis();
+      rackModel.exec = jest.fn().mockResolvedValue([]);
+      shelfModel.find = jest.fn().mockReturnThis();
+      shelfModel.sort = jest.fn().mockReturnThis();
+      shelfModel.exec = jest.fn().mockResolvedValue([]);
+
+      const ids = await repo.findShelfIdsByZone(zoneId);
+
+      expect(ids).toEqual([]);
     });
   });
 });

@@ -76,6 +76,38 @@ describe('StockRepository', () => {
     });
   });
 
+  describe('findItemsByIds', () => {
+    it('gọi find với $in trên danh sách itemId, select sku, lean', async () => {
+      const itemIds = [itemId, new Types.ObjectId()];
+      warehouseItemModel.find = jest.fn().mockReturnThis();
+      warehouseItemModel.exec.mockResolvedValueOnce([
+        { _id: itemIds[0], sku: 'SKU-1' },
+        { _id: itemIds[1], sku: 'SKU-2' },
+      ]);
+
+      const result = await repo.findItemsByIds(itemIds);
+
+      expect(warehouseItemModel.find).toHaveBeenCalledWith({
+        _id: { $in: itemIds },
+      });
+      expect(warehouseItemModel.select).toHaveBeenCalledWith('sku');
+      expect(warehouseItemModel.lean).toHaveBeenCalled();
+      expect(result).toEqual([
+        { _id: itemIds[0], sku: 'SKU-1' },
+        { _id: itemIds[1], sku: 'SKU-2' },
+      ]);
+    });
+
+    it('trả về mảng rỗng khi không có item nào khớp', async () => {
+      warehouseItemModel.find = jest.fn().mockReturnThis();
+      warehouseItemModel.exec.mockResolvedValueOnce([]);
+
+      const result = await repo.findItemsByIds([new Types.ObjectId()]);
+
+      expect(result).toEqual([]);
+    });
+  });
+
   describe('findBalanceByItemAndWarehouse', () => {
     it('gọi findOne với đúng filter', async () => {
       balanceModel.exec.mockResolvedValueOnce({
@@ -379,6 +411,45 @@ describe('StockRepository', () => {
       expect(warehouseItemModel.findById).toHaveBeenCalledWith(id);
       expect(warehouseItemModel.lean).not.toHaveBeenCalled();
       expect(result).toBe(mockDoc);
+    });
+  });
+
+  describe('findInventoryByScope', () => {
+    it('lọc theo warehouseId, không kèm shelfId khi không truyền shelfIds', async () => {
+      const scopeWarehouseId = new Types.ObjectId();
+      inventoryModel.find = jest.fn().mockReturnThis();
+      inventoryModel.exec = jest.fn().mockResolvedValue([]);
+
+      await repo.findInventoryByScope(scopeWarehouseId);
+
+      expect(inventoryModel.find).toHaveBeenCalledWith({
+        warehouseId: scopeWarehouseId,
+      });
+    });
+
+    it('lọc thêm theo shelfId $in khi truyền shelfIds', async () => {
+      const scopeWarehouseId = new Types.ObjectId();
+      const shelfIds = [new Types.ObjectId(), new Types.ObjectId()];
+      inventoryModel.find = jest.fn().mockReturnThis();
+      inventoryModel.exec = jest.fn().mockResolvedValue([]);
+
+      await repo.findInventoryByScope(scopeWarehouseId, shelfIds);
+
+      expect(inventoryModel.find).toHaveBeenCalledWith({
+        warehouseId: scopeWarehouseId,
+        shelfId: { $in: shelfIds },
+      });
+    });
+
+    it('trả về danh sách InventoryStock từ query', async () => {
+      const scopeWarehouseId = new Types.ObjectId();
+      const mockDocs = [{ _id: new Types.ObjectId(), quantity: 10 }];
+      inventoryModel.find = jest.fn().mockReturnThis();
+      inventoryModel.exec = jest.fn().mockResolvedValue(mockDocs);
+
+      const result = await repo.findInventoryByScope(scopeWarehouseId);
+
+      expect(result).toEqual(mockDocs);
     });
   });
 

@@ -99,6 +99,26 @@ export const WMS_ERRORS = {
     status: HttpStatus.CONFLICT,
     message: 'Dòng này đã được xác nhận in xong trước đó',
   },
+  STOCK_COUNT_NOT_FOUND: {
+    status: HttpStatus.NOT_FOUND,
+    message: 'Không tìm thấy phiếu kiểm kho',
+  },
+  STOCK_COUNT_EMPTY_SCOPE: {
+    status: HttpStatus.BAD_REQUEST,
+    message: 'Không có tồn kho nào trong phạm vi đã chọn',
+  },
+  STOCK_COUNT_ITEM_MISMATCH: {
+    status: HttpStatus.BAD_REQUEST,
+    message: 'Vị trí/lô không thuộc phiếu kiểm kho này',
+  },
+  STOCK_COUNT_ALREADY_APPROVED: {
+    status: HttpStatus.CONFLICT,
+    message: 'Phiếu đã duyệt, không thể sửa',
+  },
+  STOCK_COUNT_NOT_COMPLETED: {
+    status: HttpStatus.CONFLICT,
+    message: 'Phiếu chưa đếm xong, không thể duyệt',
+  },
 } as const satisfies Record<
   string,
   { status: HttpStatusType; message: string }

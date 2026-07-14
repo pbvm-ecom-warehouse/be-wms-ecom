@@ -22,6 +22,7 @@ import { GoodsReceiptNoteModule } from './goods-receipt-note/goods-receipt-note.
 import { PutAwaySuggestionModule } from './put-away-suggestion/put-away-suggestion.module';
 import { GoodsIssueModule } from './goods-issue/goods-issue.module';
 import { PrintJobModule } from './print-job/print-job.module';
+import { StockCountModule } from './stock-count/stock-count.module';
 import { appConfig } from './config/app.config';
 import { authConfig } from './config/auth.config';
 import { validateEnv } from './config/env.validation';
@@ -54,6 +55,7 @@ import { validateEnv } from './config/env.validation';
     PutAwaySuggestionModule, // S2-05: gợi ý vị trí put-away theo thể tích — dùng StockModule + WarehouseModule
     GoodsIssueModule, // UC-05: nhận order.ready_to_fulfill, sinh GoodsIssue, PICKER xuất kho, phát goods.issued
     PrintJobModule, // UC-04: nhận print.requested, sinh PrintJob, PRINTER in ly make-to-order, phát print.completed
+    StockCountModule, // UC-06: MANAGER tạo phiếu kiểm kho, COUNTER đếm thực, duyệt sinh ADJUST + stock.changed
   ],
   controllers: [AppController],
   providers: [

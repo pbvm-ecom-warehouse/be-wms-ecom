@@ -88,6 +88,17 @@ export class StockRepository {
     return this.itemModel.findById(itemId).select('sku').lean().exec();
   }
 
+  /** Lấy sku của nhiều mặt hàng theo id (batch) — dùng khi tạo StockCount để tránh N+1 query. */
+  findItemsByIds(
+    itemIds: Types.ObjectId[],
+  ): Promise<{ _id: Types.ObjectId; sku: string }[]> {
+    return this.itemModel
+      .find({ _id: { $in: itemIds } })
+      .select('sku')
+      .lean()
+      .exec();
+  }
+
   /** Đọc đầy đủ WarehouseItem theo id — dùng khi GRN cần isPerishable/altUnits/unit. */
   findItemById(itemId: string) {
     return this.itemModel.findById(itemId).lean().exec();
@@ -171,6 +182,20 @@ export class StockRepository {
         { upsert: true, new: true, session },
       )
       .exec();
+  }
+
+  /**
+   * Danh sách InventoryStock trong phạm vi 1 kho (toàn kho nếu không truyền
+   * shelfIds, hoặc giới hạn theo danh sách shelf nếu lọc theo zone) — dùng
+   * để auto-generate dòng khi MANAGER tạo StockCount (UC-06).
+   */
+  findInventoryByScope(
+    warehouseId: Types.ObjectId,
+    shelfIds?: Types.ObjectId[],
+  ): Promise<InventoryStockDocument[]> {
+    const filter: Record<string, unknown> = { warehouseId };
+    if (shelfIds) filter['shelfId'] = { $in: shelfIds };
+    return this.inventoryModel.find(filter).exec();
   }
 
   findActiveLotByNumber(
