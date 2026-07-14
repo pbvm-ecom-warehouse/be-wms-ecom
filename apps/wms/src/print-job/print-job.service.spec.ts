@@ -23,6 +23,7 @@ const makeStockRepo = () => ({
   upsertInventory: jest.fn(),
   insertMovement: jest.fn(),
   createItem: jest.fn(),
+  findSkuById: jest.fn(),
 });
 
 const makeWarehouseRepo = () => ({
@@ -98,6 +99,7 @@ describe('PrintJobService', () => {
         reserved: 20,
         expired: 0,
       });
+      stockRepo.findSkuById.mockResolvedValue({ sku: 'CUP-BLANK-500' });
 
       await svc.createFromPrintRequested(orderId, warehouseId.toString(), [
         { sku: 'CUP-PRINTED-1', quantity: 10 },
