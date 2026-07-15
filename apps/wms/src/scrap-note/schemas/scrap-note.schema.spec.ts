@@ -48,4 +48,13 @@ describe('ScrapNoteSchema', () => {
   it('export ScrapNote class dùng được với SchemaFactory (smoke test)', () => {
     expect(ScrapNote).toBeDefined();
   });
+
+  it('ScrapNoteItem.skipAvailableSync mặc định false', () => {
+    const itemPaths = (
+      ScrapNoteSchema.path('items') as unknown as {
+        schema: { paths: Record<string, { defaultValue: unknown }> };
+      }
+    ).schema.paths;
+    expect(itemPaths['skipAvailableSync'].defaultValue).toBe(false);
+  });
 });

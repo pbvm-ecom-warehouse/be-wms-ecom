@@ -38,6 +38,18 @@ export class ScrapNoteItem {
   /** Lý do hủy — hết hạn/vỡ/ẩm mốc/khác, tự do nhập */
   @Prop({ required: true })
   reason!: string;
+
+  /**
+   * true khi ScrapNote này được GoodsReturnService tạo tự động cho dòng
+   * DAMAGED (UC-09) — hàng đó vừa được nhập TẠM vào InventoryStock/onHand
+   * trong CÙNG bước confirm() rồi hủy ngay, nên chưa từng cộng vào
+   * `available`. Nếu approveScrapNote() vẫn bắn stock.changed(-) như bình
+   * thường thì available sẽ bị trừ nhầm (available vốn chưa từng tăng cho
+   * phần này). Mặc định false — dòng Scrap tạo tay qua POST /scrap-notes
+   * (UC-08 gốc) không bao giờ set cờ này.
+   */
+  @Prop({ default: false })
+  skipAvailableSync!: boolean;
 }
 const ScrapNoteItemSchema = SchemaFactory.createForClass(ScrapNoteItem);
 

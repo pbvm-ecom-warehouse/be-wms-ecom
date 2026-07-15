@@ -14,6 +14,7 @@ export interface CreateScrapNoteLineInput {
   lotId: Types.ObjectId | null;
   quantity: number;
   reason: string;
+  skipAvailableSync?: boolean;
 }
 
 export interface QueryScrapNoteInput {
@@ -56,6 +57,41 @@ export class ScrapNoteRepository {
         })),
       },
     ]);
+    return doc;
+  }
+
+  /**
+   * Tạo ScrapNote đã APPROVED sẵn (bỏ qua DRAFT) — dùng cho UC-09: hàng
+   * DAMAGED từ GoodsReturn đã được RECEIVER xác nhận lúc inspect, không cần
+   * MANAGER duyệt lại lần nữa. Nhận session để chạy trong transaction của
+   * GoodsReturnService.confirmGoodsReturn.
+   */
+  async createApprovedScrapNote(
+    warehouseId: Types.ObjectId,
+    createdBy: Types.ObjectId,
+    lines: CreateScrapNoteLineInput[],
+    session: ClientSession,
+  ): Promise<ScrapNoteDocument> {
+    const [doc] = await this.model.create(
+      [
+        {
+          warehouseId,
+          status: ScrapNoteStatus.APPROVED,
+          createdBy,
+          approvedBy: createdBy,
+          items: lines.map((l) => ({
+            itemId: l.itemId,
+            sku: l.sku,
+            shelfId: l.shelfId,
+            lotId: l.lotId,
+            quantity: l.quantity,
+            reason: l.reason,
+            skipAvailableSync: l.skipAvailableSync ?? false,
+          })),
+        },
+      ],
+      { session },
+    );
     return doc;
   }
 

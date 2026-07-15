@@ -5,6 +5,7 @@ import { ScrapNoteStatus } from './schemas/scrap-note.schema';
 const makeRepo = () => ({
   findById: jest.fn(),
   createScrapNote: jest.fn(),
+  createApprovedScrapNote: jest.fn(),
   findAll: jest.fn(),
   setApproved: jest.fn(),
   setRejected: jest.fn(),
@@ -346,6 +347,90 @@ describe('ScrapNoteService', () => {
         { sku: 'SKU-2', delta: -3 },
         expect.objectContaining({ jobId: expect.any(String) }),
       );
+    });
+
+    it('dòng skipAvailableSync=true (dù không có lotId) → KHÔNG bắn stock.changed', async () => {
+      repo.findById.mockResolvedValue({
+        _id: 'sn1',
+        warehouseId,
+        status: ScrapNoteStatus.DRAFT,
+        items: [
+          {
+            itemId,
+            sku: 'SKU-1',
+            shelfId,
+            lotId: null,
+            quantity: 5,
+            reason: 'Hàng hoàn trả bị hỏng (RMA)',
+            skipAvailableSync: true,
+          },
+        ],
+      });
+
+      await svc.approveScrapNote('sn1', actorId);
+
+      expect(stockQueue.add).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('createApprovedScrapNoteForReturn', () => {
+    it('tạo ScrapNote APPROVED, trừ tồn, ghi SCRAP movement với refId đúng, KHÔNG bắn stock.changed', async () => {
+      const scrapNoteId = new Types.ObjectId();
+      repo.createApprovedScrapNote.mockResolvedValue({ _id: scrapNoteId });
+      const session = {} as never;
+
+      await svc.createApprovedScrapNoteForReturn({
+        warehouseId,
+        itemId,
+        sku: 'SKU-1',
+        shelfId,
+        lotId: null,
+        quantity: 4,
+        actorId: new Types.ObjectId(actorId),
+        session,
+      });
+
+      expect(repo.createApprovedScrapNote).toHaveBeenCalledWith(
+        warehouseId,
+        new Types.ObjectId(actorId),
+        [
+          {
+            itemId,
+            sku: 'SKU-1',
+            shelfId,
+            lotId: null,
+            quantity: 4,
+            reason: 'Hàng hoàn trả bị hỏng (RMA)',
+            skipAvailableSync: true,
+          },
+        ],
+        session,
+      );
+      expect(stockRepo.upsertInventory).toHaveBeenCalledWith(
+        itemId,
+        warehouseId,
+        shelfId,
+        null,
+        -4,
+        session,
+      );
+      expect(stockRepo.upsertBalance).toHaveBeenCalledWith(
+        itemId,
+        warehouseId,
+        -4,
+        0,
+        0,
+        session,
+      );
+      expect(stockRepo.insertMovement).toHaveBeenCalledWith(
+        expect.objectContaining({
+          quantity: -4,
+          refType: 'scrap_note',
+          refId: scrapNoteId,
+        }),
+        session,
+      );
+      expect(stockQueue.add).not.toHaveBeenCalled();
     });
   });
 
