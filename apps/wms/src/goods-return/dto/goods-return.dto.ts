@@ -10,7 +10,6 @@ import {
   IsString,
   Max,
   Min,
-  MinLength,
   ValidateNested,
 } from 'class-validator';
 import { Types } from 'mongoose';
@@ -33,7 +32,8 @@ export class CreateGoodsReturnItemDto {
 export class CreateGoodsReturnDto {
   @ApiPropertyOptional({
     example: '665f1a2b3c4d5e6f7a8b9c0d',
-    description: 'Đơn Ecommerce gốc — bỏ trống nếu hàng hoàn không gắn đơn cụ thể',
+    description:
+      'Đơn Ecommerce gốc — bỏ trống nếu hàng hoàn không gắn đơn cụ thể',
   })
   @IsOptional()
   @IsString()
