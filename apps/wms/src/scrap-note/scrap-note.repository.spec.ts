@@ -77,17 +77,22 @@ describe('ScrapNoteRepository', () => {
     it('tạo document với status APPROVED, approvedBy=createdBy, skipAvailableSync đúng', async () => {
       const session = {} as never;
       model.create.mockResolvedValue([{ _id: 'sn1' }]);
-      await repo.createApprovedScrapNote(warehouseId, createdBy, [
-        {
-          itemId,
-          sku: 'SKU-1',
-          shelfId,
-          lotId: null,
-          quantity: 5,
-          reason: 'Hàng hoàn trả bị hỏng (RMA)',
-          skipAvailableSync: true,
-        },
-      ], session);
+      await repo.createApprovedScrapNote(
+        warehouseId,
+        createdBy,
+        [
+          {
+            itemId,
+            sku: 'SKU-1',
+            shelfId,
+            lotId: null,
+            quantity: 5,
+            reason: 'Hàng hoàn trả bị hỏng (RMA)',
+            skipAvailableSync: true,
+          },
+        ],
+        session,
+      );
       expect(model.create).toHaveBeenCalledWith(
         [
           {

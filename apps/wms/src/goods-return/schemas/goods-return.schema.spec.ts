@@ -33,14 +33,10 @@ describe('GoodsReturnSchema', () => {
     const indexes = GoodsReturnSchema.indexes();
     expect(indexes.some(([def]) => def['orderId'] === 1)).toBe(true);
     expect(
-      indexes.some(
-        ([def]) => def['warehouseId'] === 1 && def['status'] === 1,
-      ),
+      indexes.some(([def]) => def['warehouseId'] === 1 && def['status'] === 1),
     ).toBe(true);
     expect(
-      indexes.some(
-        ([def]) => def['status'] === 1 && !('warehouseId' in def),
-      ),
+      indexes.some(([def]) => def['status'] === 1 && !('warehouseId' in def)),
     ).toBe(true);
   });
 

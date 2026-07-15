@@ -413,7 +413,9 @@ describe('GoodsReturnService', () => {
         }),
         expect.anything(),
       );
-      expect(scrapNoteService.createApprovedScrapNoteForReturn).not.toHaveBeenCalled();
+      expect(
+        scrapNoteService.createApprovedScrapNoteForReturn,
+      ).not.toHaveBeenCalled();
       expect(stockQueue.add).toHaveBeenCalledWith(
         'stock.changed',
         { sku: 'SKU-1', delta: 4 },
