@@ -135,6 +135,26 @@ export const WMS_ERRORS = {
     status: HttpStatus.CONFLICT,
     message: 'Phiếu đã được duyệt hoặc từ chối, không thể xử lý lại',
   },
+  GOODS_RETURN_NOT_FOUND: {
+    status: HttpStatus.NOT_FOUND,
+    message: 'Không tìm thấy phiếu hoàn hàng',
+  },
+  GOODS_RETURN_ALREADY_DECIDED: {
+    status: HttpStatus.CONFLICT,
+    message: 'Phiếu đã xử lý xong hoặc đã huỷ, không thể thao tác lại',
+  },
+  GOODS_RETURN_ITEM_NOT_FOUND: {
+    status: HttpStatus.NOT_FOUND,
+    message: 'Dòng hàng không tồn tại trong phiếu hoàn',
+  },
+  GOODS_RETURN_NOT_INSPECTED: {
+    status: HttpStatus.CONFLICT,
+    message: 'Phiếu chưa được kiểm tra tình trạng, không thể xác nhận',
+  },
+  GOODS_RETURN_ITEM_ISPERISHABLE_NO_LOT: {
+    status: HttpStatus.BAD_REQUEST,
+    message: 'Mặt hàng có hạn sử dụng phải chọn lô khi nhập lại hàng tốt',
+  },
 } as const satisfies Record<
   string,
   { status: HttpStatusType; message: string }
