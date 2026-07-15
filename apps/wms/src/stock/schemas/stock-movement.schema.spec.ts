@@ -1,7 +1,7 @@
 import { MovementType, StockMovementSchema } from './stock-movement.schema';
 
 describe('StockMovement schema', () => {
-  it('MovementType enum có 7 giá trị theo DBML', () => {
+  it('MovementType có đủ 8 giá trị (đã thêm RETURN_IN cho UC-09)', () => {
     expect(Object.values(MovementType)).toEqual([
       'RECEIVE',
       'PUTAWAY',
@@ -10,6 +10,7 @@ describe('StockMovement schema', () => {
       'SCRAP',
       'PRINT_CONSUME',
       'PRINT_OUTPUT',
+      'RETURN_IN',
     ]);
   });
 
