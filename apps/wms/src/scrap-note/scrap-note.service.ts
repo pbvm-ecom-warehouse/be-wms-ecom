@@ -188,7 +188,7 @@ export class ScrapNoteService {
     quantity: number;
     actorId: Types.ObjectId;
     session: ClientSession;
-  }): Promise<void> {
+  }): Promise<Types.ObjectId> {
     const scrapNote = await this.repo.createApprovedScrapNote(
       params.warehouseId,
       params.actorId,
@@ -235,6 +235,8 @@ export class ScrapNoteService {
       },
       params.session,
     );
+
+    return scrapNote._id;
   }
 
   /**

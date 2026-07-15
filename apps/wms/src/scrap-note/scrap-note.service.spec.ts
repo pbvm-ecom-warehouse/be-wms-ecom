@@ -379,7 +379,7 @@ describe('ScrapNoteService', () => {
       repo.createApprovedScrapNote.mockResolvedValue({ _id: scrapNoteId });
       const session = {} as never;
 
-      await svc.createApprovedScrapNoteForReturn({
+      const result = await svc.createApprovedScrapNoteForReturn({
         warehouseId,
         itemId,
         sku: 'SKU-1',
@@ -431,6 +431,7 @@ describe('ScrapNoteService', () => {
         session,
       );
       expect(stockQueue.add).not.toHaveBeenCalled();
+      expect(result).toBe(scrapNoteId);
     });
   });
 
