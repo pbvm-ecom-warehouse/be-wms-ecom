@@ -83,11 +83,13 @@ export class CheckoutService {
     const shippingFee = 0; // Mặc định miễn phí giao hàng v1
     const total = subtotal + shippingFee;
 
-    const deadlineMinutes =
-      this.config.get<number>('PAYMENT_DEADLINE_MINUTES') ?? 30;
+    const deadlineMinutes = parseInt(
+      String(this.config.get('PAYMENT_DEADLINE_MINUTES') ?? '30'),
+      10,
+    );
     const paymentDeadline =
       dto.paymentMethod === PaymentMethod.ONLINE
-        ? new Date(Date.now() + deadlineMinutes * 60 * 1000)
+        ? new Date(Date.now() + (Number.isNaN(deadlineMinutes) ? 30 : deadlineMinutes) * 60 * 1000)
         : null;
 
     const code = await this.orderRepo.generateOrderCode();
@@ -142,11 +144,12 @@ export class CheckoutService {
 
     // Thiết lập tiến trình tự động hủy đơn hàng ONLINE sau 30 phút nếu chưa trả tiền
     if (dto.paymentMethod === PaymentMethod.ONLINE) {
+      const delayMs = (Number.isNaN(deadlineMinutes) ? 30 : deadlineMinutes) * 60 * 1000;
       await this.orderQueue.add(
         'auto.cancel',
         { orderId: order._id.toString() },
         {
-          delay: deadlineMinutes * 60 * 1000,
+          delay: delayMs,
           jobId: `auto-cancel:${order._id.toString()}`,
         },
       );

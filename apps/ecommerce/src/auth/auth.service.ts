@@ -140,15 +140,30 @@ export class AuthService {
             existingByEmail._id,
             decoded.uid,
           )
-      : await this.userRepo.create({
-          email: decoded.email,
-          firebaseUid: decoded.uid,
-          passwordHash: await bcrypt.hash(generateOpaqueToken(), BCRYPT_ROUNDS),
-          name: typeof decoded.name === 'string' ? decoded.name : undefined,
-          phone: decoded.phone_number ?? undefined,
-          type: 'customer',
-          roles: ['customer'],
-        });
+      : await (async () => {
+          const email = decoded.email!;
+          const rawPassword = generateOpaqueToken().slice(0, 12);
+          const hash = await bcrypt.hash(rawPassword, BCRYPT_ROUNDS);
+          const newUser = await this.userRepo.create({
+            email,
+            firebaseUid: decoded.uid,
+            passwordHash: hash,
+            name: typeof decoded.name === 'string' ? decoded.name : undefined,
+            phone: decoded.phone_number ?? undefined,
+            type: 'customer',
+            roles: ['customer'],
+          });
+          await this.notifyQueue.add(
+            EVENTS.CUSTOMER_GOOGLE_REGISTERED,
+            {
+              customerId: newUser._id.toString(),
+              email: newUser.email,
+              password: rawPassword,
+            },
+            { removeOnComplete: true },
+          );
+          return newUser;
+        })();
 
     if (!user) {
       throw new AppException('AUTH_FIREBASE_LOGIN_FAILED');

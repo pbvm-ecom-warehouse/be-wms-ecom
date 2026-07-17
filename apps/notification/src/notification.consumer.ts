@@ -1,10 +1,11 @@
 import { Processor, WorkerHost } from '@nestjs/bullmq';
 import { Logger } from '@nestjs/common';
-import { EVENTS, QUEUES, type CustomerEmailActionPayload } from '@app/events';
+import { EVENTS, QUEUES, type CustomerEmailActionPayload, type CustomerGoogleRegisteredPayload } from '@app/events';
 import { Job } from 'bullmq';
 import { EmailService } from './email/email.service';
 import { VerifyEmail } from './email/templates/verify-email';
 import { ResetPasswordEmail } from './email/templates/reset-password';
+import { GoogleWelcomeEmail } from './email/templates/google-welcome';
 
 function toEmailPayload(raw: unknown): CustomerEmailActionPayload {
   return raw as CustomerEmailActionPayload;
@@ -43,6 +44,17 @@ export class NotificationConsumer extends WorkerHost {
           subject: 'Mã đặt lại mật khẩu',
 
           react: ResetPasswordEmail({ code }),
+          idempotencyKey: key,
+        });
+        break;
+      }
+      case EVENTS.CUSTOMER_GOOGLE_REGISTERED: {
+        const { email, password } = job.data as CustomerGoogleRegisteredPayload;
+        await this.email.send({
+          to: email,
+          subject: 'Chào mừng bạn đến với MateStock — Mật khẩu tài khoản của bạn',
+
+          react: GoogleWelcomeEmail({ password: password ?? '' }),
           idempotencyKey: key,
         });
         break;

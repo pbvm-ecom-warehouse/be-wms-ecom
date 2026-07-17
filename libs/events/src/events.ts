@@ -47,6 +47,7 @@ export const EVENTS = {
   PAYMENT_SUCCESS: 'payment.success',
   CUSTOMER_VERIFY_REQUESTED: 'customer.verify_requested',
   CUSTOMER_PASSWORD_RESET_REQUESTED: 'customer.password_reset_requested',
+  CUSTOMER_GOOGLE_REGISTERED: 'customer.google_registered',
 } as const;
 
 export type EventName = (typeof EVENTS)[keyof typeof EVENTS];
@@ -188,4 +189,11 @@ export interface EventPayloadMap {
   [EVENTS.PAYMENT_SUCCESS]: PaymentSuccessPayload;
   [EVENTS.CUSTOMER_VERIFY_REQUESTED]: CustomerEmailActionPayload;
   [EVENTS.CUSTOMER_PASSWORD_RESET_REQUESTED]: CustomerEmailActionPayload;
+  [EVENTS.CUSTOMER_GOOGLE_REGISTERED]: CustomerGoogleRegisteredPayload;
+}
+
+export interface CustomerGoogleRegisteredPayload {
+  customerId: string;
+  email: string;
+  password?: string;
 }
