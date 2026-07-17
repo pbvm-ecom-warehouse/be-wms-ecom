@@ -64,7 +64,11 @@ export class ReportRepository {
     private readonly stockMovementModel: Model<StockMovement>,
   ) {}
 
-  /** Resolve sku → itemId (+ nearExpiryDays cho báo cáo lô) — dùng chung cho filter sku ở cả 3 báo cáo. */
+  /**
+   * Resolve sku → itemId (+ nearExpiryDays cho báo cáo lô) — dùng chung cho filter sku ở cả 3 báo cáo.
+   * Không filter deletedAt: null — cố ý khác quy ước master data thường, vì báo cáo tồn kho
+   * cần hiện cả tồn vật lý của item đã ngừng kinh doanh (soft-delete) để nhân viên dọn kho.
+   */
   findItemIdBySku(sku: string): Promise<ItemSkuLookup | null> {
     return this.warehouseItemModel
       .findOne({ sku })
@@ -84,6 +88,8 @@ export class ReportRepository {
 
     const basePipeline: PipelineStage[] = [
       { $match: match },
+      // Không lọc warehouse_items.deletedAt — báo cáo tồn phải hiện cả tồn vật lý
+      // của item đã soft-delete (ngừng kinh doanh) để nhân viên biết mà dọn kho.
       {
         $lookup: {
           from: 'warehouse_items',
@@ -148,6 +154,7 @@ export class ReportRepository {
         },
       },
       { $unwind: '$lot' },
+      // Không lọc warehouse_items.deletedAt — cùng lý do với aggregateStockReport.
       {
         $lookup: {
           from: 'warehouse_items',
