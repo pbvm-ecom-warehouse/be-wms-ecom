@@ -19,6 +19,7 @@ import {
   type PrintJobDocument,
 } from './schemas/print-job.schema';
 import { StockRepository } from '../stock/stock.repository';
+import { StockService } from '../stock/stock.service';
 import { ItemType } from '../stock/schemas/warehouse-item.schema';
 import { WarehouseRepository } from '../warehouse/warehouse.repository';
 import { StockTransactionHelper } from '../stock/helpers/with-stock-transaction.helper';
@@ -47,6 +48,7 @@ export class PrintJobService {
   constructor(
     private readonly repo: PrintJobRepository,
     private readonly stockRepo: StockRepository,
+    private readonly stockService: StockService,
     private readonly warehouseRepo: WarehouseRepository,
     private readonly stockTransactionHelper: StockTransactionHelper,
     // reserve CUP_BLANK bắn stock.changed lên QUEUES.STOCK (khớp
@@ -124,6 +126,10 @@ export class PrintJobService {
     // PrintJob thất bại giữa chừng thì reserve cũng phải rollback theo, tránh
     // giữ tồn "mồ côi" không có PrintJob nào tham chiếu tới (và bị reserve
     // lại lần nữa khi BullMQ retry event print.requested).
+    const touchedBalances = new Map<
+      string,
+      { itemId: Types.ObjectId; warehouseId: Types.ObjectId }
+    >();
     await this.stockTransactionHelper.withStockTransaction(async (session) => {
       for (const line of lines) {
         if (line.reservedQty > 0) {
@@ -134,6 +140,10 @@ export class PrintJobService {
             line.reservedQty,
             0,
             session,
+          );
+          touchedBalances.set(
+            `${line.inputItemId.toString()}:${whId.toString()}`,
+            { itemId: line.inputItemId, warehouseId: whId },
           );
         }
       }
@@ -150,6 +160,12 @@ export class PrintJobService {
           orderId,
         );
       }
+    }
+
+    // S4-04: kiểm tra ngưỡng thấp tồn cho từng (item, warehouse) đã reserve —
+    // sau khi transaction commit.
+    for (const { itemId, warehouseId } of touchedBalances.values()) {
+      await this.stockService.checkAndEmitStockLow(itemId, warehouseId);
     }
   }
 
@@ -302,6 +318,9 @@ export class PrintJobService {
       await this.repo.markLineConsumedIfDone(id, item._id, session);
     });
 
+    // S4-04: kiểm tra ngưỡng thấp tồn — sau khi transaction commit.
+    await this.stockService.checkAndEmitStockLow(item._id, job.warehouseId);
+
     const updated = await this.repo.findById(id);
     if (!updated) throw new AppException('PRINT_JOB_NOT_FOUND');
     return updated;
@@ -388,6 +407,12 @@ export class PrintJobService {
         );
       }
     });
+
+    // S4-04: kiểm tra ngưỡng thấp tồn — sau khi transaction commit.
+    await this.stockService.checkAndEmitStockLow(
+      line.outputItemId,
+      job.warehouseId,
+    );
 
     const updated = await this.repo.findById(id);
     if (!updated) throw new AppException('PRINT_JOB_NOT_FOUND');
