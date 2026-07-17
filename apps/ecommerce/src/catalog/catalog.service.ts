@@ -147,9 +147,9 @@ export class CatalogService {
   }
 
   async getProductDetail(slug: string) {
-    const cacheKey = `ecom:catalog:products:detail:${slug}`;
-    const cached = await this.cacheService.get<unknown>(cacheKey);
-    if (cached) return cached;
+    // const cacheKey = `ecom:catalog:products:detail:${slug}`;
+    // const cached = await this.cacheService.get<unknown>(cacheKey);
+    // if (cached) return cached;
 
     const product = await this.repo.getProductBySlug(slug);
     if (!product) throw new AppException('CATALOG_PRODUCT_NOT_FOUND');
@@ -157,7 +157,7 @@ export class CatalogService {
       product._id.toString(),
     );
     const result = { ...product, variants };
-    await this.cacheService.set(cacheKey, result, 3600); // Cache 1h
+    // await this.cacheService.set(cacheKey, result, 3600); // Cache 1h
     return result;
   }
 
