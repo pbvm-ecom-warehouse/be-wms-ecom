@@ -26,7 +26,10 @@ import { StockService } from './stock.service';
 
 @Module({
   imports: [
-    BullModule.registerQueue({ name: QUEUES.STOCK }),
+    BullModule.registerQueue(
+      { name: QUEUES.STOCK },
+      { name: QUEUES.NOTIFICATION }, // S4-04: StockService.checkAndEmitStockLow → stock.low
+    ),
     MongooseModule.forFeature([
       { name: WarehouseItem.name, schema: WarehouseItemSchema },
       { name: StockBalance.name, schema: StockBalanceSchema },

@@ -89,6 +89,17 @@ export class StockRepository {
     return this.itemModel.findById(itemId).select('sku').lean().exec();
   }
 
+  /** Sku + ngưỡng cảnh báo thấp tồn — dùng bởi StockService.checkAndEmitStockLow. */
+  findSkuAndMinQuantityById(
+    itemId: Types.ObjectId,
+  ): Promise<{ sku: string; minQuantity?: number } | null> {
+    return this.itemModel
+      .findById(itemId)
+      .select('sku minQuantity')
+      .lean<{ sku: string; minQuantity?: number }>()
+      .exec();
+  }
+
   /** Lấy sku của nhiều mặt hàng theo id (batch) — dùng khi tạo StockCount để tránh N+1 query. */
   findItemsByIds(
     itemIds: Types.ObjectId[],
