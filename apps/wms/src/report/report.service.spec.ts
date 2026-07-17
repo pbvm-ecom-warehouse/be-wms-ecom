@@ -1,5 +1,6 @@
 import { Types } from 'mongoose';
 import { ReportService } from './report.service';
+import { LotStatus } from '../stock/schemas/lot.schema';
 
 describe('ReportService', () => {
   let svc: ReportService;
@@ -58,7 +59,11 @@ describe('ReportService', () => {
     it('sku không khớp WarehouseItem nào → trả rỗng, không gọi aggregateStockReport', async () => {
       repo.findItemIdBySku.mockResolvedValue(null);
 
-      const result = await svc.getStockReport({ sku: 'SKU-X', page: 1, limit: 20 });
+      const result = await svc.getStockReport({
+        sku: 'SKU-X',
+        page: 1,
+        limit: 20,
+      });
 
       expect(result).toEqual({ data: [], total: 0 });
       expect(repo.aggregateStockReport).not.toHaveBeenCalled();
@@ -87,6 +92,151 @@ describe('ReportService', () => {
         1,
         20,
       );
+    });
+  });
+
+  describe('getLotReport', () => {
+    const now = new Date('2026-07-15T00:00:00.000Z');
+
+    beforeEach(() => {
+      jest.useFakeTimers().setSystemTime(now);
+    });
+
+    afterEach(() => {
+      jest.useRealTimers();
+    });
+
+    it('status EXPIRED → expiryFlag "expired" bất kể expiryDate', async () => {
+      repo.aggregateLotReport.mockResolvedValue({
+        data: [
+          {
+            _id: { lotId: new Types.ObjectId(), warehouseId },
+            itemId,
+            quantity: 5,
+            lot: {
+              lotNumber: 'LOT-1',
+              expiryDate: new Date('2027-01-01'),
+              status: LotStatus.EXPIRED,
+            },
+            item: { sku: 'SKU-1', name: 'Item 1' },
+            warehouse: { name: 'Kho A' },
+          },
+        ],
+        total: 1,
+      });
+
+      const result = await svc.getLotReport({ page: 1, limit: 20 });
+
+      expect(result.data[0].expiryFlag).toBe('expired');
+    });
+
+    it('expiryDate đã qua nhưng status vẫn ACTIVE (cron chưa chạy) → "expired"', async () => {
+      repo.aggregateLotReport.mockResolvedValue({
+        data: [
+          {
+            _id: { lotId: new Types.ObjectId(), warehouseId },
+            itemId,
+            quantity: 5,
+            lot: {
+              lotNumber: 'LOT-1',
+              expiryDate: new Date('2026-07-01'),
+              status: LotStatus.ACTIVE,
+            },
+            item: { sku: 'SKU-1', name: 'Item 1' },
+            warehouse: { name: 'Kho A' },
+          },
+        ],
+        total: 1,
+      });
+
+      const result = await svc.getLotReport({ page: 1, limit: 20 });
+
+      expect(result.data[0].expiryFlag).toBe('expired');
+    });
+
+    it('expiryDate trong ngưỡng nearExpiryDays riêng của item → "expiringSoon"', async () => {
+      repo.aggregateLotReport.mockResolvedValue({
+        data: [
+          {
+            _id: { lotId: new Types.ObjectId(), warehouseId },
+            itemId,
+            quantity: 5,
+            lot: {
+              lotNumber: 'LOT-1',
+              expiryDate: new Date('2026-07-17T00:00:00.000Z'), // +2 ngày
+              status: LotStatus.ACTIVE,
+            },
+            item: { sku: 'SKU-1', name: 'Item 1', nearExpiryDays: 3 },
+            warehouse: { name: 'Kho A' },
+          },
+        ],
+        total: 1,
+      });
+
+      const result = await svc.getLotReport({ page: 1, limit: 20 });
+
+      expect(result.data[0].expiryFlag).toBe('expiringSoon');
+    });
+
+    it('item không set nearExpiryDays → fallback 7 ngày', async () => {
+      repo.aggregateLotReport.mockResolvedValue({
+        data: [
+          {
+            _id: { lotId: new Types.ObjectId(), warehouseId },
+            itemId,
+            quantity: 5,
+            lot: {
+              lotNumber: 'LOT-1',
+              expiryDate: new Date('2026-07-20T00:00:00.000Z'), // +5 ngày, trong 7 ngày mặc định
+              status: LotStatus.ACTIVE,
+            },
+            item: { sku: 'SKU-1', name: 'Item 1' },
+            warehouse: { name: 'Kho A' },
+          },
+        ],
+        total: 1,
+      });
+
+      const result = await svc.getLotReport({ page: 1, limit: 20 });
+
+      expect(result.data[0].expiryFlag).toBe('expiringSoon');
+    });
+
+    it('expiryDate ngoài ngưỡng → "ok"', async () => {
+      repo.aggregateLotReport.mockResolvedValue({
+        data: [
+          {
+            _id: { lotId: new Types.ObjectId(), warehouseId },
+            itemId,
+            quantity: 5,
+            lot: {
+              lotNumber: 'LOT-1',
+              expiryDate: new Date('2026-09-01T00:00:00.000Z'),
+              status: LotStatus.ACTIVE,
+            },
+            item: { sku: 'SKU-1', name: 'Item 1' },
+            warehouse: { name: 'Kho A' },
+          },
+        ],
+        total: 1,
+      });
+
+      const result = await svc.getLotReport({ page: 1, limit: 20 });
+
+      expect(result.data[0].expiryFlag).toBe('ok');
+    });
+
+    it('sku không khớp → trả rỗng, không gọi aggregateLotReport', async () => {
+      repo.findItemIdBySku.mockResolvedValue(null);
+
+      const result = await svc.getLotReport({
+        sku: 'SKU-X',
+        page: 1,
+        limit: 20,
+      });
+
+      expect(result).toEqual({ data: [], total: 0 });
+      expect(repo.aggregateLotReport).not.toHaveBeenCalled();
     });
   });
 });
