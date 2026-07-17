@@ -17,6 +17,7 @@ import {
   type ScrapNoteDocument,
 } from './schemas/scrap-note.schema';
 import { StockRepository } from '../stock/stock.repository';
+import { StockService } from '../stock/stock.service';
 import { WarehouseRepository } from '../warehouse/warehouse.repository';
 import { StockTransactionHelper } from '../stock/helpers/with-stock-transaction.helper';
 import { MovementType } from '../stock/schemas/stock-movement.schema';
@@ -26,6 +27,7 @@ export class ScrapNoteService {
   constructor(
     private readonly repo: ScrapNoteRepository,
     private readonly stockRepo: StockRepository,
+    private readonly stockService: StockService,
     private readonly warehouseRepo: WarehouseRepository,
     private readonly stockTransactionHelper: StockTransactionHelper,
     @InjectQueue(QUEUES.STOCK) private readonly stockQueue: Queue,
@@ -163,6 +165,16 @@ export class ScrapNoteService {
       };
       const jobId = `scrap_note:${id}:${line.sku}`;
       await this.stockQueue.add(EVENTS.STOCK_CHANGED, payload, { jobId });
+    }
+
+    // S4-04: kiểm tra ngưỡng thấp tồn cho MỌI dòng (bao gồm cả lotId/skipAvailableSync
+    // — khác với vòng lặp stock.changed phía trên, vì stock.low quan tâm available
+    // sau MỌI biến động onHand, không chỉ dòng ảnh hưởng available đã sync Ecom).
+    for (const line of scrapNote.items) {
+      await this.stockService.checkAndEmitStockLow(
+        line.itemId,
+        scrapNote.warehouseId,
+      );
     }
 
     const updated = await this.repo.findById(id);

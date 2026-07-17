@@ -30,10 +30,13 @@ const makeTxHelper = () => ({
 
 const makeStockQueue = () => ({ add: jest.fn() });
 
+const makeStockService = () => ({ checkAndEmitStockLow: jest.fn() });
+
 describe('ScrapNoteService', () => {
   let svc: ScrapNoteService;
   let repo: ReturnType<typeof makeRepo>;
   let stockRepo: ReturnType<typeof makeStockRepo>;
+  let stockService: ReturnType<typeof makeStockService>;
   let warehouseRepo: ReturnType<typeof makeWarehouseRepo>;
   let txHelper: ReturnType<typeof makeTxHelper>;
   let stockQueue: ReturnType<typeof makeStockQueue>;
@@ -47,12 +50,14 @@ describe('ScrapNoteService', () => {
   beforeEach(() => {
     repo = makeRepo();
     stockRepo = makeStockRepo();
+    stockService = makeStockService();
     warehouseRepo = makeWarehouseRepo();
     txHelper = makeTxHelper();
     stockQueue = makeStockQueue();
     svc = new ScrapNoteService(
       repo as never,
       stockRepo as never,
+      stockService as never,
       warehouseRepo as never,
       txHelper as never,
       stockQueue as never,
@@ -370,6 +375,98 @@ describe('ScrapNoteService', () => {
       await svc.approveScrapNote('sn1', actorId);
 
       expect(stockQueue.add).not.toHaveBeenCalled();
+    });
+
+    it('approveScrapNote gọi checkAndEmitStockLow cho mỗi dòng đã trừ tồn', async () => {
+      repo.findById.mockResolvedValue({
+        _id: 'sn1',
+        warehouseId,
+        status: ScrapNoteStatus.DRAFT,
+        items: [
+          {
+            itemId,
+            sku: 'SKU-1',
+            shelfId,
+            lotId,
+            quantity: 5,
+            reason: 'Hết hạn',
+          },
+          {
+            itemId,
+            sku: 'SKU-1',
+            shelfId,
+            lotId: null,
+            quantity: 3,
+            reason: 'Vỡ',
+          },
+        ],
+      });
+
+      await svc.approveScrapNote('sn1', actorId);
+
+      expect(stockService.checkAndEmitStockLow).toHaveBeenCalledTimes(2);
+    });
+
+    it('checkAndEmitStockLow chạy cho MỌI dòng kể cả lotId/skipAvailableSync — không bị filter như stock.changed', async () => {
+      const otherItemId = new Types.ObjectId();
+      const thirdItemId = new Types.ObjectId();
+      repo.findById.mockResolvedValue({
+        _id: 'sn1',
+        warehouseId,
+        status: ScrapNoteStatus.DRAFT,
+        items: [
+          {
+            // dòng có lotId — bị skip ở vòng stock.changed, nhưng KHÔNG skip ở checkAndEmitStockLow
+            itemId,
+            sku: 'SKU-1',
+            shelfId,
+            lotId,
+            quantity: 5,
+            reason: 'Hết hạn',
+          },
+          {
+            // dòng skipAvailableSync=true — cũng bị skip ở vòng stock.changed
+            itemId: otherItemId,
+            sku: 'SKU-2',
+            shelfId,
+            lotId: null,
+            quantity: 2,
+            reason: 'Hàng hoàn trả bị hỏng (RMA)',
+            skipAvailableSync: true,
+          },
+          {
+            // dòng thường — không bị skip ở vòng nào
+            itemId: thirdItemId,
+            sku: 'SKU-3',
+            shelfId,
+            lotId: null,
+            quantity: 3,
+            reason: 'Vỡ',
+          },
+        ],
+      });
+
+      await svc.approveScrapNote('sn1', actorId);
+
+      // vòng stock.changed chỉ bắn cho dòng thứ 3 (không lotId, không skipAvailableSync)
+      expect(stockQueue.add).toHaveBeenCalledTimes(1);
+      // nhưng checkAndEmitStockLow phải chạy cho CẢ 3 dòng — không filter theo lotId/skipAvailableSync
+      expect(stockService.checkAndEmitStockLow).toHaveBeenCalledTimes(3);
+      expect(stockService.checkAndEmitStockLow).toHaveBeenNthCalledWith(
+        1,
+        itemId,
+        warehouseId,
+      );
+      expect(stockService.checkAndEmitStockLow).toHaveBeenNthCalledWith(
+        2,
+        otherItemId,
+        warehouseId,
+      );
+      expect(stockService.checkAndEmitStockLow).toHaveBeenNthCalledWith(
+        3,
+        thirdItemId,
+        warehouseId,
+      );
     });
   });
 
