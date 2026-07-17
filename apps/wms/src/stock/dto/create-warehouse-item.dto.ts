@@ -109,6 +109,16 @@ export class CreateWarehouseItemDto {
 
   @ApiPropertyOptional({
     example: 10,
+    description:
+      'Ngưỡng tối thiểu — available dưới ngưỡng này thì phát cảnh báo stock.low',
+  })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  minQuantity?: number;
+
+  @ApiPropertyOptional({
+    example: 10,
     description: 'Chiều sâu 1 đơn vị cơ sở (cm)',
   })
   @IsOptional()

@@ -79,6 +79,10 @@ export class WarehouseItemResponseDto {
 
   @Expose()
   @ApiPropertyOptional()
+  minQuantity?: number;
+
+  @Expose()
+  @ApiPropertyOptional()
   depth?: number;
 
   @Expose()

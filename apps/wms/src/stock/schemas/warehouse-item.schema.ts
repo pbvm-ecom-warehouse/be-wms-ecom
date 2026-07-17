@@ -75,6 +75,11 @@ export class WarehouseItem {
   @Prop({ type: Number })
   nearExpiryDays?: number;
 
+  /** Ngưỡng tối thiểu — available (= onHand-reserved-expired) < minQuantity thì WMS phát
+   * stock.low cho MANAGER. undefined = item này không bao giờ cảnh báo thấp tồn. */
+  @Prop({ type: Number })
+  minQuantity?: number;
+
   /** Chiều sâu 1 đơn vị cơ sở (cm) — dùng tính unitVolume cho gợi ý put-away */
   @Prop({ type: Number })
   depth?: number;

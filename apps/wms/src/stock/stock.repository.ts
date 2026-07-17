@@ -40,6 +40,7 @@ export type CreateWarehouseItemData = {
   attributes?: { name: string; value: string; code: string }[];
   isPerishable?: boolean;
   nearExpiryDays?: number;
+  minQuantity?: number;
   depth?: number;
   width?: number;
   height?: number;
