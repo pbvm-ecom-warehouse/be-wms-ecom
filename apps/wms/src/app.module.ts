@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { APP_GUARD } from '@nestjs/core';
+import { ScheduleModule } from '@nestjs/schedule';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { LoggerModule } from 'nestjs-pino';
 import {
@@ -48,6 +49,7 @@ import { validateEnv } from './config/env.validation';
     CommonModule, // global filter/interceptor/pipe
     DatabaseModule.forApp('WMS_DATABASE_URL'), // Mongoose → wms_db
     EventsModule, // BullMQ + Redis
+    ScheduleModule.forRoot(), // S4-04: cron NearExpiryScanService (06:00 quét lot sắp hết hạn)
     AuthModule, // đăng nhập nhân viên (users) + JWT
     HealthModule, // GET /api/wms/health
     StockModule, // producer mẫu: stock.changed
