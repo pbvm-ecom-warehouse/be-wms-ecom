@@ -5,6 +5,7 @@ import { WarehouseItem } from '../stock/schemas/warehouse-item.schema';
 import { StockBalance } from '../stock/schemas/stock-balance.schema';
 import { InventoryStock } from '../stock/schemas/inventory-stock.schema';
 import { StockMovement } from '../stock/schemas/stock-movement.schema';
+import { LotStatus } from '../stock/schemas/lot.schema';
 
 export interface ItemFilter {
   warehouseId?: Types.ObjectId;
@@ -23,6 +24,19 @@ export interface RawStockReportRow {
   reserved: number;
   expired: number;
   item: { sku: string; name: string };
+  warehouse: { name: string };
+}
+
+export interface LotItemFilter extends ItemFilter {
+  status?: LotStatus;
+}
+
+export interface RawLotReportRow {
+  _id: { lotId: Types.ObjectId; warehouseId: Types.ObjectId };
+  itemId: Types.ObjectId;
+  quantity: number;
+  lot: { lotNumber: string; expiryDate: Date; status: LotStatus };
+  item: { sku: string; name: string; nearExpiryDays?: number };
   warehouse: { name: string };
 }
 
@@ -89,6 +103,73 @@ export class ReportRepository {
         ])
         .exec(),
       this.stockBalanceModel
+        .aggregate<{ total: number }>([...basePipeline, { $count: 'total' }])
+        .exec(),
+    ]);
+
+    return { data, total: totalResult[0]?.total ?? 0 };
+  }
+
+  async aggregateLotReport(
+    filter: LotItemFilter,
+    page: number,
+    limit: number,
+  ): Promise<{ data: RawLotReportRow[]; total: number }> {
+    const match: Record<string, unknown> = { lotId: { $ne: null } };
+    if (filter.warehouseId) match.warehouseId = filter.warehouseId;
+    if (filter.itemId) match.itemId = filter.itemId;
+
+    const basePipeline: PipelineStage[] = [
+      { $match: match },
+      {
+        $group: {
+          _id: { lotId: '$lotId', warehouseId: '$warehouseId' },
+          itemId: { $first: '$itemId' },
+          quantity: { $sum: '$quantity' },
+        },
+      },
+      {
+        $lookup: {
+          from: 'lots',
+          localField: '_id.lotId',
+          foreignField: '_id',
+          as: 'lot',
+        },
+      },
+      { $unwind: '$lot' },
+      {
+        $lookup: {
+          from: 'warehouse_items',
+          localField: 'itemId',
+          foreignField: '_id',
+          as: 'item',
+        },
+      },
+      { $unwind: '$item' },
+      {
+        $lookup: {
+          from: 'warehouses',
+          localField: '_id.warehouseId',
+          foreignField: '_id',
+          as: 'warehouse',
+        },
+      },
+      { $unwind: '$warehouse' },
+    ];
+    if (filter.status) {
+      basePipeline.push({ $match: { 'lot.status': filter.status } });
+    }
+    basePipeline.push({ $sort: { 'lot.expiryDate': 1 } });
+
+    const [data, totalResult] = await Promise.all([
+      this.inventoryStockModel
+        .aggregate<RawLotReportRow>([
+          ...basePipeline,
+          { $skip: (page - 1) * limit },
+          { $limit: limit },
+        ])
+        .exec(),
+      this.inventoryStockModel
         .aggregate<{ total: number }>([...basePipeline, { $count: 'total' }])
         .exec(),
     ]);

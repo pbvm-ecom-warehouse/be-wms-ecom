@@ -1,4 +1,5 @@
 import { Types } from 'mongoose';
+import { LotStatus } from '../stock/schemas/lot.schema';
 import { ReportRepository } from './report.repository';
 
 describe('ReportRepository', () => {
@@ -99,6 +100,58 @@ describe('ReportRepository', () => {
       >[];
       expect(dataPipeline[0]).toEqual({ $match: {} });
       expect(dataPipeline).toContainEqual({ $skip: 20 });
+    });
+  });
+
+  describe('aggregateLotReport', () => {
+    it('lọc lotId != null, group theo lotId+warehouseId, lookup lot/item/warehouse', async () => {
+      const lotId = new Types.ObjectId();
+      const rows = [
+        {
+          _id: { lotId, warehouseId },
+          itemId,
+          quantity: 5,
+          lot: {
+            lotNumber: 'LOT-1',
+            expiryDate: new Date('2026-08-01'),
+            status: LotStatus.ACTIVE,
+          },
+          item: { sku: 'SKU-1', name: 'Item 1', nearExpiryDays: 3 },
+          warehouse: { name: 'Kho A' },
+        },
+      ];
+      inventoryStockModel.aggregate
+        .mockReturnValueOnce({ exec: jest.fn().mockResolvedValue(rows) })
+        .mockReturnValueOnce({ exec: jest.fn().mockResolvedValue([{ total: 1 }]) });
+
+      const result = await repo.aggregateLotReport({ warehouseId, itemId }, 1, 20);
+
+      expect(result).toEqual({ data: rows, total: 1 });
+      const dataPipeline = inventoryStockModel.aggregate.mock.calls[0][0] as Record<
+        string,
+        unknown
+      >[];
+      expect(dataPipeline[0]).toEqual({
+        $match: { lotId: { $ne: null }, warehouseId, itemId },
+      });
+      expect(dataPipeline).toContainEqual({ $skip: 0 });
+      expect(dataPipeline).toContainEqual({ $limit: 20 });
+    });
+
+    it('có status filter → thêm $match lot.status sau bước lookup', async () => {
+      inventoryStockModel.aggregate
+        .mockReturnValueOnce({ exec: jest.fn().mockResolvedValue([]) })
+        .mockReturnValueOnce({ exec: jest.fn().mockResolvedValue([]) });
+
+      await repo.aggregateLotReport({ status: LotStatus.EXPIRED }, 1, 20);
+
+      const dataPipeline = inventoryStockModel.aggregate.mock.calls[0][0] as Record<
+        string,
+        unknown
+      >[];
+      expect(dataPipeline).toContainEqual({
+        $match: { 'lot.status': LotStatus.EXPIRED },
+      });
     });
   });
 });
