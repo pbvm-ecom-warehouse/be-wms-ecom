@@ -32,6 +32,8 @@ const makeTxHelper = () => ({
 
 const makeStockQueue = () => ({ add: jest.fn() });
 
+const makeStockService = () => ({ checkAndEmitStockLow: jest.fn() });
+
 describe('StockCountService', () => {
   let svc: StockCountService;
   let repo: ReturnType<typeof makeRepo>;
@@ -39,6 +41,7 @@ describe('StockCountService', () => {
   let warehouseRepo: ReturnType<typeof makeWarehouseRepo>;
   let txHelper: ReturnType<typeof makeTxHelper>;
   let stockQueue: ReturnType<typeof makeStockQueue>;
+  let stockService: ReturnType<typeof makeStockService>;
 
   const actorId = new Types.ObjectId().toString();
   const warehouseId = new Types.ObjectId();
@@ -52,9 +55,11 @@ describe('StockCountService', () => {
     warehouseRepo = makeWarehouseRepo();
     txHelper = makeTxHelper();
     stockQueue = makeStockQueue();
+    stockService = makeStockService();
     svc = new StockCountService(
       repo as never,
       stockRepo as never,
+      stockService as never,
       warehouseRepo as never,
       txHelper as never,
       stockQueue as never,
@@ -400,6 +405,56 @@ describe('StockCountService', () => {
       expect(stockRepo.insertMovement).not.toHaveBeenCalled();
       expect(stockQueue.add).not.toHaveBeenCalled();
       expect(repo.setApproved).toHaveBeenCalled();
+    });
+
+    it('approveStockCount gọi checkAndEmitStockLow cho mỗi dòng có delta ≠ 0', async () => {
+      const itemId2 = new Types.ObjectId();
+      repo.findById.mockResolvedValue({
+        _id: 'sc1',
+        warehouseId,
+        status: StockCountStatus.COMPLETED,
+        items: [
+          {
+            itemId,
+            sku: 'SKU-1',
+            shelfId,
+            lotId: null,
+            systemQty: 50,
+            actualQty: 55,
+            delta: 5,
+          },
+          {
+            itemId: itemId2,
+            sku: 'SKU-2',
+            shelfId,
+            lotId: null,
+            systemQty: 20,
+            actualQty: 15,
+            delta: -5,
+          },
+          {
+            itemId: new Types.ObjectId(),
+            sku: 'SKU-3',
+            shelfId,
+            lotId: null,
+            systemQty: 10,
+            actualQty: 10,
+            delta: 0,
+          },
+        ],
+      });
+
+      await svc.approveStockCount('sc1', { reason: 'Duyệt' }, actorId);
+
+      expect(stockService.checkAndEmitStockLow).toHaveBeenCalledTimes(2);
+      expect(stockService.checkAndEmitStockLow).toHaveBeenCalledWith(
+        itemId,
+        warehouseId,
+      );
+      expect(stockService.checkAndEmitStockLow).toHaveBeenCalledWith(
+        itemId2,
+        warehouseId,
+      );
     });
   });
 

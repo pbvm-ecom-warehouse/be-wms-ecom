@@ -18,6 +18,7 @@ import {
   type StockCountDocument,
 } from './schemas/stock-count.schema';
 import { StockRepository } from '../stock/stock.repository';
+import { StockService } from '../stock/stock.service';
 import { WarehouseRepository } from '../warehouse/warehouse.repository';
 import { StockTransactionHelper } from '../stock/helpers/with-stock-transaction.helper';
 import { MovementType } from '../stock/schemas/stock-movement.schema';
@@ -29,6 +30,7 @@ export class StockCountService {
   constructor(
     private readonly repo: StockCountRepository,
     private readonly stockRepo: StockRepository,
+    private readonly stockService: StockService,
     private readonly warehouseRepo: WarehouseRepository,
     private readonly stockTransactionHelper: StockTransactionHelper,
     @InjectQueue(QUEUES.STOCK) private readonly stockQueue: Queue,
@@ -238,6 +240,14 @@ export class StockCountService {
       };
       const jobId = `stock_count:${id}:${line.sku}`;
       await this.stockQueue.add(EVENTS.STOCK_CHANGED, payload, { jobId });
+    }
+
+    // S4-04: kiểm tra ngưỡng thấp tồn cho mỗi dòng đã điều chỉnh — sau khi commit.
+    for (const line of changedLines) {
+      await this.stockService.checkAndEmitStockLow(
+        line.itemId,
+        stockCount.warehouseId,
+      );
     }
 
     const updated = await this.repo.findById(id);
