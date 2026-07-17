@@ -91,7 +91,7 @@ export class CatalogRepository {
       filter.categoryId = new Types.ObjectId(query.categoryId);
     if (query.q) filter.name = { $regex: query.q, $options: 'i' };
 
-    const products = await this.productModel.find(filter).lean();
+    let products = await this.productModel.find(filter).lean();
 
     // Nếu lọc theo giá hoặc còn-hàng, cần join với variants
     if (
@@ -123,10 +123,39 @@ export class CatalogRepository {
       const validProductIds = new Set(
         validVariants.map((v) => v.productId.toString()),
       );
-      return products.filter((p) => validProductIds.has(p._id.toString()));
+      products = products.filter((p) => validProductIds.has(p._id.toString()));
     }
 
-    return products;
+    if (products.length === 0) return [];
+
+    const finalProductIds = products.map((p) => p._id);
+    const allVariants = await this.variantModel
+      .find({
+        productId: { $in: finalProductIds },
+        isActive: true,
+      })
+      .lean();
+
+    const variantsByProductId: Record<string, typeof allVariants> = {};
+    for (const v of allVariants) {
+      const pId = v.productId.toString();
+      if (!variantsByProductId[pId]) {
+        variantsByProductId[pId] = [];
+      }
+      variantsByProductId[pId].push(v);
+    }
+
+    return products.map((p) => {
+      const pVariants = variantsByProductId[p._id.toString()] ?? [];
+      const price = pVariants.length > 0 ? pVariants[0].price : 0;
+      const inStock = pVariants.some((v) => v.availableQty > 0);
+      return {
+        ...p,
+        price,
+        inStock,
+        variants: pVariants,
+      };
+    });
   }
 
   async getProductBySlug(slug: string) {

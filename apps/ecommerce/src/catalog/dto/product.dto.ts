@@ -129,39 +129,6 @@ export class ProductQueryDto {
   @IsOptional()
   inStock?: boolean | string;
 }
-
-export class ProductResponseDto {
-  @Expose()
-  @Transform(({ obj }: { obj: { _id?: Types.ObjectId } }) =>
-    obj._id?.toString(),
-  )
-  id!: string;
-
-  @Expose()
-  name!: string;
-
-  @Expose()
-  slug!: string;
-
-  @Expose()
-  description!: string;
-
-  @Expose()
-  images!: string[];
-
-  @Expose()
-  @Transform(({ obj }: { obj: { categoryId?: Types.ObjectId } }) =>
-    obj.categoryId?.toString(),
-  )
-  categoryId!: string;
-
-  @Expose()
-  status!: ProductStatus;
-
-  @Expose()
-  seo!: SeoDto;
-}
-
 export class ProductVariantResponseDto {
   @Expose()
   @Transform(({ obj }: { obj: { _id?: Types.ObjectId } }) =>
@@ -193,9 +160,49 @@ export class ProductVariantResponseDto {
   @Expose()
   isActive!: boolean;
 }
+export class ProductResponseDto {
+  @Expose()
+  @Transform(({ obj }: { obj: { _id?: Types.ObjectId } }) =>
+    obj._id?.toString(),
+  )
+  id!: string;
 
-export class ProductDetailResponseDto extends ProductResponseDto {
+  @Expose()
+  name!: string;
+
+  @Expose()
+  slug!: string;
+
+  @Expose()
+  description!: string;
+
+  @Expose()
+  images!: string[];
+
+  @Expose()
+  @Transform(({ obj }: { obj: { categoryId?: Types.ObjectId } }) =>
+    obj.categoryId?.toString(),
+  )
+  categoryId!: string;
+
+  @Expose()
+  status!: ProductStatus;
+
+  @Expose()
+  seo!: SeoDto;
+
+  @Expose()
+  @ApiProperty({ example: 10000 })
+  price!: number;
+
+  @Expose()
+  @ApiProperty({ example: true })
+  inStock!: boolean;
+
   @Expose()
   @Type(() => ProductVariantResponseDto)
+  @ApiProperty({ type: [ProductVariantResponseDto] })
   variants!: ProductVariantResponseDto[];
 }
+
+export class ProductDetailResponseDto extends ProductResponseDto {}

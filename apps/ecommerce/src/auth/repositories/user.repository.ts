@@ -4,7 +4,7 @@ import { Model, Types } from 'mongoose';
 import {
   User,
   UserAddress,
-  UserStatus,
+UserStatus,
 } from '../schemas/user.schema';
 
 export interface CreateUserInput {
