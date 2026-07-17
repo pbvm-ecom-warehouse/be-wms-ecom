@@ -68,22 +68,24 @@ describe('ReportRepository', () => {
       ];
       stockBalanceModel.aggregate
         .mockReturnValueOnce({ exec: jest.fn().mockResolvedValue(rows) })
-        .mockReturnValueOnce({ exec: jest.fn().mockResolvedValue([{ total: 1 }]) });
+        .mockReturnValueOnce({
+          exec: jest.fn().mockResolvedValue([{ total: 1 }]),
+        });
 
-      const result = await repo.aggregateStockReport({ warehouseId, itemId }, 1, 20);
+      const result = await repo.aggregateStockReport(
+        { warehouseId, itemId },
+        1,
+        20,
+      );
 
       expect(result).toEqual({ data: rows, total: 1 });
-      const dataPipeline = stockBalanceModel.aggregate.mock.calls[0][0] as Record<
-        string,
-        unknown
-      >[];
+      const dataPipeline = stockBalanceModel.aggregate.mock
+        .calls[0][0] as Record<string, unknown>[];
       expect(dataPipeline[0]).toEqual({ $match: { warehouseId, itemId } });
       expect(dataPipeline).toContainEqual({ $skip: 0 });
       expect(dataPipeline).toContainEqual({ $limit: 20 });
-      const countPipeline = stockBalanceModel.aggregate.mock.calls[1][0] as Record<
-        string,
-        unknown
-      >[];
+      const countPipeline = stockBalanceModel.aggregate.mock
+        .calls[1][0] as Record<string, unknown>[];
       expect(countPipeline).toContainEqual({ $count: 'total' });
     });
 
@@ -95,10 +97,8 @@ describe('ReportRepository', () => {
       const result = await repo.aggregateStockReport({}, 2, 20);
 
       expect(result).toEqual({ data: [], total: 0 });
-      const dataPipeline = stockBalanceModel.aggregate.mock.calls[0][0] as Record<
-        string,
-        unknown
-      >[];
+      const dataPipeline = stockBalanceModel.aggregate.mock
+        .calls[0][0] as Record<string, unknown>[];
       expect(dataPipeline[0]).toEqual({ $match: {} });
       expect(dataPipeline).toContainEqual({ $skip: 20 });
     });
@@ -123,15 +123,19 @@ describe('ReportRepository', () => {
       ];
       inventoryStockModel.aggregate
         .mockReturnValueOnce({ exec: jest.fn().mockResolvedValue(rows) })
-        .mockReturnValueOnce({ exec: jest.fn().mockResolvedValue([{ total: 1 }]) });
+        .mockReturnValueOnce({
+          exec: jest.fn().mockResolvedValue([{ total: 1 }]),
+        });
 
-      const result = await repo.aggregateLotReport({ warehouseId, itemId }, 1, 20);
+      const result = await repo.aggregateLotReport(
+        { warehouseId, itemId },
+        1,
+        20,
+      );
 
       expect(result).toEqual({ data: rows, total: 1 });
-      const dataPipeline = inventoryStockModel.aggregate.mock.calls[0][0] as Record<
-        string,
-        unknown
-      >[];
+      const dataPipeline = inventoryStockModel.aggregate.mock
+        .calls[0][0] as Record<string, unknown>[];
       expect(dataPipeline[0]).toEqual({
         $match: { lotId: { $ne: null }, warehouseId, itemId },
       });
@@ -146,10 +150,8 @@ describe('ReportRepository', () => {
 
       await repo.aggregateLotReport({ status: LotStatus.EXPIRED }, 1, 20);
 
-      const dataPipeline = inventoryStockModel.aggregate.mock.calls[0][0] as Record<
-        string,
-        unknown
-      >[];
+      const dataPipeline = inventoryStockModel.aggregate.mock
+        .calls[0][0] as Record<string, unknown>[];
       expect(dataPipeline).toContainEqual({
         $match: { 'lot.status': LotStatus.EXPIRED },
       });
