@@ -4,7 +4,7 @@ import { Model, PipelineStage, Types } from 'mongoose';
 import { WarehouseItem } from '../stock/schemas/warehouse-item.schema';
 import { StockBalance } from '../stock/schemas/stock-balance.schema';
 import { InventoryStock } from '../stock/schemas/inventory-stock.schema';
-import { StockMovement, MovementType } from '../stock/schemas/stock-movement.schema';
+import { StockMovement } from '../stock/schemas/stock-movement.schema';
 import { LotStatus } from '../stock/schemas/lot.schema';
 
 export interface ItemFilter {
