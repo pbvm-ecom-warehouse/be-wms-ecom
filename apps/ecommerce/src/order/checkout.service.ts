@@ -150,7 +150,7 @@ export class CheckoutService {
         { orderId: order._id.toString() },
         {
           delay: delayMs,
-          jobId: `auto-cancel:${order._id.toString()}`,
+          jobId: `auto-cancel-${order._id.toString()}`,
         },
       );
     }
