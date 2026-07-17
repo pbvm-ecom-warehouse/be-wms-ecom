@@ -1,21 +1,26 @@
 import { Injectable } from '@nestjs/common';
 import { Types } from 'mongoose';
 import { LotStatus } from '../stock/schemas/lot.schema';
+import { MovementType } from '../stock/schemas/stock-movement.schema';
 import {
   ItemFilter,
   LotItemFilter,
+  PerformanceFilter,
   ReportRepository,
 } from './report.repository';
 import { QueryStockReportDto } from './dto/query-stock-report.dto';
 import { QueryLotReportDto } from './dto/query-lot-report.dto';
+import { QueryPerformanceReportDto } from './dto/query-performance-report.dto';
 import {
   ExpiryFlag,
   LotReportItemDto,
+  PerformanceReportItemDto,
   StockReportItemDto,
 } from './dto/report.response.dto';
 
 const DEFAULT_NEAR_EXPIRY_DAYS = 7;
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
+const DEFAULT_PERFORMANCE_RANGE_DAYS = 30;
 
 @Injectable()
 export class ReportService {
@@ -105,5 +110,45 @@ export class ReportService {
       }),
       total,
     };
+  }
+
+  async getPerformanceReport(
+    query: QueryPerformanceReportDto,
+  ): Promise<PerformanceReportItemDto[]> {
+    const dateTo = query.dateTo ? new Date(query.dateTo) : new Date();
+    const dateFrom = query.dateFrom
+      ? new Date(query.dateFrom)
+      : new Date(
+          dateTo.getTime() - DEFAULT_PERFORMANCE_RANGE_DAYS * MS_PER_DAY,
+        );
+
+    const filter: PerformanceFilter = { dateFrom, dateTo };
+    if (query.warehouseId) {
+      filter.warehouseId = new Types.ObjectId(query.warehouseId);
+    }
+
+    const zeroFilled = (): PerformanceReportItemDto[] =>
+      Object.values(MovementType).map((type) => ({
+        type,
+        totalQuantity: 0,
+        movementCount: 0,
+      }));
+
+    if (query.sku) {
+      const item = await this.repo.findItemIdBySku(query.sku);
+      if (!item) return zeroFilled();
+      filter.itemId = item._id;
+    }
+
+    const rows = await this.repo.aggregatePerformanceReport(filter);
+    const rowByType = new Map(rows.map((r) => [r._id, r]));
+    return Object.values(MovementType).map((type) => {
+      const row = rowByType.get(type);
+      return {
+        type,
+        totalQuantity: row?.totalQuantity ?? 0,
+        movementCount: row?.movementCount ?? 0,
+      };
+    });
   }
 }
