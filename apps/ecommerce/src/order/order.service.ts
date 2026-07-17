@@ -13,7 +13,6 @@ import {
 } from './schemas/order.schema';
 import { TxnStatus, TxnType } from './schemas/payment-transaction.schema';
 import { Types } from 'mongoose';
-import { CacheService } from '../cache/cache.service';
 
 const DUPLICATE_KEY_CODE = 11000;
 
@@ -24,45 +23,16 @@ export class OrderService {
   constructor(
     private readonly repo: OrderRepository,
     @InjectQueue(QUEUES.ORDER) private readonly orderQueue: Queue,
-    private readonly cacheService: CacheService,
   ) {}
-
-  private async invalidateOrderCache(
-    orderId: string,
-    customerId?: string | Types.ObjectId,
-  ) {
-    try {
-      await this.cacheService.del(`ecom:orders:detail:${orderId}`);
-      if (customerId) {
-        await this.cacheService.del(
-          `ecom:orders:list:${customerId.toString()}`,
-        );
-      } else {
-        const order = await this.repo.findById(orderId);
-        if (order) {
-          await this.cacheService.del(
-            `ecom:orders:list:${order.customerId.toString()}`,
-          );
-        }
-      }
-    } catch (err) {
-      this.logger.error(`Lỗi khi xóa cache đơn hàng ${orderId}:`, err);
-    }
-  }
 
   async findById(id: string) {
     if (!Types.ObjectId.isValid(id)) {
       throw new AppException('VALIDATION_FAILED', 'ID đơn hàng không hợp lệ');
     }
-    const cacheKey = `ecom:orders:detail:${id}`;
-    const cached = await this.cacheService.get<Order>(cacheKey);
-    if (cached) return cached;
-
     const order = await this.repo.findById(id);
     if (!order) {
       throw new AppException('ORDER_NOT_FOUND');
     }
-    await this.cacheService.set(cacheKey, order, 1800); // Cache 30m
     return order;
   }
 
@@ -70,13 +40,11 @@ export class OrderService {
     if (!Types.ObjectId.isValid(customerId)) {
       throw new AppException('VALIDATION_FAILED', 'ID khách hàng không hợp lệ');
     }
-    const cacheKey = `ecom:orders:list:${customerId}`;
-    const cached = await this.cacheService.get<Order[]>(cacheKey);
-    if (cached) return cached;
+    return this.repo.listByCustomer(customerId);
+  }
 
-    const orders = await this.repo.listByCustomer(customerId);
-    await this.cacheService.set(cacheKey, orders, 1800); // Cache 30m
-    return orders;
+  async listAll() {
+    return this.repo.listAll();
   }
 
   /**
@@ -94,7 +62,6 @@ export class OrderService {
         orderStatus: OrderStatus.CONFIRMED,
         fulfillmentStatus: FulfillmentStatus.READY_TO_PICK,
       });
-      await this.invalidateOrderCache(orderId, order.customerId);
 
       // Báo kho đóng gói xuất hàng
       await this.orderQueue.add(EVENTS.ORDER_READY_TO_FULFILL, {
@@ -169,20 +136,17 @@ export class OrderService {
       orderStatus: OrderStatus.CONFIRMED,
       fulfillmentStatus: nextFulfillment,
     });
-    await this.invalidateOrderCache(orderId, order.customerId);
 
     if (order.hasPrintItems) {
       // Đơn ly in -> Phát lệnh in sang WMS xưởng in
       await this.orderQueue.add(EVENTS.PRINT_REQUESTED, {
         orderId,
-        warehouseId: order.fulfillWarehouseId,
         items: order.items
           .filter((i) => i.isPrintItem)
           .map((i) => ({
             sku: i.sku,
             quantity: i.quantity,
             designFile: i.designFile,
-            blankSku: i.blankSku,
           })),
       });
       this.logger.log(
@@ -245,7 +209,6 @@ export class OrderService {
       orderStatus: OrderStatus.CANCELLED,
       cancelReason: reason,
     });
-    await this.invalidateOrderCache(orderId, order.customerId);
 
     // Phát lệnh cho WMS giải phóng kho
     await this.orderQueue.add(EVENTS.ORDER_CANCELLED, {
@@ -258,7 +221,6 @@ export class OrderService {
       await this.repo.updateOrder(orderId, {
         paymentStatus: PaymentStatus.REFUND_PENDING,
       });
-      await this.invalidateOrderCache(orderId, order.customerId);
     }
 
     this.logger.log(`Hủy đơn hàng thành công: ${orderId} -> Lý do: ${reason}`);
@@ -303,7 +265,6 @@ export class OrderService {
     const updated = await this.repo.updateOrder(orderId, {
       fulfillmentStatus: FulfillmentStatus.RETURNED,
     });
-    await this.invalidateOrderCache(orderId, customerId);
 
     // Phát sự kiện hoàn trả về kho cho WMS biết để xử lý hoàn nhập kho
     await this.orderQueue.add(EVENTS.ORDER_RETURNED, {
@@ -321,7 +282,6 @@ export class OrderService {
     await this.repo.updateOrder(orderId, {
       fulfillmentStatus: FulfillmentStatus.ISSUED,
     });
-    await this.invalidateOrderCache(orderId);
     this.logger.log(
       `WMS cập nhật: Đơn hàng ${orderId} đã xuất kho (GoodsIssue: ${goodsIssueId})`,
     );
@@ -336,7 +296,6 @@ export class OrderService {
       item.isPrintItem && !item.printJobId ? { ...item, printJobId } : item,
     );
     await this.repo.updateOrder(orderId, { items: items });
-    await this.invalidateOrderCache(orderId, order.customerId);
 
     // Nếu tất cả ly in của đơn hàng đã được in xong
     const allPrinted = items
@@ -346,7 +305,6 @@ export class OrderService {
       await this.repo.updateOrder(orderId, {
         fulfillmentStatus: FulfillmentStatus.READY_TO_PICK,
       });
-      await this.invalidateOrderCache(orderId, order.customerId);
 
       // Phát lệnh xuất kho
       await this.orderQueue.add(EVENTS.ORDER_READY_TO_FULFILL, {
@@ -370,7 +328,6 @@ export class OrderService {
     await this.repo.updateOrder(orderId, {
       fulfillmentStatus: FulfillmentStatus.SHIPPED,
     });
-    await this.invalidateOrderCache(orderId);
     this.logger.log(`WMS cập nhật: Đơn hàng ${orderId} đang được giao`);
   }
 
@@ -389,7 +346,6 @@ export class OrderService {
     }
 
     await this.repo.updateOrder(orderId, updates);
-    await this.invalidateOrderCache(orderId, order.customerId);
     this.logger.log(
       `WMS cập nhật: Giao thành công đơn ${orderId} -> Đã đóng đơn`,
     );

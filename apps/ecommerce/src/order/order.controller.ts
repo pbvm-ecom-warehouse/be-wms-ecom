@@ -14,7 +14,7 @@ import {
   ApiParam,
   ApiTags,
 } from '@nestjs/swagger';
-import { CurrentUser, JwtAuthGuard, CustomerGuard } from '@app/auth';
+import { CurrentUser, JwtAuthGuard, CustomerGuard, Roles, RolesGuard, EcomRole } from '@app/auth';
 import { CheckoutService } from './checkout.service';
 import { OrderService } from './order.service';
 import { CheckoutDto } from './dto/checkout.dto';
@@ -122,6 +122,40 @@ export class OrderController {
       throw new AppException('VALIDATION_FAILED', 'ID đơn hàng không hợp lệ');
     }
     const order = await this.orderService.returnOrder(id, customerId);
+    return plainToInstance(OrderResponseDto, order, {
+      excludeExtraneousValues: true,
+    });
+  }
+}
+
+/** Admin routes — cần JWT và role ECOM_MANAGER */
+@ApiTags('admin-orders')
+@ApiBearerAuth()
+@UseGuards(JwtAuthGuard, RolesGuard)
+@Roles(EcomRole.ECOM_MANAGER)
+@Controller('admin/orders')
+export class OrderAdminController {
+  constructor(private readonly orderService: OrderService) {}
+
+  @Get()
+  @ApiOperation({ summary: '[Admin] Lấy tất cả đơn hàng' })
+  @ApiOkResponse({ type: [OrderResponseDto] })
+  async getAllOrders() {
+    const orders = await this.orderService.listAll();
+    return plainToInstance(OrderResponseDto, orders, {
+      excludeExtraneousValues: true,
+    });
+  }
+
+  @Get(':id')
+  @ApiOperation({ summary: '[Admin] Chi tiết đơn hàng bất kỳ' })
+  @ApiParam({ name: 'id', description: 'ID đơn hàng' })
+  @ApiOkResponse({ type: OrderResponseDto })
+  async getOrderDetail(@Param('id') id: string) {
+    if (!Types.ObjectId.isValid(id)) {
+      throw new AppException('VALIDATION_FAILED', 'ID đơn hàng không hợp lệ');
+    }
+    const order = await this.orderService.findById(id);
     return plainToInstance(OrderResponseDto, order, {
       excludeExtraneousValues: true,
     });

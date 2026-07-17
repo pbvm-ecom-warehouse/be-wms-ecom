@@ -13,7 +13,7 @@ import { OrderRepository } from './order.repository';
 import { OrderService } from './order.service';
 import { CheckoutService } from './checkout.service';
 import { PaymentService } from './payment.service';
-import { OrderController } from './order.controller';
+import { OrderController, OrderAdminController } from './order.controller';
 import { PaymentController } from './payment.controller';
 import { ReserveConsumer } from './reserve.consumer';
 import { ShipmentConsumer } from './order.consumer';
@@ -30,7 +30,7 @@ import { CacheModule } from '../cache/cache.module';
     CartModule,
     CacheModule,
   ],
-  controllers: [OrderController, PaymentController],
+  controllers: [OrderController, PaymentController, OrderAdminController],
   providers: [
     OrderRepository,
     OrderService,

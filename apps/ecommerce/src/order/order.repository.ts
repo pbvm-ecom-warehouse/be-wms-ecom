@@ -67,4 +67,8 @@ export class OrderRepository {
     });
     return `${prefix}-${String(count + 1).padStart(3, '0')}`;
   }
+
+  async listAll() {
+    return this.orderModel.find().sort({ createdAt: -1 }).lean();
+  }
 }
