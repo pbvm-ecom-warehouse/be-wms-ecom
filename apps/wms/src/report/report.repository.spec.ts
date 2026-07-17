@@ -1,5 +1,6 @@
 import { Types } from 'mongoose';
 import { LotStatus } from '../stock/schemas/lot.schema';
+import { MovementType } from '../stock/schemas/stock-movement.schema';
 import { ReportRepository } from './report.repository';
 
 describe('ReportRepository', () => {
@@ -151,6 +152,46 @@ describe('ReportRepository', () => {
       >[];
       expect(dataPipeline).toContainEqual({
         $match: { 'lot.status': LotStatus.EXPIRED },
+      });
+    });
+  });
+
+  describe('aggregatePerformanceReport', () => {
+    it('$match theo createdAt range + filter, $group theo type', async () => {
+      const dateFrom = new Date('2026-06-01');
+      const dateTo = new Date('2026-07-01');
+      const rows = [
+        { _id: MovementType.RECEIVE, totalQuantity: 100, movementCount: 4 },
+      ];
+      stockMovementModel.aggregate.mockReturnValue({
+        exec: jest.fn().mockResolvedValue(rows),
+      });
+
+      const result = await repo.aggregatePerformanceReport({
+        dateFrom,
+        dateTo,
+        warehouseId,
+        itemId,
+      });
+
+      expect(result).toEqual(rows);
+      const pipeline = stockMovementModel.aggregate.mock.calls[0][0] as Record<
+        string,
+        unknown
+      >[];
+      expect(pipeline[0]).toEqual({
+        $match: {
+          createdAt: { $gte: dateFrom, $lte: dateTo },
+          warehouseId,
+          itemId,
+        },
+      });
+      expect(pipeline[1]).toEqual({
+        $group: {
+          _id: '$type',
+          totalQuantity: { $sum: '$quantity' },
+          movementCount: { $sum: 1 },
+        },
       });
     });
   });

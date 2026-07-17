@@ -4,7 +4,7 @@ import { Model, PipelineStage, Types } from 'mongoose';
 import { WarehouseItem } from '../stock/schemas/warehouse-item.schema';
 import { StockBalance } from '../stock/schemas/stock-balance.schema';
 import { InventoryStock } from '../stock/schemas/inventory-stock.schema';
-import { StockMovement } from '../stock/schemas/stock-movement.schema';
+import { StockMovement, MovementType } from '../stock/schemas/stock-movement.schema';
 import { LotStatus } from '../stock/schemas/lot.schema';
 
 export interface ItemFilter {
@@ -38,6 +38,17 @@ export interface RawLotReportRow {
   lot: { lotNumber: string; expiryDate: Date; status: LotStatus };
   item: { sku: string; name: string; nearExpiryDays?: number };
   warehouse: { name: string };
+}
+
+export interface PerformanceFilter extends ItemFilter {
+  dateFrom: Date;
+  dateTo: Date;
+}
+
+export interface RawPerformanceRow {
+  _id: string;
+  totalQuantity: number;
+  movementCount: number;
 }
 
 @Injectable()
@@ -175,5 +186,28 @@ export class ReportRepository {
     ]);
 
     return { data, total: totalResult[0]?.total ?? 0 };
+  }
+
+  aggregatePerformanceReport(
+    filter: PerformanceFilter,
+  ): Promise<RawPerformanceRow[]> {
+    const match: Record<string, unknown> = {
+      createdAt: { $gte: filter.dateFrom, $lte: filter.dateTo },
+    };
+    if (filter.warehouseId) match.warehouseId = filter.warehouseId;
+    if (filter.itemId) match.itemId = filter.itemId;
+
+    return this.stockMovementModel
+      .aggregate<RawPerformanceRow>([
+        { $match: match },
+        {
+          $group: {
+            _id: '$type',
+            totalQuantity: { $sum: '$quantity' },
+            movementCount: { $sum: 1 },
+          },
+        },
+      ])
+      .exec();
   }
 }
