@@ -26,6 +26,10 @@ const makeWarehouseRepo = () => ({
   findShelfByCode: jest.fn(),
 });
 
+const makeStockService = () => ({
+  checkAndEmitStockLow: jest.fn(),
+});
+
 const makeTxHelper = () => ({
   withStockTransaction: jest.fn((fn: (session: unknown) => unknown) => fn({})),
 });
@@ -38,6 +42,7 @@ describe('GoodsIssueService', () => {
   let svc: GoodsIssueService;
   let repo: ReturnType<typeof makeRepo>;
   let stockRepo: ReturnType<typeof makeStockRepo>;
+  let stockService: ReturnType<typeof makeStockService>;
   let warehouseRepo: ReturnType<typeof makeWarehouseRepo>;
   let txHelper: ReturnType<typeof makeTxHelper>;
   let queue: ReturnType<typeof makeQueue>;
@@ -50,12 +55,14 @@ describe('GoodsIssueService', () => {
   beforeEach(() => {
     repo = makeRepo();
     stockRepo = makeStockRepo();
+    stockService = makeStockService();
     warehouseRepo = makeWarehouseRepo();
     txHelper = makeTxHelper();
     queue = makeQueue();
     svc = new GoodsIssueService(
       repo as never,
       stockRepo as never,
+      stockService as never,
       warehouseRepo as never,
       txHelper as never,
       queue as never,
@@ -345,6 +352,31 @@ describe('GoodsIssueService', () => {
         'goods.issued',
         { orderId, goodsIssueId: giId },
         { jobId: `goods_issue:${giId}` },
+      );
+    });
+
+    it('confirmLine gọi checkAndEmitStockLow(item._id, gi.warehouseId) sau khi transaction commit', async () => {
+      repo.findById.mockResolvedValueOnce(baseGi()).mockResolvedValueOnce({
+        ...baseGi(),
+        status: GoodsIssueStatus.PENDING,
+      });
+      stockRepo.findItemByBarcode.mockResolvedValue({ _id: itemId });
+      warehouseRepo.findShelfByCode.mockResolvedValue({
+        _id: shelfId,
+        warehouseId,
+      });
+      stockRepo.findInventory.mockResolvedValue({ quantity: 20 });
+      repo.markConfirmedIfAllDone.mockResolvedValue(false);
+
+      await svc.confirmLine(
+        giId,
+        { itemBarcode: 'X', shelfCode: 'A1', quantity: 12 },
+        actorId,
+      );
+
+      expect(stockService.checkAndEmitStockLow).toHaveBeenCalledWith(
+        itemId,
+        warehouseId,
       );
     });
   });
