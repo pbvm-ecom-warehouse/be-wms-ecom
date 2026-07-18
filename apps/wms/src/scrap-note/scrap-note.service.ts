@@ -120,6 +120,14 @@ export class ScrapNoteService {
       throw new AppException('SCRAP_NOTE_ALREADY_DECIDED');
     }
 
+    // S4-04: nhiều dòng scrap có thể cùng itemId (vd cùng SKU hỏng ở 2 lot khác
+    // nhau) — checkAndEmitStockLow đọc lại balance sau commit nên chỉ cần gọi
+    // 1 lần cho mỗi cặp (itemId, warehouseId), dồn vào map để dedup trước.
+    const touchedBalances = new Map<
+      string,
+      { itemId: Types.ObjectId; warehouseId: Types.ObjectId }
+    >();
+
     await this.stockTransactionHelper.withStockTransaction(async (session) => {
       for (const line of scrapNote.items) {
         await this.stockRepo.upsertInventory(
@@ -138,6 +146,10 @@ export class ScrapNoteService {
           0,
           expiredDelta,
           session,
+        );
+        touchedBalances.set(
+          `${line.itemId.toString()}:${scrapNote.warehouseId.toString()}`,
+          { itemId: line.itemId, warehouseId: scrapNote.warehouseId },
         );
         await this.stockRepo.insertMovement(
           {
@@ -170,11 +182,10 @@ export class ScrapNoteService {
     // S4-04: kiểm tra ngưỡng thấp tồn cho MỌI dòng (bao gồm cả lotId/skipAvailableSync
     // — khác với vòng lặp stock.changed phía trên, vì stock.low quan tâm available
     // sau MỌI biến động onHand, không chỉ dòng ảnh hưởng available đã sync Ecom).
-    for (const line of scrapNote.items) {
-      await this.stockService.checkAndEmitStockLow(
-        line.itemId,
-        scrapNote.warehouseId,
-      );
+    // Lặp theo touchedBalances (đã dedup theo itemId+warehouseId) để không bắn
+    // trùng alert khi nhiều dòng cùng item.
+    for (const { itemId, warehouseId } of touchedBalances.values()) {
+      await this.stockService.checkAndEmitStockLow(itemId, warehouseId);
     }
 
     const updated = await this.repo.findById(id);

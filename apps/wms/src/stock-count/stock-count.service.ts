@@ -191,6 +191,14 @@ export class StockCountService {
       (i) => i.delta !== null && i.delta !== 0,
     );
 
+    // S4-04: nhiều dòng lệch có thể cùng itemId (vd cùng SKU lệch ở 2 kệ/lot
+    // khác nhau) — checkAndEmitStockLow đọc lại balance sau commit nên chỉ cần
+    // gọi 1 lần cho mỗi cặp (itemId, warehouseId), dồn vào map để dedup trước.
+    const touchedBalances = new Map<
+      string,
+      { itemId: Types.ObjectId; warehouseId: Types.ObjectId }
+    >();
+
     await this.stockTransactionHelper.withStockTransaction(async (session) => {
       for (const line of changedLines) {
         const delta = line.delta!;
@@ -209,6 +217,10 @@ export class StockCountService {
           0,
           0,
           session,
+        );
+        touchedBalances.set(
+          `${line.itemId.toString()}:${stockCount.warehouseId.toString()}`,
+          { itemId: line.itemId, warehouseId: stockCount.warehouseId },
         );
         await this.stockRepo.insertMovement(
           {
@@ -242,12 +254,11 @@ export class StockCountService {
       await this.stockQueue.add(EVENTS.STOCK_CHANGED, payload, { jobId });
     }
 
-    // S4-04: kiểm tra ngưỡng thấp tồn cho mỗi dòng đã điều chỉnh — sau khi commit.
-    for (const line of changedLines) {
-      await this.stockService.checkAndEmitStockLow(
-        line.itemId,
-        stockCount.warehouseId,
-      );
+    // S4-04: kiểm tra ngưỡng thấp tồn — sau khi commit. Lặp theo touchedBalances
+    // (đã dedup theo itemId+warehouseId) để không bắn trùng alert khi nhiều
+    // dòng lệch cùng item.
+    for (const { itemId, warehouseId } of touchedBalances.values()) {
+      await this.stockService.checkAndEmitStockLow(itemId, warehouseId);
     }
 
     const updated = await this.repo.findById(id);
