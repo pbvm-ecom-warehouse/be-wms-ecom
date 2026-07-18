@@ -7,6 +7,10 @@ import { AppModule } from '../app.module';
 import { AuthService } from '../auth/auth.service';
 import { CreateUserDto } from '../auth/dto/auth.dto';
 import { User } from '../auth/schemas/user.schema';
+import { WarehouseService } from '../warehouse/warehouse.service';
+import { StockService } from '../stock/stock.service';
+import { SupplierService } from '../supplier/supplier.service';
+import { ItemType } from '../stock/schemas/warehouse-item.schema';
 
 const logger = new Logger('SeedWms');
 
@@ -29,7 +33,8 @@ const SEED_USERS: { username: string; role: WmsRole; name: string }[] = [
 export async function seed(): Promise<void> {
   const app = await NestFactory.createApplicationContext(AppModule);
   try {
-    await seedUsers(app);
+    const { adminId } = await seedUsers(app);
+    await seedWarehouseAndItems(app, adminId);
     logger.log('Seed hoàn tất.');
   } finally {
     await app.close();
@@ -85,6 +90,143 @@ async function seedUsers(
   }
 
   return { adminId };
+}
+
+const SEED_WAREHOUSE_NAME = 'Kho trung tâm (seed)';
+
+/**
+ * Seed cây warehouse (zone/rack/2 shelf) + 2 WarehouseItem + 1 Supplier + 2
+ * SupplierItem, dùng cho demo script và test tay ở các task sau của S4-05.
+ *
+ * Idempotent bằng cách kiểm tra NGUYÊN CẢ CÂY qua 1 điều kiện duy nhất: nếu
+ * warehouse "Kho trung tâm (seed)" đã tồn tại thì bỏ qua toàn bộ — không tạo
+ * lại zone/rack/shelf/item/supplier, và cũng không cần đọc lại id của chúng
+ * (không có gì trong plan này tiêu thụ giá trị trả về của seed(), xem
+ * task-2-brief.md). Lý do check-1-chỗ là đủ: toàn bộ cây này luôn được tạo
+ * cùng nhau trong 1 lần chạy seed — không có kịch bản nào tạo warehouse mà
+ * chưa tạo item/supplier đi kèm — nên không cần duplicate-guard riêng cho
+ * từng create() (WarehouseService.createWarehouse không có unique code để tự
+ * chặn trùng — xem comment trong warehouse.service.ts).
+ */
+async function seedWarehouseAndItems(
+  app: INestApplicationContext,
+  adminId: string,
+): Promise<{
+  warehouseId: string;
+  stagingShelfId: string;
+  mainShelfId: string;
+  itemIds: string[];
+  supplierId: string;
+} | null> {
+  const warehouseService = app.get(WarehouseService);
+  const stockService = app.get(StockService);
+  const supplierService = app.get(SupplierService);
+
+  const existingWarehouses = await warehouseService.listWarehouses();
+  const existing = existingWarehouses.find(
+    (w) => w.name === SEED_WAREHOUSE_NAME,
+  );
+  if (existing) {
+    logger.log('seed data đã tồn tại — bỏ qua toàn bộ warehouse/item/supplier');
+    return null;
+  }
+
+  const warehouse = await warehouseService.createWarehouse(
+    { name: SEED_WAREHOUSE_NAME, address: '1 Đường Kho, Q9, TP.HCM' },
+    adminId,
+  );
+  const warehouseId = warehouse._id.toString();
+
+  const zone = await warehouseService.createZone(
+    { warehouseId, name: 'Khu A (seed)', code: 'SEED-A' },
+    adminId,
+  );
+  const zoneId = zone._id.toString();
+
+  const rack = await warehouseService.createRack(
+    { zoneId, name: 'Kệ A1 (seed)', code: 'SEED-A1' },
+    adminId,
+  );
+  const rackId = rack._id.toString();
+
+  const stagingShelf = await warehouseService.createShelf(
+    { rackId, level: 1, code: 'SEED-A1-STAGING', isStaging: true },
+    adminId,
+  );
+  const mainShelf = await warehouseService.createShelf(
+    {
+      rackId,
+      level: 2,
+      code: 'SEED-A1-T2',
+      innerDepth: 120,
+      innerWidth: 80,
+      innerHeight: 50,
+      fillFactor: 0.8,
+    },
+    adminId,
+  );
+
+  const material = await stockService.createWarehouseItem(
+    {
+      sku: 'SEED-MAT-001',
+      barcode: 'SEED-MAT-001-BC',
+      name: 'Nguyên liệu seed',
+      type: ItemType.MATERIAL,
+      unit: 'kg',
+      isPerishable: false,
+      minQuantity: 10,
+      depth: 10,
+      width: 8,
+      height: 12,
+    },
+    adminId,
+  );
+  const cupBlank = await stockService.createWarehouseItem(
+    {
+      sku: 'SEED-CUP-BLANK-001',
+      barcode: 'SEED-CUP-BLANK-001-BC',
+      name: 'Ly nhựa trơn seed',
+      type: ItemType.CUP_BLANK,
+      unit: 'cái',
+      isPerishable: false,
+      minQuantity: 20,
+      depth: 8,
+      width: 8,
+      height: 15,
+    },
+    adminId,
+  );
+
+  const supplier = await supplierService.createSupplier(
+    { code: 'SEED-NCC-001', name: 'Nhà cung cấp seed' },
+    adminId,
+  );
+  const supplierId = supplier._id.toString();
+
+  // upsertSupplierItem chỉ nhận 1 tham số (dto) — không có actorId (xem
+  // controller thật: async upsertSupplierItem(@Body() dto) không có @CurrentUser).
+  await supplierService.upsertSupplierItem({
+    itemId: material._id.toString(),
+    supplierId,
+    purchasePrice: 15000,
+  });
+  await supplierService.upsertSupplierItem({
+    itemId: cupBlank._id.toString(),
+    supplierId,
+    purchasePrice: 3000,
+  });
+
+  logger.log(
+    `Kho seed: ${warehouseId}, shelf staging: ${stagingShelf._id.toString()}, shelf chính: ${mainShelf._id.toString()}`,
+  );
+
+  return {
+    warehouseId,
+    stagingShelfId: stagingShelf._id.toString(),
+    mainShelfId: mainShelf._id.toString(),
+    itemIds: [material._id.toString(), cupBlank._id.toString()],
+    supplierId,
+  };
 }
 
 // Guard này để file import được (Task 2-5 mở rộng cùng file, hoặc test import
