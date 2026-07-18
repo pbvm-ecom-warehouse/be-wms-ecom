@@ -22,6 +22,11 @@ import {
   MovementType,
 } from '../src/stock/schemas/stock-movement.schema';
 import { GoodsIssueRepository } from '../src/goods-issue/goods-issue.repository';
+import {
+  Shelf,
+  type ShelfDocument,
+} from '../src/warehouse/schemas/shelf.schema';
+import { EVENTS, type OrderReadyToFulfillPayload } from '@app/events';
 
 /**
  * E2E happy-path WMS (S4-05): login → PO → GRN CONFIRMED (onHand+) → put-away
@@ -41,13 +46,11 @@ describe('WMS happy-path (e2e)', () => {
   let stockBalanceModel: Model<StockBalanceDocument>;
   let inventoryStockModel: Model<InventoryStockDocument>;
   let stockMovementModel: Model<StockMovementDocument>;
+  let shelfModel: Model<ShelfDocument>;
   // orderQueue + goodsIssueRepo: gán ở beforeAll nhưng chỉ được ĐỌC ở phần
   // goods-issue (Task 4, nối tiếp cùng file này) — khai báo sẵn ở đây vì
-  // beforeAll chỉ chạy 1 lần cho toàn bộ describe. eslint-disable vì phần 1
-  // (Task 3) chưa có `it` nào dùng tới.
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  // beforeAll chỉ chạy 1 lần cho toàn bộ describe.
   let orderQueue: Queue;
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   let goodsIssueRepo: GoodsIssueRepository;
 
   let adminToken: string;
@@ -56,16 +59,14 @@ describe('WMS happy-path (e2e)', () => {
   // pickerToken + counterToken: login ở Task 3 (Step 3) nhưng chỉ dùng ở
   // Task 4 (PICKER xuất hàng, COUNTER kiểm kê) — giữ ở đây để tránh gọi
   // /auth/login thêm lần nữa (xem cảnh báo throttle 5 req/60s trong brief).
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   let pickerToken: string;
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   let counterToken: string;
 
   let warehouseId: string;
   let stagingShelfId: string;
   // stagingShelfCode: gán ở Step 4 (tạo shelf) nhưng chỉ dùng ở Task 4 khi
-  // PICKER quét mã shelf staging lúc xuất hàng.
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  // kiểm kê phải đếm luôn dòng ở shelf staging (systemQty=0, xem giải thích
+  // ở it-block kiểm kê bên dưới).
   let stagingShelfCode: string;
   let mainShelfId: string;
   let mainShelfCode: string;
@@ -95,6 +96,7 @@ describe('WMS happy-path (e2e)', () => {
     stockBalanceModel = app.get(getModelToken(StockBalance.name));
     inventoryStockModel = app.get(getModelToken(InventoryStock.name));
     stockMovementModel = app.get(getModelToken(StockMovement.name));
+    shelfModel = app.get(getModelToken(Shelf.name));
     orderQueue = app.get(getQueueToken(QUEUES.ORDER));
     goodsIssueRepo = app.get(GoodsIssueRepository);
   });
@@ -373,8 +375,160 @@ describe('WMS happy-path (e2e)', () => {
     expect(mainRow?.quantity).toBe(RECEIVE_QTY);
   });
 
-  // Task 4 nối tiếp tại đây: goods-issue qua queue (order.ready_to_fulfill),
-  // stock-count, và assertion bất biến cuối cùng. Các biến pickerToken,
-  // counterToken, orderQueue, goodsIssueRepo, stagingShelfId, purchaseOrderId
-  // đã sẵn sàng ở phần này để Task 4 dùng tiếp.
+  const ISSUE_QTY = 30;
+  let orderId: string;
+  let goodsIssueId: string;
+
+  it('enqueue order.ready_to_fulfill thật → consumer sinh GoodsIssue', async () => {
+    orderId = `e2e-order-${uniqueSuffix}`;
+    const payload: OrderReadyToFulfillPayload = {
+      orderId,
+      fulfillWarehouseId: warehouseId,
+      items: [{ sku: itemSku, quantity: ISSUE_QTY }],
+      shippingAddress: { line1: 'test' },
+      recipient: { name: 'E2E Recipient', phone: '0900000000' },
+      paymentMethod: 'COD',
+    };
+    // KHÔNG bump StockBalance.reserved trước khi enqueue: đã đọc toàn bộ
+    // GoodsIssueService.createFromOrderReady (apps/wms/src/goods-issue/
+    // goods-issue.service.ts) — method này chỉ tra WarehouseItem theo sku rồi
+    // tạo GoodsIssue với remainingQty = quantity, KHÔNG đọc/kiểm tra
+    // StockBalance.reserved ở đâu cả. Việc giữ tồn thật (reserve) là trách
+    // nhiệm của saga Ecom checkout (STOCK_RESERVE_REQUESTED, xem
+    // architecture.md) — nằm ngoài phạm vi test WMS-only này, không cần giả lập.
+    await orderQueue.add(EVENTS.ORDER_READY_TO_FULFILL, payload);
+
+    const deadline = Date.now() + 8000;
+    let goodsIssue = await goodsIssueRepo.findByOrderId(orderId);
+    while (!goodsIssue && Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 200));
+      goodsIssue = await goodsIssueRepo.findByOrderId(orderId);
+    }
+    expect(goodsIssue).not.toBeNull();
+    goodsIssueId = goodsIssue!._id.toString();
+  }, 10000);
+
+  it('PICKER confirm-line xuất kho (onHand giảm, goods.issued)', async () => {
+    await request(app.getHttpServer())
+      .post(`/api/wms/goods-issues/${goodsIssueId}/confirm-line`)
+      .set('Authorization', `Bearer ${pickerToken}`)
+      .send({ itemBarcode, shelfCode: mainShelfCode, quantity: ISSUE_QTY })
+      .expect(201);
+
+    const { onHand } = await assertTwoLayerInvariant(itemId, warehouseId);
+    expect(onHand).toBe(RECEIVE_QTY - ISSUE_QTY);
+    // Đã đọc toàn bộ GoodsIssueService.confirmLine: trong 1 transaction, path
+    // này gọi insertMovement CHỈ 1 LẦN (type ISSUE, quantity=-ISSUE_QTY) —
+    // khác PUTAWAY (2 dòng vì dịch chuyển giữa 2 shelf), ISSUE chỉ trừ tồn ở
+    // đúng 1 shelf (mainShelfCode) nên chỉ có 1 sự kiện tồn kho thật xảy ra.
+    const issueMovements = await countMovements(
+      itemId,
+      warehouseId,
+      MovementType.ISSUE,
+    );
+    expect(issueMovements).toBe(1);
+  });
+
+  it('kiểm kê khớp (COUNTER đếm đúng số hệ thống, MANAGER duyệt, 0 adjustment)', async () => {
+    const createRes = await request(app.getHttpServer())
+      .post('/api/wms/stock-counts')
+      .set('Authorization', `Bearer ${managerToken}`)
+      .send({ warehouseId })
+      .expect(201);
+    const stockCountId = createRes.body.data.id;
+
+    const lines = createRes.body.data.items as {
+      itemId: string;
+      shelfId: string;
+      lotId: string | null;
+      systemQty: number;
+    }[];
+    const targetLine = lines.find(
+      (l) => l.itemId === itemId && l.shelfId === mainShelfId,
+    );
+    expect(targetLine).toBeDefined();
+
+    // Kho E2E này chỉ có duy nhất 1 item, nhưng InventoryStock không xoá dòng
+    // khi quantity về 0 (upsertInventory chỉ $inc) và findInventoryByScope
+    // (dùng để auto-generate dòng kiểm kê) không lọc quantity > 0 — nên dòng
+    // shelf staging (systemQty=0, hàng đã dời hết sang mainShelf ở Task 3) vẫn
+    // xuất hiện trong `lines`. approveStockCount yêu cầu status=COMPLETED, mà
+    // markCompletedIfAllCounted chỉ set COMPLETED khi MỌI dòng đã actualQty !=
+    // null — nên phải đếm hết `lines`, không chỉ dòng mainShelf, nếu không
+    // approve bên dưới sẽ ném STOCK_COUNT_NOT_COMPLETED.
+    const stagingLine = lines.find(
+      (l) => l.itemId === itemId && l.shelfId === stagingShelfId,
+    );
+    expect(stagingLine).toBeDefined();
+    expect(stagingLine!.systemQty).toBe(0);
+    // Sanity check: dòng staging thật sự trỏ đúng shelf đã tạo ở Task 3 (khớp
+    // code) — xác nhận auto-generate không lẫn sang shelf khác trong kho.
+    const stagingShelfDoc = await shelfModel.findById(stagingShelfId).lean();
+    expect(stagingShelfDoc?.code).toBe(stagingShelfCode);
+
+    for (const line of lines) {
+      await request(app.getHttpServer())
+        .post(
+          `/api/wms/stock-counts/${stockCountId}/items/${line.itemId}/count`,
+        )
+        .set('Authorization', `Bearer ${counterToken}`)
+        .send({
+          shelfId: line.shelfId,
+          lotId: line.lotId ?? undefined,
+          actualQty: line.systemQty,
+        })
+        .expect(201);
+    }
+
+    await request(app.getHttpServer())
+      .post(`/api/wms/stock-counts/${stockCountId}/approve`)
+      .set('Authorization', `Bearer ${managerToken}`)
+      .send({})
+      .expect(201);
+
+    const adjustMovements = await countMovements(
+      itemId,
+      warehouseId,
+      MovementType.ADJUST,
+    );
+    expect(adjustMovements).toBe(0);
+  });
+
+  it('bất biến cuối kịch bản: onHand = ΣInventoryStock, tổng movement = 4 (RECEIVE 1 + PUTAWAY 2 + ISSUE 1), 0 ADJUST', async () => {
+    await assertTwoLayerInvariant(itemId, warehouseId);
+    // Đếm lại thủ công theo type để hand-trace đúng tổng, tránh giả định nhầm
+    // như bug đã bị review phát hiện ở Task 3 (PUTAWAY tưởng 1 dòng, thực ra
+    // 2): RECEIVE=1 (GRN confirm) + PUTAWAY=2 (dời staging→main, 2 dòng ±) +
+    // ISSUE=1 (xuất kho, chỉ 1 shelf) = 4 dòng thật sự — KHÔNG phải 3.
+    const receiveMovements = await countMovements(
+      itemId,
+      warehouseId,
+      MovementType.RECEIVE,
+    );
+    const putawayMovements = await countMovements(
+      itemId,
+      warehouseId,
+      MovementType.PUTAWAY,
+    );
+    const issueMovements = await countMovements(
+      itemId,
+      warehouseId,
+      MovementType.ISSUE,
+    );
+    const adjustMovements = await countMovements(
+      itemId,
+      warehouseId,
+      MovementType.ADJUST,
+    );
+    expect(receiveMovements).toBe(1);
+    expect(putawayMovements).toBe(2);
+    expect(issueMovements).toBe(1);
+    expect(adjustMovements).toBe(0);
+
+    const totalMovements = await stockMovementModel.countDocuments({
+      itemId,
+      warehouseId,
+    });
+    expect(totalMovements).toBe(4);
+  });
 });
