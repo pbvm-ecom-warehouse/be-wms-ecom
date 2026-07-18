@@ -41,7 +41,7 @@ export function StockLowAlertEmail({
   return (
     <Html lang="vi">
       <Head />
-      <Preview>Tồn kho thấp — SKU {sku}: còn {available}/{minQuantity}</Preview>
+      <Preview>{`Tồn kho thấp — SKU ${sku}: còn ${available}/${minQuantity}`}</Preview>
       <Body
         style={{
           backgroundColor: SURFACE,

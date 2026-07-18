@@ -25,9 +25,15 @@ describe('email templates', () => {
       }),
     );
     expect(html).toContain('SKU-1');
-    // Kiểm tra specific rendered fragment với distinctive values (234/5678)
-    // không nhầm với CSS values. Pattern accounts for React HTML comments between values.
-    expect(html).toMatch(/234.*\/.*5678/);
+    // Kiểm tra ô số liệu (amber stat box) đúng thứ tự available/minQuantity.
+    // React render 2 expression liền kề `{available} / {minQuantity}` thành
+    // 3 text node cách nhau bởi HTML comment: "234<!-- --> / <!-- -->5678".
+    // Regex neo cứng comment + khoảng trắng quanh dấu "/" nên chỉ khớp field
+    // stat box (không khớp chuỗi Preview "234/5678" không có khoảng trắng/comment)
+    // và KHÔNG khớp nếu available/minQuantity bị hoán đổi vị trí — đã verify thực nghiệm
+    // bằng cách render với props swap (available:5678, minQuantity:234): regex cũ
+    // `/234.*\/.*5678/` vẫn match (false positive), regex này thì không.
+    expect(html).toMatch(/234<!-- -->\s*\/\s*<!-- -->5678/);
   });
 
   it('StockNearExpiryEmail chứa SKU, lô và ngày hết hạn', async () => {
