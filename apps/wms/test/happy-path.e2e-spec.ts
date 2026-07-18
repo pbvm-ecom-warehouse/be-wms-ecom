@@ -352,12 +352,16 @@ describe('WMS happy-path (e2e)', () => {
 
     const { onHand } = await assertTwoLayerInvariant(itemId, warehouseId);
     expect(onHand).toBe(RECEIVE_QTY); // put-away chỉ dời vị trí, KHÔNG đổi onHand
+    // confirmLine ghi 2 dòng movement PUTAWAY trong cùng transaction: 1 dòng âm
+    // ở shelf staging (hàng rời đi) + 1 dòng dương ở shelf đích (hàng đến),
+    // cùng itemId+warehouseId (chỉ khác shelfId). countMovements không lọc theo
+    // shelfId nên đếm cả 2 — đúng bản chất là 2 sự kiện tồn kho thật đã xảy ra.
     const putawayMovements = await countMovements(
       itemId,
       warehouseId,
       MovementType.PUTAWAY,
     );
-    expect(putawayMovements).toBe(1);
+    expect(putawayMovements).toBe(2);
 
     const stagingRow = await inventoryStockModel
       .findOne({ itemId, warehouseId, shelfId: stagingShelfId })
