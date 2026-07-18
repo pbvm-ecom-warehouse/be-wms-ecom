@@ -14,6 +14,7 @@ import {
   StockRepository,
   type PickSuggestion,
 } from '../stock/stock.repository';
+import { StockService } from '../stock/stock.service';
 import { WarehouseRepository } from '../warehouse/warehouse.repository';
 import { StockTransactionHelper } from '../stock/helpers/with-stock-transaction.helper';
 import { MovementType } from '../stock/schemas/stock-movement.schema';
@@ -30,6 +31,7 @@ export class GoodsIssueService {
   constructor(
     private readonly repo: GoodsIssueRepository,
     private readonly stockRepo: StockRepository,
+    private readonly stockService: StockService,
     private readonly warehouseRepo: WarehouseRepository,
     private readonly stockTransactionHelper: StockTransactionHelper,
     @InjectQueue(QUEUES.SHIPMENT) private readonly shipmentQueue: Queue,
@@ -186,6 +188,9 @@ export class GoodsIssueService {
       );
       justConfirmed = await this.repo.markConfirmedIfAllDone(id, session);
     });
+
+    // S4-04: kiểm tra ngưỡng thấp tồn — sau khi transaction commit.
+    await this.stockService.checkAndEmitStockLow(item._id, gi.warehouseId);
 
     const updated = await this.repo.findById(id);
     if (!updated) throw new AppException('GOODS_ISSUE_NOT_FOUND');

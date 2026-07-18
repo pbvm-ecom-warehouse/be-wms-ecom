@@ -34,6 +34,10 @@ const makeTxHelper = () => ({
   withStockTransaction: jest.fn((fn: (session: unknown) => unknown) => fn({})),
 });
 
+const makeStockService = () => ({
+  checkAndEmitStockLow: jest.fn(),
+});
+
 // stock.changed (reserve CUP_BLANK) đi QUEUES.STOCK, print.completed đi
 // QUEUES.SHIPMENT — 2 queue riêng, khớp đúng consumer thật bên Ecom
 // (apps/ecommerce/src/catalog/stock.consumer.ts @Processor(QUEUES.STOCK) và
@@ -47,6 +51,7 @@ describe('PrintJobService', () => {
   let stockRepo: ReturnType<typeof makeStockRepo>;
   let warehouseRepo: ReturnType<typeof makeWarehouseRepo>;
   let txHelper: ReturnType<typeof makeTxHelper>;
+  let stockService: ReturnType<typeof makeStockService>;
   let stockQueue: ReturnType<typeof makeStockQueue>;
   let shipmentQueue: ReturnType<typeof makeShipmentQueue>;
 
@@ -61,11 +66,13 @@ describe('PrintJobService', () => {
     stockRepo = makeStockRepo();
     warehouseRepo = makeWarehouseRepo();
     txHelper = makeTxHelper();
+    stockService = makeStockService();
     stockQueue = makeStockQueue();
     shipmentQueue = makeShipmentQueue();
     svc = new PrintJobService(
       repo as never,
       stockRepo as never,
+      stockService as never,
       warehouseRepo as never,
       txHelper as never,
       stockQueue as never,
@@ -272,6 +279,42 @@ describe('PrintJobService', () => {
       ]);
       expect(repo.createPrintJob).not.toHaveBeenCalled();
     });
+
+    it('gọi checkAndEmitStockLow cho mỗi dòng đã reserve (reservedQty > 0)', async () => {
+      repo.findByOrderId.mockResolvedValue(null);
+      const printedItemId2 = new Types.ObjectId();
+      const blankItemId2 = new Types.ObjectId();
+      stockRepo.findItemBySku.mockImplementation((sku: string) => {
+        if (sku === 'CUP-PRINTED-1')
+          return Promise.resolve({
+            _id: printedItemId,
+            sku: 'CUP-PRINTED-1',
+            type: ItemType.CUP_PRINTED,
+            blankItemId,
+          });
+        if (sku === 'CUP-PRINTED-2')
+          return Promise.resolve({
+            _id: printedItemId2,
+            sku: 'CUP-PRINTED-2',
+            type: ItemType.CUP_PRINTED,
+            blankItemId: blankItemId2,
+          });
+        return Promise.resolve(null);
+      });
+      stockRepo.findBalanceByItemAndWarehouse.mockResolvedValue({
+        onHand: 100,
+        reserved: 0,
+        expired: 0,
+      });
+      stockRepo.findSkuById.mockResolvedValue({ sku: 'CUP-BLANK-500' });
+
+      await svc.createFromPrintRequested(orderId, warehouseId.toString(), [
+        { sku: 'CUP-PRINTED-1', quantity: 10 },
+        { sku: 'CUP-PRINTED-2', quantity: 5 },
+      ]);
+
+      expect(stockService.checkAndEmitStockLow).toHaveBeenCalledTimes(2);
+    });
   });
 
   describe('consumeItem', () => {
@@ -439,6 +482,28 @@ describe('PrintJobService', () => {
       );
       expect(stockQueue.add).not.toHaveBeenCalled();
       expect(shipmentQueue.add).not.toHaveBeenCalled();
+    });
+
+    it('gọi checkAndEmitStockLow(item._id, job.warehouseId) sau khi commit', async () => {
+      repo.findById.mockResolvedValue(baseJob());
+      stockRepo.findItemByBarcode.mockResolvedValue({ _id: blankItemId });
+      warehouseRepo.findShelfByCode.mockResolvedValue({
+        _id: shelfId,
+        warehouseId,
+      });
+      stockRepo.findInventory.mockResolvedValue({ quantity: 20 });
+
+      await svc.consumeItem(
+        pjId,
+        blankItemId.toString(),
+        { itemBarcode: 'X', shelfCode: 'A1', quantity: 4 },
+        actorId,
+      );
+
+      expect(stockService.checkAndEmitStockLow).toHaveBeenCalledWith(
+        blankItemId,
+        warehouseId,
+      );
     });
   });
 
@@ -630,6 +695,30 @@ describe('PrintJobService', () => {
         'print.completed',
         { orderId, printJobId: pjId },
         { jobId: `print_job:${pjId}` },
+      );
+    });
+
+    it('gọi checkAndEmitStockLow(line.outputItemId, job.warehouseId) sau khi commit', async () => {
+      repo.findById.mockResolvedValueOnce(consumedJob()).mockResolvedValueOnce({
+        ...consumedJob(),
+        status: PrintJobStatus.IN_PROGRESS,
+      });
+      warehouseRepo.findShelfByCode.mockResolvedValue({
+        _id: shelfId,
+        warehouseId,
+      });
+      repo.markLineCompleted.mockResolvedValue({ allDone: false });
+
+      await svc.completeItem(
+        pjId,
+        blankItemId.toString(),
+        { shelfCode: 'A1', quantity: 10 },
+        actorId,
+      );
+
+      expect(stockService.checkAndEmitStockLow).toHaveBeenCalledWith(
+        printedItemId,
+        warehouseId,
       );
     });
   });

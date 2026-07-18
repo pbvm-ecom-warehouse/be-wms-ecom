@@ -20,13 +20,17 @@ import {
   WarehouseItemSchema,
 } from './schemas/warehouse-item.schema';
 import { StockTransactionHelper } from './helpers/with-stock-transaction.helper';
+import { NearExpiryScanService } from './near-expiry-scan.service';
 import { StockController } from './stock.controller';
 import { StockRepository } from './stock.repository';
 import { StockService } from './stock.service';
 
 @Module({
   imports: [
-    BullModule.registerQueue({ name: QUEUES.STOCK }),
+    BullModule.registerQueue(
+      { name: QUEUES.STOCK },
+      { name: QUEUES.NOTIFICATION }, // S4-04: StockService.checkAndEmitStockLow → stock.low
+    ),
     MongooseModule.forFeature([
       { name: WarehouseItem.name, schema: WarehouseItemSchema },
       { name: StockBalance.name, schema: StockBalanceSchema },
@@ -36,7 +40,12 @@ import { StockService } from './stock.service';
     ]),
   ],
   controllers: [StockController],
-  providers: [StockRepository, StockService, StockTransactionHelper],
+  providers: [
+    StockRepository,
+    StockService,
+    StockTransactionHelper,
+    NearExpiryScanService, // S4-04: cron 06:00 quét lot sắp hết hạn → stock.near_expiry
+  ],
   exports: [StockService, StockTransactionHelper, StockRepository],
 })
 export class StockModule {}

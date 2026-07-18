@@ -146,6 +146,15 @@ export class GoodsReceiptNoteService {
       grn.warehouseId.toString(),
     );
 
+    // S4-04: cặp (item,warehouse) đã chạm upsertBalance trong transaction — dùng
+    // để checkAndEmitStockLow SAU KHI commit. warehouseId luôn = grn.warehouseId
+    // (1 GRN chỉ nhận vào 1 kho) nhưng vẫn key theo cả 2 cho rõ nghĩa/nhất quán
+    // với các service khác.
+    const touchedBalances = new Map<
+      string,
+      { itemId: Types.ObjectId; warehouseId: Types.ObjectId }
+    >();
+
     await this.stockTransactionHelper.withStockTransaction(async (session) => {
       // Tích lũy dòng put-away trong cùng vòng lặp — cần lotId ĐÃ RESOLVE (không phải
       // lotNumber gốc từ GRN), vì PutAwayTask xếp hàng theo lô thật đã tạo/tìm thấy ở dưới.
@@ -196,6 +205,10 @@ export class GoodsReceiptNoteService {
           0,
           session,
         );
+        touchedBalances.set(`${line.itemId}:${grn.warehouseId.toString()}`, {
+          itemId: itemObjectId,
+          warehouseId: warehouseObjectId,
+        });
         await this.stockRepo.upsertInventory(
           itemObjectId,
           warehouseObjectId,
@@ -247,6 +260,9 @@ export class GoodsReceiptNoteService {
         'grn',
         grn._id,
       );
+    }
+    for (const { itemId, warehouseId } of touchedBalances.values()) {
+      await this.stockService.checkAndEmitStockLow(itemId, warehouseId);
     }
 
     const confirmed = await this.repo.findGoodsReceiptNoteById(id);

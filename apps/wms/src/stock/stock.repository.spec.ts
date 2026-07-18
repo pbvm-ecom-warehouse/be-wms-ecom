@@ -76,6 +76,28 @@ describe('StockRepository', () => {
     });
   });
 
+  describe('findSkuAndMinQuantityById', () => {
+    it('trả về sku + minQuantity khi tìm thấy item', async () => {
+      warehouseItemModel.exec.mockResolvedValueOnce({
+        sku: 'SKU-1',
+        minQuantity: 5,
+      });
+
+      const result = await repo.findSkuAndMinQuantityById(itemId);
+
+      expect(warehouseItemModel.findById).toHaveBeenCalledWith(itemId);
+      expect(result).toEqual({ sku: 'SKU-1', minQuantity: 5 });
+    });
+
+    it('trả về null khi không tìm thấy', async () => {
+      warehouseItemModel.exec.mockResolvedValueOnce(null);
+
+      const result = await repo.findSkuAndMinQuantityById(itemId);
+
+      expect(result).toBeNull();
+    });
+  });
+
   describe('findItemsByIds', () => {
     it('gọi find với $in trên danh sách itemId, select sku, lean', async () => {
       const itemIds = [itemId, new Types.ObjectId()];

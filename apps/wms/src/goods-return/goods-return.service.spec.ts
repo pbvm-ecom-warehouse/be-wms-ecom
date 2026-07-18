@@ -32,6 +32,10 @@ const makeScrapNoteService = () => ({
   createApprovedScrapNoteForReturn: jest.fn(),
 });
 
+const makeStockService = () => ({
+  checkAndEmitStockLow: jest.fn(),
+});
+
 const makeTxHelper = () => ({
   withStockTransaction: jest.fn((fn: (session: unknown) => unknown) => fn({})),
 });
@@ -44,6 +48,7 @@ describe('GoodsReturnService', () => {
   let stockRepo: ReturnType<typeof makeStockRepo>;
   let warehouseRepo: ReturnType<typeof makeWarehouseRepo>;
   let scrapNoteService: ReturnType<typeof makeScrapNoteService>;
+  let stockService: ReturnType<typeof makeStockService>;
   let txHelper: ReturnType<typeof makeTxHelper>;
   let stockQueue: ReturnType<typeof makeStockQueue>;
 
@@ -58,11 +63,13 @@ describe('GoodsReturnService', () => {
     stockRepo = makeStockRepo();
     warehouseRepo = makeWarehouseRepo();
     scrapNoteService = makeScrapNoteService();
+    stockService = makeStockService();
     txHelper = makeTxHelper();
     stockQueue = makeStockQueue();
     svc = new GoodsReturnService(
       repo as never,
       stockRepo as never,
+      stockService as never,
       warehouseRepo as never,
       scrapNoteService as never,
       txHelper as never,
@@ -527,6 +534,49 @@ describe('GoodsReturnService', () => {
       expect(
         scrapNoteService.createApprovedScrapNoteForReturn,
       ).toHaveBeenCalledTimes(1);
+    });
+
+    it('confirmGoodsReturn gọi checkAndEmitStockLow cho mỗi dòng (cả GOOD và DAMAGED)', async () => {
+      const otherItemId = new Types.ObjectId();
+      const scrapNoteId = new Types.ObjectId();
+      scrapNoteService.createApprovedScrapNoteForReturn.mockResolvedValue(
+        scrapNoteId,
+      );
+      repo.findById.mockResolvedValue({
+        _id: 'gr1',
+        warehouseId,
+        status: GoodsReturnStatus.INSPECTED,
+        items: [
+          {
+            itemId,
+            sku: 'SKU-1',
+            quantity: 2,
+            condition: GoodsReturnItemCondition.GOOD,
+            shelfId,
+            lotId: null,
+          },
+          {
+            itemId: otherItemId,
+            sku: 'SKU-2',
+            quantity: 1,
+            condition: GoodsReturnItemCondition.DAMAGED,
+            shelfId,
+            lotId: null,
+          },
+        ],
+      });
+
+      await svc.confirmGoodsReturn('gr1', actorId);
+
+      expect(stockService.checkAndEmitStockLow).toHaveBeenCalledTimes(2);
+      expect(stockService.checkAndEmitStockLow).toHaveBeenCalledWith(
+        itemId,
+        warehouseId,
+      );
+      expect(stockService.checkAndEmitStockLow).toHaveBeenCalledWith(
+        otherItemId,
+        warehouseId,
+      );
     });
   });
 

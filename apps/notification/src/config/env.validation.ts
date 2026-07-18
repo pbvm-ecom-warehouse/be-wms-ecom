@@ -29,6 +29,10 @@ const envSchema = z.object({
   RESEND_API_KEY: z.string().min(1).optional(),
   RESEND_FROM: z.string().min(1).optional(),
 
+  // Email nhận cảnh báo kho (UC-N04 stock.low, UC-N05 stock.near_expiry). Không set
+  // → email cảnh báo tắt mềm, chỉ còn FCM (nếu có) hoặc log warn nếu cả 2 tắt.
+  WAREHOUSE_ALERT_EMAIL: z.string().email().optional(),
+
   NOTIFICATION_PORT: z.coerce.number().int().positive(),
 });
 

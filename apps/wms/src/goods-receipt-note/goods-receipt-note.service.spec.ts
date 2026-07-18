@@ -32,6 +32,7 @@ const makeStockRepository = () => ({
 
 const makeStockService = () => ({
   publishAvailableForItem: jest.fn(),
+  checkAndEmitStockLow: jest.fn(),
 });
 
 const makeStockTransactionHelper = () => ({
@@ -302,6 +303,12 @@ describe('GoodsReceiptNoteService', () => {
         20,
         'grn',
         grnId,
+      );
+      // S4-04: checkAndEmitStockLow gọi cho cặp (item, warehouse) đã chạm upsertBalance
+      // trong transaction — sau khi commit.
+      expect(stockService.checkAndEmitStockLow).toHaveBeenCalledWith(
+        new Types.ObjectId(itemId),
+        new Types.ObjectId(warehouseId),
       );
       expect(result).toEqual(confirmed);
     });

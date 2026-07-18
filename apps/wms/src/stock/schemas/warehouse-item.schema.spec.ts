@@ -91,3 +91,28 @@ describe('blankItemId (CUP_PRINTED → CUP_BLANK gốc)', () => {
     expect(doc.blankItemId?.toString()).toBe(blankId.toString());
   });
 });
+
+describe('minQuantity (ngưỡng cảnh báo stock.low)', () => {
+  it('cho phép tạo item không khai minQuantity (optional, không cảnh báo)', () => {
+    const doc = new WarehouseItemModel({
+      sku: 'SKU-NO-MINQTY',
+      name: 'Không khai ngưỡng',
+      type: ItemType.MATERIAL,
+      unit: 'cái',
+    });
+    const err = doc.validateSync();
+    expect(err).toBeUndefined();
+    expect(doc.minQuantity).toBeUndefined();
+  });
+
+  it('lưu đúng minQuantity khi khai', () => {
+    const doc = new WarehouseItemModel({
+      sku: 'SKU-MINQTY',
+      name: 'Có khai ngưỡng',
+      type: ItemType.MATERIAL,
+      unit: 'cái',
+      minQuantity: 10,
+    });
+    expect(doc.minQuantity).toBe(10);
+  });
+});

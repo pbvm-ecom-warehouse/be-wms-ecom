@@ -18,6 +18,7 @@ import {
   type GoodsReturnDocument,
 } from './schemas/goods-return.schema';
 import { StockRepository } from '../stock/stock.repository';
+import { StockService } from '../stock/stock.service';
 import { WarehouseRepository } from '../warehouse/warehouse.repository';
 import { ScrapNoteService } from '../scrap-note/scrap-note.service';
 import { StockTransactionHelper } from '../stock/helpers/with-stock-transaction.helper';
@@ -35,6 +36,7 @@ export class GoodsReturnService {
   constructor(
     private readonly repo: GoodsReturnRepository,
     private readonly stockRepo: StockRepository,
+    private readonly stockService: StockService,
     private readonly warehouseRepo: WarehouseRepository,
     private readonly scrapNoteService: ScrapNoteService,
     private readonly stockTransactionHelper: StockTransactionHelper,
@@ -211,6 +213,14 @@ export class GoodsReturnService {
     const actorObjectId = new Types.ObjectId(actorId);
     const goodLines: { sku: string; quantity: number }[] = [];
     const scrapNoteIdByItemId = new Map<string, Types.ObjectId>();
+    // S4-04: mọi dòng (GOOD và DAMAGED) đều chạm upsertBalance ở dưới — dòng DAMAGED
+    // còn bị ScrapNoteService bù trừ ngay sau trong CÙNG transaction, nhưng vì
+    // checkAndEmitStockLow đọc lại balance sau commit nên chỉ cần set map 1 lần ở
+    // đây, không cần biết chi tiết bên trong ScrapNoteService.
+    const touchedBalances = new Map<
+      string,
+      { itemId: Types.ObjectId; warehouseId: Types.ObjectId }
+    >();
 
     await this.stockTransactionHelper.withStockTransaction(async (session) => {
       for (const line of goodsReturn.items) {
@@ -231,6 +241,10 @@ export class GoodsReturnService {
           0,
           0,
           session,
+        );
+        touchedBalances.set(
+          `${line.itemId.toString()}:${goodsReturn.warehouseId!.toString()}`,
+          { itemId: line.itemId, warehouseId: goodsReturn.warehouseId! },
         );
         await this.stockRepo.insertMovement(
           {
@@ -275,6 +289,9 @@ export class GoodsReturnService {
       };
       const jobId = `goods_return:${id}:${line.sku}`;
       await this.stockQueue.add(EVENTS.STOCK_CHANGED, payload, { jobId });
+    }
+    for (const { itemId, warehouseId } of touchedBalances.values()) {
+      await this.stockService.checkAndEmitStockLow(itemId, warehouseId);
     }
 
     const updated = await this.repo.findById(id);

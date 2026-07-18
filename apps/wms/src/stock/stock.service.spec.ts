@@ -1,4 +1,5 @@
 import { Types } from 'mongoose';
+import { EVENTS } from '@app/events';
 import { StockService } from './stock.service';
 
 const makeRepo = () => ({
@@ -9,6 +10,8 @@ const makeRepo = () => ({
   findItemByIdDocument: jest.fn(),
   updateItem: jest.fn(),
   softDeleteItem: jest.fn(),
+  findSkuAndMinQuantityById: jest.fn(),
+  findBalanceByItemAndWarehouse: jest.fn(),
 });
 
 const makeQueue = () => ({
@@ -19,11 +22,17 @@ describe('StockService', () => {
   let svc: StockService;
   let repo: ReturnType<typeof makeRepo>;
   let queue: ReturnType<typeof makeQueue>;
+  let notificationQueue: ReturnType<typeof makeQueue>;
 
   beforeEach(() => {
     repo = makeRepo();
     queue = makeQueue();
-    svc = new StockService(repo as never, queue as never);
+    notificationQueue = makeQueue();
+    svc = new StockService(
+      repo as never,
+      queue as never,
+      notificationQueue as never,
+    );
   });
 
   describe('createWarehouseItem', () => {
@@ -174,6 +183,82 @@ describe('StockService', () => {
       await expect(
         svc.updateWarehouseItem('missing', { name: 'X' }, actorId),
       ).rejects.toMatchObject({ code: 'STOCK_ITEM_NOT_FOUND' });
+    });
+  });
+
+  describe('checkAndEmitStockLow', () => {
+    const itemId = new Types.ObjectId();
+    const warehouseId = new Types.ObjectId();
+
+    it('minQuantity không set → không emit', async () => {
+      repo.findSkuAndMinQuantityById.mockResolvedValue({
+        sku: 'SKU-1',
+        minQuantity: undefined,
+      });
+
+      await svc.checkAndEmitStockLow(itemId, warehouseId);
+
+      expect(repo.findBalanceByItemAndWarehouse).not.toHaveBeenCalled();
+      expect(notificationQueue.add).not.toHaveBeenCalled();
+    });
+
+    it('không tìm thấy item → không emit', async () => {
+      repo.findSkuAndMinQuantityById.mockResolvedValue(null);
+
+      await svc.checkAndEmitStockLow(itemId, warehouseId);
+
+      expect(notificationQueue.add).not.toHaveBeenCalled();
+    });
+
+    it('available ≥ minQuantity → không emit', async () => {
+      repo.findSkuAndMinQuantityById.mockResolvedValue({
+        sku: 'SKU-1',
+        minQuantity: 5,
+      });
+      repo.findBalanceByItemAndWarehouse.mockResolvedValue({
+        onHand: 10,
+        reserved: 0,
+        expired: 0,
+      });
+
+      await svc.checkAndEmitStockLow(itemId, warehouseId);
+
+      expect(notificationQueue.add).not.toHaveBeenCalled();
+    });
+
+    it('available < minQuantity → emit stock.low KHÔNG kèm jobId (không dedup)', async () => {
+      repo.findSkuAndMinQuantityById.mockResolvedValue({
+        sku: 'SKU-1',
+        minQuantity: 5,
+      });
+      repo.findBalanceByItemAndWarehouse.mockResolvedValue({
+        onHand: 3,
+        reserved: 1,
+        expired: 0,
+      });
+
+      await svc.checkAndEmitStockLow(itemId, warehouseId);
+
+      expect(notificationQueue.add).toHaveBeenCalledWith(EVENTS.STOCK_LOW, {
+        sku: 'SKU-1',
+        warehouseId: warehouseId.toString(),
+        available: 2,
+        minQuantity: 5,
+      });
+      // không truyền option thứ 3 ({ jobId }) — khớp quyết định "không dedup"
+      expect(notificationQueue.add.mock.calls[0]).toHaveLength(2);
+    });
+
+    it('không tìm thấy StockBalance cho (item,warehouse) → không emit', async () => {
+      repo.findSkuAndMinQuantityById.mockResolvedValue({
+        sku: 'SKU-1',
+        minQuantity: 5,
+      });
+      repo.findBalanceByItemAndWarehouse.mockResolvedValue(null);
+
+      await svc.checkAndEmitStockLow(itemId, warehouseId);
+
+      expect(notificationQueue.add).not.toHaveBeenCalled();
     });
   });
 
