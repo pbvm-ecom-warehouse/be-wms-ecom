@@ -228,4 +228,17 @@ export class CatalogRepository {
       .findByIdAndUpdate(id, { lastUsedAt: new Date() })
       .lean();
   }
+
+  async updateDesign(id: string, customerId: string, updates: Record<string, any>) {
+    return this.designModel
+      .findOneAndUpdate(
+        {
+          _id: new Types.ObjectId(id),
+          customerId: new Types.ObjectId(customerId),
+        },
+        { $set: updates },
+        { new: true },
+      )
+      .lean();
+  }
 }

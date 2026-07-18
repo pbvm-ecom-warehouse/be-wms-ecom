@@ -9,7 +9,7 @@ import {
   UpdateProductDto,
   UpdateVariantDto,
 } from './dto/product.dto';
-import { CreateDesignDto } from './dto/design.dto';
+import { CreateDesignDto, UpdateDesignDto } from './dto/design.dto';
 import { Category } from './schemas/category.schema';
 import { Product, ProductStatus } from './schemas/product.schema';
 import { ProductVariant } from './schemas/product-variant.schema';
@@ -319,5 +319,20 @@ export class CatalogService {
 
   async findDesign(id: string, customerId: string) {
     return this.repo.findDesign(id, customerId);
+  }
+
+  async updateDesign(customerId: string, designId: string, dto: UpdateDesignDto) {
+    if (!Types.ObjectId.isValid(customerId)) {
+      throw new AppException('VALIDATION_FAILED', 'ID khách hàng không hợp lệ');
+    }
+    if (!Types.ObjectId.isValid(designId)) {
+      throw new AppException(
+        'VALIDATION_FAILED',
+        'ID mẫu thiết kế không hợp lệ',
+      );
+    }
+    const updated = await this.repo.updateDesign(designId, customerId, dto);
+    if (!updated) throw new AppException('CATALOG_DESIGN_NOT_FOUND');
+    return updated;
   }
 }

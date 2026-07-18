@@ -45,7 +45,7 @@ import {
   ProductVariantResponseDto,
   ProductDetailResponseDto,
 } from './dto/product.dto';
-import { CreateDesignDto, DesignResponseDto } from './dto/design.dto';
+import { CreateDesignDto, DesignResponseDto, UpdateDesignDto } from './dto/design.dto';
 import { SuccessResponseDto } from '../auth/dto/auth.dto';
 
 /** Public storefront — không cần auth */
@@ -222,6 +222,21 @@ export class DesignController {
     @Body() dto: CreateDesignDto,
   ) {
     const design = await this.svc.createDesign(customerId, dto);
+    return plainToInstance(DesignResponseDto, design, {
+      excludeExtraneousValues: true,
+    });
+  }
+
+  @Patch(':id')
+  @ApiOperation({ summary: 'Cập nhật thiết kế trong thư viện' })
+  @ApiParam({ name: 'id', description: 'ID mẫu thiết kế' })
+  @ApiOkResponse({ type: DesignResponseDto })
+  async updateDesign(
+    @CurrentUser('sub') customerId: string,
+    @Param('id') id: string,
+    @Body() dto: UpdateDesignDto,
+  ) {
+    const design = await this.svc.updateDesign(customerId, id, dto);
     return plainToInstance(DesignResponseDto, design, {
       excludeExtraneousValues: true,
     });

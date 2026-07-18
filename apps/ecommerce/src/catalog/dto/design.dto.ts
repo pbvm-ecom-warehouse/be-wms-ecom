@@ -48,3 +48,22 @@ export class DesignResponseDto {
   @Expose()
   lastUsedAt!: Date | null;
 }
+
+export class UpdateDesignDto {
+  @ApiPropertyOptional({ example: 'Logo công ty ABC (Updated)' })
+  @IsString()
+  @IsOptional()
+  name?: string;
+
+  @ApiPropertyOptional({ example: 'https://storage.example.com/designs/abc-updated.png' })
+  @IsString()
+  @IsOptional()
+  file?: string;
+
+  @ApiPropertyOptional({
+    example: 'https://storage.example.com/thumbnails/abc-updated.jpg',
+  })
+  @IsString()
+  @IsOptional()
+  thumbnail?: string;
+}

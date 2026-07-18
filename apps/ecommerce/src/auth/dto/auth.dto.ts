@@ -30,6 +30,27 @@ export class RegisterDto {
   phone?: string;
 }
 
+export class CreateEcomManagerDto {
+  @ApiProperty({ example: 'manager2@example.com' })
+  @IsEmail()
+  email!: string;
+
+  @ApiProperty({ example: 'P@ssw0rd123!', minLength: 8 })
+  @IsString()
+  @MinLength(8)
+  password!: string;
+
+  @ApiPropertyOptional({ example: 'Nguyen Van Manager' })
+  @IsOptional()
+  @IsString()
+  name?: string;
+
+  @ApiPropertyOptional({ example: '0901234568' })
+  @IsOptional()
+  @IsString()
+  phone?: string;
+}
+
 export class LoginDto {
   @ApiProperty({ example: 'khach@example.com' })
   @IsEmail()

@@ -23,7 +23,7 @@ import {
   ApiTags,
   ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
-import { CurrentUser, JwtAuthGuard } from '@app/auth';
+import { CurrentUser, JwtAuthGuard, Roles, RolesGuard, EcomRole } from '@app/auth';
 import { AppException, AuthThrottle } from '@app/common';
 import type { ConfigType } from '@nestjs/config';
 import { plainToInstance } from 'class-transformer';
@@ -42,6 +42,7 @@ import {
   LogoutDto,
   RefreshDto,
   RegisterDto,
+  CreateEcomManagerDto,
   ResetPasswordDto,
   SuccessResponseDto,
   UpdateAddressDto,
@@ -439,6 +440,19 @@ export class AuthController {
   ) {
     const result = await this.auth.deleteAddress(userId, id);
     return plainToInstance(AddressResponseDto, result, {
+      excludeExtraneousValues: true,
+    });
+  }
+
+  @Post('admin/create-manager')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(EcomRole.ECOM_MANAGER)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: '[Admin] Ecom_Manager tạo một Ecom_Manager khác' })
+  @ApiCreatedResponse({ type: UserResponseDto })
+  async createEcomManager(@Body() dto: CreateEcomManagerDto) {
+    const result = await this.auth.createEcomManager(dto);
+    return plainToInstance(UserResponseDto, result, {
       excludeExtraneousValues: true,
     });
   }

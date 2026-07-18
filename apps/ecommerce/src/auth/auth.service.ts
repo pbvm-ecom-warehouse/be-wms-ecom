@@ -21,8 +21,10 @@ import {
   AddressDto,
   ChangePasswordDto,
   RegisterDto,
+  CreateEcomManagerDto,
   UpdateAddressDto,
 } from './dto/auth.dto';
+import { EcomRole } from '@app/auth';
 import { UserAddress, UserDocument } from './schemas/user.schema';
 import { UserRefreshTokenRepository } from './repositories/user-refresh-token.repository';
 import { UserRepository } from './repositories/user.repository';
@@ -76,6 +78,23 @@ export class AuthService {
     );
     const tokens = await this.issueTokens(user as UserDocument);
     return { ...tokens, emailVerified: false };
+  }
+
+  async createEcomManager(dto: CreateEcomManagerDto) {
+    const exists = await this.userRepo.findByEmail(dto.email);
+    if (exists) throw new AppException('AUTH_EMAIL_CONFLICT');
+
+    const passwordHash = await bcrypt.hash(dto.password, BCRYPT_ROUNDS);
+    const user = await this.userRepo.create({
+      email: dto.email,
+      passwordHash,
+      name: dto.name,
+      phone: dto.phone,
+      type: 'admin',
+      roles: [EcomRole.ECOM_MANAGER],
+      emailVerified: true,
+    });
+    return user;
   }
 
   private generateOtp(): string {
