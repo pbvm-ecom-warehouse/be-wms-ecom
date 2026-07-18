@@ -19,12 +19,13 @@ describe('email templates', () => {
       StockLowAlertEmail({
         sku: 'SKU-1',
         warehouseId: 'wh-1',
-        available: 2,
-        minQuantity: 10,
+        available: 234,
+        minQuantity: 5678,
       }),
     );
     expect(html).toContain('SKU-1');
-    expect(html).toContain('2');
-    expect(html).toContain('10');
+    // Kiểm tra specific rendered fragment với distinctive values (234/5678)
+    // không nhầm với CSS values. Pattern accounts for React HTML comments between values.
+    expect(html).toMatch(/234.*\/.*5678/);
   });
 });
