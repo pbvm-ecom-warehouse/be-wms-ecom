@@ -1,11 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
-import {
-  User,
-  UserAddress,
-UserStatus,
-} from '../schemas/user.schema';
+import { User, UserAddress, UserStatus } from '../schemas/user.schema';
 
 export interface CreateUserInput {
   email: string;
@@ -20,9 +16,7 @@ export interface CreateUserInput {
 
 @Injectable()
 export class UserRepository {
-  constructor(
-    @InjectModel(User.name) private readonly model: Model<User>,
-  ) {}
+  constructor(@InjectModel(User.name) private readonly model: Model<User>) {}
 
   findByEmail(email: string) {
     return this.model.findOne({ email }).select('_id').lean().exec();

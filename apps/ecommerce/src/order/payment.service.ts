@@ -4,7 +4,7 @@ import { OrderRepository } from './order.repository';
 import { OrderService } from './order.service';
 import { PaymentMethod, PaymentStatus } from './schemas/order.schema';
 import { AppException } from '@app/common';
-import { PayOS } from '@payos/node';
+import { PayOS, type Webhook } from '@payos/node';
 
 export function orderCodeToNumber(code: string): number {
   const clean = code.replace(/ORD-|-/gi, '');
@@ -14,7 +14,7 @@ export function orderCodeToNumber(code: string): number {
 export function numberToOrderCode(num: number | string): string {
   const str = String(num);
   const datePart = str.substring(0, 8); // YYYYMMDD
-  const seqPart = str.substring(8);     // NNN
+  const seqPart = str.substring(8); // NNN
   return `ORD-${datePart}-${seqPart}`;
 }
 
@@ -36,7 +36,9 @@ export class PaymentService {
     if (clientId && apiKey && checksumKey) {
       this.payos = new PayOS({ clientId, apiKey, checksumKey });
     } else {
-      this.logger.error('PayOS configuration is missing (PAYOS_CLIENT_ID, PAYOS_API_KEY, PAYOS_CHECKSUM_KEY)');
+      this.logger.error(
+        'PayOS configuration is missing (PAYOS_CLIENT_ID, PAYOS_API_KEY, PAYOS_CHECKSUM_KEY)',
+      );
     }
   }
 
@@ -63,7 +65,10 @@ export class PaymentService {
     const cancelUrl = this.config.get<string>('PAYOS_CANCEL_URL');
 
     if (!returnUrl || !cancelUrl) {
-      throw new AppException('INTERNAL', 'Thiếu cấu hình PAYOS_RETURN_URL hoặc PAYOS_CANCEL_URL');
+      throw new AppException(
+        'INTERNAL',
+        'Thiếu cấu hình PAYOS_RETURN_URL hoặc PAYOS_CANCEL_URL',
+      );
     }
 
     const orderCode = orderCodeToNumber(order.code);
@@ -78,18 +83,27 @@ export class PaymentService {
         cancelUrl,
       });
 
-      this.logger.log(`Tạo PayOS link thành công cho đơn ${order.code} -> orderCode=${orderCode}`);
+      this.logger.log(
+        `Tạo PayOS link thành công cho đơn ${order.code} -> orderCode=${orderCode}`,
+      );
       return paymentLinkRes.checkoutUrl;
-    } catch (err: any) {
-      this.logger.error(`Lỗi khi tạo PayOS payment link cho đơn ${order.code}:`, err);
-      throw new AppException('INTERNAL', `Lỗi kết nối cổng thanh toán: ${err.message}`);
+    } catch (err) {
+      this.logger.error(
+        `Lỗi khi tạo PayOS payment link cho đơn ${order.code}:`,
+        err,
+      );
+      const message = err instanceof Error ? err.message : 'unknown error';
+      throw new AppException(
+        'INTERNAL',
+        `Lỗi kết nối cổng thanh toán: ${message}`,
+      );
     }
   }
 
   /**
    * Xử lý webhook từ PayOS (IPN).
    */
-  async handlePayosWebhook(body: any): Promise<{ success: boolean }> {
+  async handlePayosWebhook(body: Webhook): Promise<{ success: boolean }> {
     if (!this.payos) {
       this.logger.error('PayOS client chưa được cấu hình');
       return { success: false };
@@ -98,13 +112,17 @@ export class PaymentService {
     try {
       // Xác thực chữ ký webhook nhận được từ payOS
       const webhookData = await this.payos.webhooks.verify(body);
-      this.logger.log(`Xác thực webhook PayOS thành công cho orderCode: ${webhookData.orderCode}`);
+      this.logger.log(
+        `Xác thực webhook PayOS thành công cho orderCode: ${webhookData.orderCode}`,
+      );
 
       // Chuyển orderCode số nguyên về dạng mã đơn hàng chuỗi ORD-...
       const orderCodeStr = numberToOrderCode(webhookData.orderCode);
       const order = await this.orderRepo.findByCode(orderCodeStr);
       if (!order) {
-        this.logger.error(`Không tìm thấy đơn hàng tương ứng với orderCode: ${orderCodeStr}`);
+        this.logger.error(
+          `Không tìm thấy đơn hàng tương ứng với orderCode: ${orderCodeStr}`,
+        );
         return { success: false };
       }
 
@@ -113,7 +131,7 @@ export class PaymentService {
       if (webhookData.code === '00') {
         const amount = webhookData.amount;
         const providerTxnId = webhookData.reference;
-        
+
         await this.orderService.onPaymentSuccess(
           order._id.toString(),
           providerTxnId,
@@ -122,9 +140,13 @@ export class PaymentService {
           body,
         );
 
-        this.logger.log(`Cập nhật thanh toán thành công cho đơn hàng: ${orderCodeStr}`);
+        this.logger.log(
+          `Cập nhật thanh toán thành công cho đơn hàng: ${orderCodeStr}`,
+        );
       } else {
-        this.logger.warn(`PayOS báo giao dịch thất bại cho đơn ${orderCodeStr}: code=${webhookData.code}`);
+        this.logger.warn(
+          `PayOS báo giao dịch thất bại cho đơn ${orderCodeStr}: code=${webhookData.code}`,
+        );
       }
 
       return { success: true };
@@ -137,7 +159,10 @@ export class PaymentService {
   /**
    * Hủy link thanh toán PayOS (khi đơn hàng bị hủy khi vẫn chưa trả tiền).
    */
-  async cancelPayosPaymentLink(orderId: string, reason = 'Đơn hàng bị hủy'): Promise<void> {
+  async cancelPayosPaymentLink(
+    orderId: string,
+    reason = 'Đơn hàng bị hủy',
+  ): Promise<void> {
     if (!this.payos) {
       this.logger.error('PayOS client chưa được cấu hình');
       return;
@@ -151,15 +176,20 @@ export class PaymentService {
     try {
       // Kiểm tra xem link thanh toán có đang hoạt động không
       const paymentLink = await this.payos.paymentRequests.get(orderCode);
-      
+
       // Chỉ hủy khi link thanh toán vẫn ở trạng thái PENDING
       if (paymentLink.status === 'PENDING') {
         await this.payos.paymentRequests.cancel(orderCode, reason.slice(0, 25));
-        this.logger.log(`Đã hủy link thanh toán PayOS của đơn ${order.code} (orderCode=${orderCode})`);
+        this.logger.log(
+          `Đã hủy link thanh toán PayOS của đơn ${order.code} (orderCode=${orderCode})`,
+        );
       }
-    } catch (err: any) {
+    } catch (err) {
       // Nếu link thanh toán chưa được tạo hoặc đã hủy rồi, có thể bỏ qua hoặc log warn
-      this.logger.warn(`Không thể hủy link thanh toán PayOS của đơn ${order.code}: ${err.message}`);
+      const message = err instanceof Error ? err.message : 'unknown error';
+      this.logger.warn(
+        `Không thể hủy link thanh toán PayOS của đơn ${order.code}: ${message}`,
+      );
     }
   }
 }

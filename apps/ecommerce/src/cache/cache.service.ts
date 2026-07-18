@@ -29,7 +29,8 @@ export class CacheService implements OnModuleDestroy {
   }
 
   async set(key: string, value: unknown, ttlSeconds?: number): Promise<void> {
-    const serialized = typeof value === 'string' ? value : JSON.stringify(value);
+    const serialized =
+      typeof value === 'string' ? value : JSON.stringify(value);
     if (ttlSeconds) {
       await this.redis.set(key, serialized, 'EX', ttlSeconds);
     } else {
@@ -44,7 +45,13 @@ export class CacheService implements OnModuleDestroy {
   async delPattern(pattern: string): Promise<void> {
     let cursor = '0';
     do {
-      const [newCursor, keys] = await this.redis.scan(cursor, 'MATCH', pattern, 'COUNT', 100);
+      const [newCursor, keys] = await this.redis.scan(
+        cursor,
+        'MATCH',
+        pattern,
+        'COUNT',
+        100,
+      );
       cursor = newCursor;
       if (keys.length > 0) {
         await this.redis.del(...keys);

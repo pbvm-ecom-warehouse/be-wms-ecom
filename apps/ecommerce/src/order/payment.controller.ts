@@ -1,4 +1,13 @@
-import { Controller, Get, Post, Param, Query, Body, HttpCode, UseGuards } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Param,
+  Query,
+  Body,
+  HttpCode,
+  UseGuards,
+} from '@nestjs/common';
 import {
   ApiBearerAuth,
   ApiOperation,
@@ -6,6 +15,7 @@ import {
   ApiTags,
   ApiOkResponse,
 } from '@nestjs/swagger';
+import type { Webhook } from '@payos/node';
 import { JwtAuthGuard, CustomerGuard } from '@app/auth';
 import { PaymentService, numberToOrderCode } from './payment.service';
 import { plainToInstance } from 'class-transformer';
@@ -24,7 +34,9 @@ export class PaymentController {
   @Get('payos/create-url/:orderId')
   @ApiBearerAuth()
   @UseGuards(JwtAuthGuard, CustomerGuard)
-  @ApiOperation({ summary: 'Lấy URL thanh toán VietQR (PayOS) cho đơn hàng ONLINE' })
+  @ApiOperation({
+    summary: 'Lấy URL thanh toán VietQR (PayOS) cho đơn hàng ONLINE',
+  })
   @ApiParam({ name: 'orderId', example: '64abc...' })
   @ApiOkResponse({ type: PaymentUrlResponseDto })
   async createPayosUrl(@Param('orderId') orderId: string) {
@@ -45,7 +57,7 @@ export class PaymentController {
     summary: 'PayOS Webhook (POST server-to-server, không cần auth)',
   })
   @ApiOkResponse({ type: PayosWebhookResponseDto })
-  async handlePayosWebhook(@Body() body: any) {
+  async handlePayosWebhook(@Body() body: Webhook) {
     const res = await this.svc.handlePayosWebhook(body);
     return plainToInstance(PayosWebhookResponseDto, res, {
       excludeExtraneousValues: true,
@@ -61,7 +73,9 @@ export class PaymentController {
   payosReturn(@Query() query: Record<string, string>) {
     const status = query['status'];
     const success = status === 'PAID';
-    const orderCodeNum = query['orderCode'] ? parseInt(query['orderCode'], 10) : 0;
+    const orderCodeNum = query['orderCode']
+      ? parseInt(query['orderCode'], 10)
+      : 0;
     const orderCodeStr = orderCodeNum ? numberToOrderCode(orderCodeNum) : '';
 
     const payload = {
@@ -83,7 +97,9 @@ export class PaymentController {
   })
   @ApiOkResponse({ type: PaymentReturnResponseDto })
   payosCancel(@Query() query: Record<string, string>) {
-    const orderCodeNum = query['orderCode'] ? parseInt(query['orderCode'], 10) : 0;
+    const orderCodeNum = query['orderCode']
+      ? parseInt(query['orderCode'], 10)
+      : 0;
     const orderCodeStr = orderCodeNum ? numberToOrderCode(orderCodeNum) : '';
 
     const payload = {

@@ -55,7 +55,9 @@ export class UpdateDesignDto {
   @IsOptional()
   name?: string;
 
-  @ApiPropertyOptional({ example: 'https://storage.example.com/designs/abc-updated.png' })
+  @ApiPropertyOptional({
+    example: 'https://storage.example.com/designs/abc-updated.png',
+  })
   @IsString()
   @IsOptional()
   file?: string;

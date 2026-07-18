@@ -23,7 +23,13 @@ import {
   ApiTags,
   ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
-import { CurrentUser, JwtAuthGuard, Roles, RolesGuard, EcomRole } from '@app/auth';
+import {
+  CurrentUser,
+  JwtAuthGuard,
+  Roles,
+  RolesGuard,
+  EcomRole,
+} from '@app/auth';
 import { AppException, AuthThrottle } from '@app/common';
 import type { ConfigType } from '@nestjs/config';
 import { plainToInstance } from 'class-transformer';
@@ -197,7 +203,9 @@ export class AuthController {
     type: AuthTokenResponseDto,
     description: 'Set cookie moi va tra token cap nhat',
   })
-  @ApiUnauthorizedResponse({ description: 'Refresh token khong hop le hoac het han' })
+  @ApiUnauthorizedResponse({
+    description: 'Refresh token khong hop le hoac het han',
+  })
   async refresh(
     @Body() dto: RefreshDto,
     @Req() req: Request,
@@ -269,7 +277,9 @@ export class AuthController {
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @AuthThrottle()
-  @ApiOperation({ summary: 'Gui lai email xac minh cho nguoi dung dang dang nhap' })
+  @ApiOperation({
+    summary: 'Gui lai email xac minh cho nguoi dung dang dang nhap',
+  })
   @ApiOkResponse({ type: SuccessResponseDto })
   async resendVerifyEmail(@CurrentUser('sub') userId: string) {
     const result = await this.auth.resendVerifyEmail(userId);

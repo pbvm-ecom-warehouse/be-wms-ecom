@@ -76,7 +76,7 @@ export class AuthService {
       'verify_email',
       EVENTS.CUSTOMER_VERIFY_REQUESTED,
     );
-    const tokens = await this.issueTokens(user as UserDocument);
+    const tokens = await this.issueTokens(user);
     return { ...tokens, emailVerified: false };
   }
 
@@ -131,7 +131,7 @@ export class AuthService {
         'Sai email hoặc mật khẩu',
       );
     }
-    const tokens = await this.issueTokens(user as UserDocument);
+    const tokens = await this.issueTokens(user);
     return { ...tokens, emailVerified: user.emailVerified };
   }
 
@@ -141,9 +141,7 @@ export class AuthService {
       throw new AppException('AUTH_FIREBASE_NO_EMAIL');
     }
 
-    const existingByUid = await this.userRepo.findByFirebaseUid(
-      decoded.uid,
-    );
+    const existingByUid = await this.userRepo.findByFirebaseUid(decoded.uid);
     const existingByEmail = existingByUid
       ? existingByUid
       : await this.userRepo.findActiveByEmail(decoded.email, true);
@@ -155,10 +153,7 @@ export class AuthService {
           : (() => {
               throw new AppException('AUTH_FIREBASE_UID_MISMATCH');
             })()
-        : await this.userRepo.linkFirebaseUid(
-            existingByEmail._id,
-            decoded.uid,
-          )
+        : await this.userRepo.linkFirebaseUid(existingByEmail._id, decoded.uid)
       : await (async () => {
           const email = decoded.email!;
           const rawPassword = generateOpaqueToken().slice(0, 12);
@@ -192,7 +187,7 @@ export class AuthService {
       await this.userRepo.markEmailVerified(user._id);
     }
 
-    const tokens = await this.issueTokens(user as UserDocument);
+    const tokens = await this.issueTokens(user);
     return { ...tokens, emailVerified: true };
   }
 
@@ -229,7 +224,7 @@ export class AuthService {
 
     doc.revokedAt = new Date();
     await doc.save();
-    return this.issueTokens(user as UserDocument);
+    return this.issueTokens(user);
   }
 
   async logout(refreshToken: string) {
@@ -246,11 +241,7 @@ export class AuthService {
   async verifyEmail(email: string, code: string) {
     const user = await this.userRepo.findActiveByEmail(email);
     const ok = user
-      ? await this.otpStore.verify(
-          user._id.toString(),
-          'verify_email',
-          code,
-        )
+      ? await this.otpStore.verify(user._id.toString(), 'verify_email', code)
       : false;
     if (!user || !ok) {
       throw new AppException('AUTH_OTP_INVALID');
@@ -260,9 +251,7 @@ export class AuthService {
   }
 
   async resendVerifyEmail(customerId: string) {
-    const user = await this.userRepo.findActiveById(
-      this.objectId(customerId),
-    );
+    const user = await this.userRepo.findActiveById(this.objectId(customerId));
     if (!user) throw new AppException('UNAUTHENTICATED');
     if (user.emailVerified) return { success: true, emailVerified: true };
 
@@ -291,11 +280,7 @@ export class AuthService {
   async resetPassword(email: string, code: string, newPassword: string) {
     const user = await this.userRepo.findActiveByEmail(email);
     const ok = user
-      ? await this.otpStore.verify(
-          user._id.toString(),
-          'reset_password',
-          code,
-        )
+      ? await this.otpStore.verify(user._id.toString(), 'reset_password', code)
       : false;
     if (!user || !ok) {
       throw new AppException('AUTH_OTP_INVALID');
@@ -326,17 +311,13 @@ export class AuthService {
   }
 
   async listAddresses(customerId: string) {
-    const user = await this.userRepo.findActiveById(
-      this.objectId(customerId),
-    );
+    const user = await this.userRepo.findActiveById(this.objectId(customerId));
     if (!user) throw new AppException('UNAUTHENTICATED');
     return user.addresses ?? [];
   }
 
   async addAddress(customerId: string, dto: AddressDto) {
-    const user = await this.userRepo.findActiveById(
-      this.objectId(customerId),
-    );
+    const user = await this.userRepo.findActiveById(this.objectId(customerId));
     if (!user) throw new AppException('UNAUTHENTICATED');
 
     const addresses = this.normalizeAddresses(user.addresses ?? []);
@@ -356,9 +337,7 @@ export class AuthService {
     addressId: string,
     dto: UpdateAddressDto,
   ) {
-    const user = await this.userRepo.findActiveById(
-      this.objectId(customerId),
-    );
+    const user = await this.userRepo.findActiveById(this.objectId(customerId));
     if (!user) throw new AppException('UNAUTHENTICATED');
 
     const addresses = this.normalizeAddresses(user.addresses ?? []);
@@ -383,9 +362,7 @@ export class AuthService {
   }
 
   async deleteAddress(customerId: string, addressId: string) {
-    const user = await this.userRepo.findActiveById(
-      this.objectId(customerId),
-    );
+    const user = await this.userRepo.findActiveById(this.objectId(customerId));
     if (!user) throw new AppException('UNAUTHENTICATED');
 
     const addresses = this.normalizeAddresses(user.addresses ?? []);
@@ -398,9 +375,7 @@ export class AuthService {
   }
 
   async setDefaultAddress(customerId: string, addressId: string) {
-    const user = await this.userRepo.findActiveById(
-      this.objectId(customerId),
-    );
+    const user = await this.userRepo.findActiveById(this.objectId(customerId));
     if (!user) throw new AppException('UNAUTHENTICATED');
 
     const addresses = this.normalizeAddresses(user.addresses ?? []);

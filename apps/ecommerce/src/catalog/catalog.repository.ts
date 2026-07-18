@@ -229,7 +229,11 @@ export class CatalogRepository {
       .lean();
   }
 
-  async updateDesign(id: string, customerId: string, updates: Record<string, any>) {
+  async updateDesign(
+    id: string,
+    customerId: string,
+    updates: Record<string, any>,
+  ) {
     return this.designModel
       .findOneAndUpdate(
         {

@@ -44,13 +44,20 @@ export class StockConsumer extends WorkerHost {
           try {
             const variant = await this.catalogRepo.findVariantBySku(sku);
             if (variant) {
-              const product = await this.catalogRepo.getProductById(variant.productId.toString());
+              const product = await this.catalogRepo.getProductById(
+                variant.productId.toString(),
+              );
               if (product) {
-                await this.cacheService.del(`ecom:catalog:products:detail:${product.slug}`);
+                await this.cacheService.del(
+                  `ecom:catalog:products:detail:${product.slug}`,
+                );
               }
             }
           } catch (cacheErr) {
-            this.logger.error(`Lỗi khi xóa cache chi tiết sản phẩm cho SKU ${sku}:`, cacheErr);
+            this.logger.error(
+              `Lỗi khi xóa cache chi tiết sản phẩm cho SKU ${sku}:`,
+              cacheErr,
+            );
           }
         } else {
           this.logger.warn(
