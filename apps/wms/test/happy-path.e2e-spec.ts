@@ -6,7 +6,7 @@ import { getQueueToken } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import request from 'supertest';
 import { setupApp } from '@app/common';
-import { QUEUES } from '@app/events';
+import { EVENTS, QUEUES, type OrderReadyToFulfillPayload } from '@app/events';
 import { AppModule } from '../src/app.module';
 import {
   StockBalance,
@@ -26,7 +26,6 @@ import {
   Shelf,
   type ShelfDocument,
 } from '../src/warehouse/schemas/shelf.schema';
-import { EVENTS, type OrderReadyToFulfillPayload } from '@app/events';
 
 /**
  * E2E happy-path WMS (S4-05): login → PO → GRN CONFIRMED (onHand+) → put-away
