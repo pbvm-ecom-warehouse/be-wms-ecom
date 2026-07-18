@@ -1,25 +1,53 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Inject, forwardRef } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import * as crypto from 'crypto';
 import { OrderRepository } from './order.repository';
 import { OrderService } from './order.service';
 import { PaymentMethod, PaymentStatus } from './schemas/order.schema';
 import { AppException } from '@app/common';
+import { PayOS } from '@payos/node';
+
+export function orderCodeToNumber(code: string): number {
+  const clean = code.replace(/ORD-|-/gi, '');
+  return parseInt(clean, 10);
+}
+
+export function numberToOrderCode(num: number | string): string {
+  const str = String(num);
+  const datePart = str.substring(0, 8); // YYYYMMDD
+  const seqPart = str.substring(8);     // NNN
+  return `ORD-${datePart}-${seqPart}`;
+}
 
 @Injectable()
 export class PaymentService {
   private readonly logger = new Logger(PaymentService.name);
+  private readonly payos?: PayOS;
 
   constructor(
     private readonly config: ConfigService,
     private readonly orderRepo: OrderRepository,
+    @Inject(forwardRef(() => OrderService))
     private readonly orderService: OrderService,
-  ) {}
+  ) {
+    const clientId = this.config.get<string>('PAYOS_CLIENT_ID');
+    const apiKey = this.config.get<string>('PAYOS_API_KEY');
+    const checksumKey = this.config.get<string>('PAYOS_CHECKSUM_KEY');
+
+    if (clientId && apiKey && checksumKey) {
+      this.payos = new PayOS({ clientId, apiKey, checksumKey });
+    } else {
+      this.logger.error('PayOS configuration is missing (PAYOS_CLIENT_ID, PAYOS_API_KEY, PAYOS_CHECKSUM_KEY)');
+    }
+  }
 
   /**
-   * Tạo URL redirect sang cổng thanh toán VNPay Sandbox.
+   * Tạo link thanh toán VietQR qua PayOS.
    */
-  async createVnpayUrl(orderId: string, ipAddr: string): Promise<string> {
+  async createPayosPaymentLink(orderId: string): Promise<string> {
+    if (!this.payos) {
+      throw new AppException('INTERNAL', 'PayOS client chưa được cấu hình');
+    }
+
     const order = await this.orderRepo.findById(orderId);
     if (!order) {
       throw new AppException('ORDER_NOT_FOUND');
@@ -31,151 +59,107 @@ export class PaymentService {
       throw new AppException('ORDER_ALREADY_PAID');
     }
 
-    const tmnCode = this.config.get<string>('VNPAY_TMN_CODE');
-    const secretKey = this.config.get<string>('VNPAY_SECRET_KEY');
-    const returnUrl = this.config.get<string>('VNPAY_RETURN_URL');
+    const returnUrl = this.config.get<string>('PAYOS_RETURN_URL');
+    const cancelUrl = this.config.get<string>('PAYOS_CANCEL_URL');
 
-    if (!tmnCode || !secretKey || !returnUrl) {
-      throw new AppException(
-        'INTERNAL',
-        'Cấu hình VNPay trên máy chủ chưa hoàn tất',
-      );
+    if (!returnUrl || !cancelUrl) {
+      throw new AppException('INTERNAL', 'Thiếu cấu hình PAYOS_RETURN_URL hoặc PAYOS_CANCEL_URL');
     }
 
-    const vnpUrl = 'https://sandbox.vnpayment.vn/paymentv2/vpcpay.html';
-    const now = new Date();
-    const createDate = now
-      .toISOString()
-      .replace(/[-T:.Z]/g, '')
-      .slice(0, 14);
-    // Hạn thanh toán sau 30 phút khớp với auto-cancel job
-    const expireDate = new Date(now.getTime() + 30 * 60 * 1000)
-      .toISOString()
-      .replace(/[-T:.Z]/g, '')
-      .slice(0, 14);
+    const orderCode = orderCodeToNumber(order.code);
+    const description = `Thanh toan ${order.code}`.slice(0, 25);
 
-    const params: Record<string, string> = {
-      vnp_Version: '2.1.0',
-      vnp_Command: 'pay',
-      vnp_TmnCode: tmnCode,
-      vnp_Amount: String(order.total * 100), // VNPay nhân 100 để tính tiền xu VND
-      vnp_CurrCode: 'VND',
-      vnp_TxnRef: order.code,
-      vnp_OrderInfo: `Thanh toan don hang ${order.code}`,
-      vnp_OrderType: 'other',
-      vnp_Locale: 'vn',
-      vnp_ReturnUrl: returnUrl,
-      vnp_IpAddr: ipAddr,
-      vnp_CreateDate: createDate,
-      vnp_ExpireDate: expireDate,
-    };
+    try {
+      const paymentLinkRes = await this.payos.paymentRequests.create({
+        orderCode,
+        amount: order.total,
+        description,
+        returnUrl,
+        cancelUrl,
+      });
 
-    // Sắp xếp các tham số theo bảng chữ cái để tạo chữ ký
-    const sortedParams = Object.keys(params)
-      .sort()
-      .reduce(
-        (acc, k) => ({ ...acc, [k]: params[k] }),
-        {} as Record<string, string>,
-      );
-
-    const signData = Object.keys(sortedParams)
-      .map(
-        (key) =>
-          `${encodeURIComponent(key)}=${encodeURIComponent(sortedParams[key]).replace(/%20/g, '+')}`,
-      )
-      .join('&');
-
-    const hmac = crypto.createHmac('sha512', secretKey);
-    const signed = hmac.update(Buffer.from(signData, 'utf-8')).digest('hex');
-
-    sortedParams['vnp_SecureHash'] = signed;
-
-    const queryParams = Object.keys(sortedParams)
-      .map(
-        (key) =>
-          `${encodeURIComponent(key)}=${encodeURIComponent(sortedParams[key]).replace(/%20/g, '+')}`,
-      )
-      .join('&');
-
-    return `${vnpUrl}?${queryParams}`;
+      this.logger.log(`Tạo PayOS link thành công cho đơn ${order.code} -> orderCode=${orderCode}`);
+      return paymentLinkRes.checkoutUrl;
+    } catch (err: any) {
+      this.logger.error(`Lỗi khi tạo PayOS payment link cho đơn ${order.code}:`, err);
+      throw new AppException('INTERNAL', `Lỗi kết nối cổng thanh toán: ${err.message}`);
+    }
   }
 
   /**
-   * Xử lý IPN (Instant Payment Notification) từ VNPay.
+   * Xử lý webhook từ PayOS (IPN).
    */
-  async handleVnpayIpn(
-    query: Record<string, string>,
-  ): Promise<{ RspCode: string; Message: string }> {
-    const secretKey = this.config.get<string>('VNPAY_SECRET_KEY');
-    if (!secretKey) {
-      this.logger.error('Chưa cấu hình VNPAY_SECRET_KEY');
-      return { RspCode: '99', Message: 'Internal configuration error' };
+  async handlePayosWebhook(body: any): Promise<{ success: boolean }> {
+    if (!this.payos) {
+      this.logger.error('PayOS client chưa được cấu hình');
+      return { success: false };
     }
 
-    const secureHash = query['vnp_SecureHash'];
-    const params = Object.fromEntries(
-      Object.entries(query).filter(
-        ([k]) => k !== 'vnp_SecureHash' && k !== 'vnp_SecureHashType',
-      ),
-    ) as Record<string, string>;
+    try {
+      // Xác thực chữ ký webhook nhận được từ payOS
+      const webhookData = await this.payos.webhooks.verify(body);
+      this.logger.log(`Xác thực webhook PayOS thành công cho orderCode: ${webhookData.orderCode}`);
 
-    // Sắp xếp
-    const sortedParams = Object.keys(params)
-      .sort()
-      .reduce(
-        (acc, k) => ({ ...acc, [k]: params[k] }),
-        {} as Record<string, string>,
-      );
+      // Chuyển orderCode số nguyên về dạng mã đơn hàng chuỗi ORD-...
+      const orderCodeStr = numberToOrderCode(webhookData.orderCode);
+      const order = await this.orderRepo.findByCode(orderCodeStr);
+      if (!order) {
+        this.logger.error(`Không tìm thấy đơn hàng tương ứng với orderCode: ${orderCodeStr}`);
+        return { success: false };
+      }
 
-    const signData = Object.keys(sortedParams)
-      .map(
-        (key) =>
-          `${encodeURIComponent(key)}=${encodeURIComponent(sortedParams[key]).replace(/%20/g, '+')}`,
-      )
-      .join('&');
-
-    const hmac = crypto.createHmac('sha512', secretKey);
-    const signed = hmac.update(Buffer.from(signData, 'utf-8')).digest('hex');
-
-    if (signed !== secureHash) {
-      this.logger.warn(
-        'Giao dịch IPN VNPay bị từ chối do chữ ký số không khớp',
-      );
-      return { RspCode: '97', Message: 'Invalid signature' };
-    }
-
-    const orderCode = query['vnp_TxnRef'];
-    const providerTxnId = query['vnp_TransactionNo'];
-    const responseCode = query['vnp_ResponseCode'];
-    const amount = parseInt(query['vnp_Amount'] ?? '0', 10) / 100;
-
-    const order = await this.orderRepo.findByCode(orderCode);
-    if (!order) {
-      return { RspCode: '01', Message: 'Order not found' };
-    }
-
-    // Đánh dấu thành công
-    if (responseCode === '00') {
-      try {
+      // Kiểm tra trạng thái thanh toán từ webhook data
+      // Code "00" có nghĩa là thanh toán thành công
+      if (webhookData.code === '00') {
+        const amount = webhookData.amount;
+        const providerTxnId = webhookData.reference;
+        
         await this.orderService.onPaymentSuccess(
           order._id.toString(),
           providerTxnId,
           amount,
-          'VNPAY',
+          'PAYOS',
+          body,
         );
-        return { RspCode: '00', Message: 'Confirm success' };
-      } catch (err) {
-        this.logger.error(
-          `Lỗi xử lý xác nhận thanh toán đơn hàng ${order._id.toString()}:`,
-          err,
-        );
-        return { RspCode: '99', Message: 'Confirm failed' };
+
+        this.logger.log(`Cập nhật thanh toán thành công cho đơn hàng: ${orderCodeStr}`);
+      } else {
+        this.logger.warn(`PayOS báo giao dịch thất bại cho đơn ${orderCodeStr}: code=${webhookData.code}`);
       }
-    } else {
-      this.logger.warn(
-        `VNPay báo lỗi giao dịch thanh toán: Mã phản hồi = ${responseCode}`,
-      );
-      return { RspCode: '00', Message: 'Transaction failed confirmed' };
+
+      return { success: true };
+    } catch (err: any) {
+      this.logger.error('Lỗi khi xác thực hoặc xử lý PayOS webhook:', err);
+      return { success: false };
+    }
+  }
+
+  /**
+   * Hủy link thanh toán PayOS (khi đơn hàng bị hủy khi vẫn chưa trả tiền).
+   */
+  async cancelPayosPaymentLink(orderId: string, reason = 'Đơn hàng bị hủy'): Promise<void> {
+    if (!this.payos) {
+      this.logger.error('PayOS client chưa được cấu hình');
+      return;
+    }
+
+    const order = await this.orderRepo.findById(orderId);
+    if (!order) return;
+
+    const orderCode = orderCodeToNumber(order.code);
+
+    try {
+      // Kiểm tra xem link thanh toán có đang hoạt động không
+      const paymentLink = await this.payos.paymentRequests.get(orderCode);
+      
+      // Chỉ hủy khi link thanh toán vẫn ở trạng thái PENDING
+      if (paymentLink.status === 'PENDING') {
+        await this.payos.paymentRequests.cancel(orderCode, reason.slice(0, 25));
+        this.logger.log(`Đã hủy link thanh toán PayOS của đơn ${order.code} (orderCode=${orderCode})`);
+      }
+    } catch (err: any) {
+      // Nếu link thanh toán chưa được tạo hoặc đã hủy rồi, có thể bỏ qua hoặc log warn
+      this.logger.warn(`Không thể hủy link thanh toán PayOS của đơn ${order.code}: ${err.message}`);
     }
   }
 }

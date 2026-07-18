@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Inject, forwardRef } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import { EVENTS, QUEUES } from '@app/events';
@@ -13,6 +13,7 @@ import {
 } from './schemas/order.schema';
 import { TxnStatus, TxnType } from './schemas/payment-transaction.schema';
 import { Types } from 'mongoose';
+import { PaymentService } from './payment.service';
 
 const DUPLICATE_KEY_CODE = 11000;
 
@@ -23,6 +24,8 @@ export class OrderService {
   constructor(
     private readonly repo: OrderRepository,
     @InjectQueue(QUEUES.ORDER) private readonly orderQueue: Queue,
+    @Inject(forwardRef(() => PaymentService))
+    private readonly paymentService: PaymentService,
   ) {}
 
   async findById(id: string) {
@@ -92,6 +95,7 @@ export class OrderService {
     providerTxnId: string,
     amount: number,
     provider: string,
+    rawPayload: Record<string, any> = {},
   ) {
     const order = await this.repo.findById(orderId);
     if (!order) {
@@ -115,7 +119,7 @@ export class OrderService {
         amount,
         status: TxnStatus.SUCCESS,
         providerTxnId,
-        raw: {},
+        raw: rawPayload,
       });
     } catch (err: unknown) {
       if ((err as { code?: number }).code === DUPLICATE_KEY_CODE) {
@@ -221,6 +225,9 @@ export class OrderService {
       await this.repo.updateOrder(orderId, {
         paymentStatus: PaymentStatus.REFUND_PENDING,
       });
+    } else if (order.paymentMethod === PaymentMethod.ONLINE) {
+      // Nếu chưa trả tiền và là đơn ONLINE -> tự động hủy link thanh toán PayOS
+      await this.paymentService.cancelPayosPaymentLink(orderId, reason);
     }
 
     this.logger.log(`Hủy đơn hàng thành công: ${orderId} -> Lý do: ${reason}`);

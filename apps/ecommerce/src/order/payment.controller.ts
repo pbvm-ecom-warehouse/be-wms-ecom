@@ -1,5 +1,4 @@
-import { Controller, Get, Param, Query, Req, UseGuards } from '@nestjs/common';
-import type { Request } from 'express';
+import { Controller, Get, Post, Param, Query, Body, HttpCode, UseGuards } from '@nestjs/common';
 import {
   ApiBearerAuth,
   ApiOperation,
@@ -8,12 +7,12 @@ import {
   ApiOkResponse,
 } from '@nestjs/swagger';
 import { JwtAuthGuard, CustomerGuard } from '@app/auth';
-import { PaymentService } from './payment.service';
+import { PaymentService, numberToOrderCode } from './payment.service';
 import { plainToInstance } from 'class-transformer';
 import {
   PaymentUrlResponseDto,
   PaymentReturnResponseDto,
-  VnpayIpnResponseDto,
+  PayosWebhookResponseDto,
 } from './dto/payment.dto';
 
 @ApiTags('payment')
@@ -21,20 +20,15 @@ import {
 export class PaymentController {
   constructor(private readonly svc: PaymentService) {}
 
-  /** Tạo URL thanh toán VNPay sandbox — khách hàng redirect sang cổng */
-  @Get('vnpay/create-url/:orderId')
+  /** Tạo URL thanh toán VietQR qua PayOS — khách hàng redirect sang cổng */
+  @Get('payos/create-url/:orderId')
   @ApiBearerAuth()
   @UseGuards(JwtAuthGuard, CustomerGuard)
-  @ApiOperation({ summary: 'Lấy URL thanh toán VNPay cho đơn hàng ONLINE' })
+  @ApiOperation({ summary: 'Lấy URL thanh toán VietQR (PayOS) cho đơn hàng ONLINE' })
   @ApiParam({ name: 'orderId', example: '64abc...' })
   @ApiOkResponse({ type: PaymentUrlResponseDto })
-  async createVnpayUrl(@Param('orderId') orderId: string, @Req() req: Request) {
-    const ip =
-      (req.headers['x-forwarded-for'] as string) ??
-      req.socket.remoteAddress ??
-      '127.0.0.1';
-    const cleanIp = ip.split(',')[0].trim();
-    const url = await this.svc.createVnpayUrl(orderId, cleanIp);
+  async createPayosUrl(@Param('orderId') orderId: string) {
+    const url = await this.svc.createPayosPaymentLink(orderId);
     return plainToInstance(
       PaymentUrlResponseDto,
       { payUrl: url },
@@ -43,34 +37,59 @@ export class PaymentController {
   }
 
   /**
-   * IPN Webhook endpoint — VNPay gọi server-to-server sau khi thanh toán.
+   * Webhook endpoint nhận tin nhắn thanh toán từ PayOS.
    */
-  @Get('vnpay/ipn')
+  @Post('payos/webhook')
+  @HttpCode(200)
   @ApiOperation({
-    summary: 'VNPay IPN webhook (server-to-server, không cần auth)',
+    summary: 'PayOS Webhook (POST server-to-server, không cần auth)',
   })
-  @ApiOkResponse({ type: VnpayIpnResponseDto })
-  async handleVnpayIpn(@Query() query: Record<string, string>) {
-    const res = await this.svc.handleVnpayIpn(query);
-    return plainToInstance(VnpayIpnResponseDto, res, {
+  @ApiOkResponse({ type: PayosWebhookResponseDto })
+  async handlePayosWebhook(@Body() body: any) {
+    const res = await this.svc.handlePayosWebhook(body);
+    return plainToInstance(PayosWebhookResponseDto, res, {
       excludeExtraneousValues: true,
     });
   }
 
-  /** Redirect return page — VNPay redirect trình duyệt của khách hàng về sau khi thanh toán xong */
-  @Get('vnpay/return')
+  /** Redirect return page khi khách thanh toán xong trên PayOS */
+  @Get('payos/return')
   @ApiOperation({
-    summary: 'VNPay return URL (redirect từ cổng về, không cần auth)',
+    summary: 'PayOS return URL (redirect từ cổng về, không cần auth)',
   })
   @ApiOkResponse({ type: PaymentReturnResponseDto })
-  vnpayReturn(@Query() query: Record<string, string>) {
-    const success = query['vnp_ResponseCode'] === '00';
+  payosReturn(@Query() query: Record<string, string>) {
+    const status = query['status'];
+    const success = status === 'PAID';
+    const orderCodeNum = query['orderCode'] ? parseInt(query['orderCode'], 10) : 0;
+    const orderCodeStr = orderCodeNum ? numberToOrderCode(orderCodeNum) : '';
+
     const payload = {
       success,
-      orderCode: query['vnp_TxnRef'] ?? '',
+      orderCode: orderCodeStr,
       message: success
         ? 'Thanh toán đơn hàng thành công'
-        : 'Thanh toán đơn hàng thất bại',
+        : 'Thanh toán đơn hàng thất bại hoặc đã hủy',
+    };
+    return plainToInstance(PaymentReturnResponseDto, payload, {
+      excludeExtraneousValues: true,
+    });
+  }
+
+  /** Redirect cancel page khi khách hủy thanh toán trên cổng PayOS */
+  @Get('payos/cancel')
+  @ApiOperation({
+    summary: 'PayOS cancel URL (redirect từ cổng về khi hủy)',
+  })
+  @ApiOkResponse({ type: PaymentReturnResponseDto })
+  payosCancel(@Query() query: Record<string, string>) {
+    const orderCodeNum = query['orderCode'] ? parseInt(query['orderCode'], 10) : 0;
+    const orderCodeStr = orderCodeNum ? numberToOrderCode(orderCodeNum) : '';
+
+    const payload = {
+      success: false,
+      orderCode: orderCodeStr,
+      message: 'Người dùng hủy thanh toán đơn hàng',
     };
     return plainToInstance(PaymentReturnResponseDto, payload, {
       excludeExtraneousValues: true,

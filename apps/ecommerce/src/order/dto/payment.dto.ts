@@ -4,8 +4,7 @@ import { Expose } from 'class-transformer';
 export class PaymentUrlResponseDto {
   @Expose()
   @ApiProperty({
-    example:
-      'https://sandbox.vnpayment.vn/paymentv2/vpcpay.html?vnp_Amount=...',
+    example: 'https://checkout.payos.vn/pay/...',
   })
   payUrl!: string;
 }
@@ -24,12 +23,8 @@ export class PaymentReturnResponseDto {
   message!: string;
 }
 
-export class VnpayIpnResponseDto {
+export class PayosWebhookResponseDto {
   @Expose()
-  @ApiProperty({ example: '00' })
-  RspCode!: string;
-
-  @Expose()
-  @ApiProperty({ example: 'Confirm success' })
-  Message!: string;
+  @ApiProperty({ example: true })
+  success!: boolean;
 }

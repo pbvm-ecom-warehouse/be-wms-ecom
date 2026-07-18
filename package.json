@@ -36,6 +36,7 @@
     "@nestjs/platform-express": "^11.0.1",
     "@nestjs/swagger": "^11.4.4",
     "@nestjs/throttler": "^6.5.0",
+    "@payos/node": "^2.0.5",
     "@react-email/components": "^1.0.12",
     "bcryptjs": "^3.0.3",
     "bullmq": "^5.78.0",
