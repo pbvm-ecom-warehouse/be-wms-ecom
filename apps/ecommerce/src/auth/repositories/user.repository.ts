@@ -15,6 +15,7 @@ export interface CreateUserInput {
   phone?: string;
   type?: 'customer' | 'admin';
   roles?: string[];
+  emailVerified?: boolean;
 }
 
 @Injectable()
