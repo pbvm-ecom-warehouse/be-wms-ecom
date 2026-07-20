@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { ClientSession, Model, Types } from 'mongoose';
+import { ClientSession, Model, PipelineStage, Types } from 'mongoose';
 import {
   InventoryStock,
   InventoryStockDocument,
@@ -67,6 +67,13 @@ export interface PickSuggestion {
   lotNumber: string | null;
   expiryDate: Date | null;
   quantity: number;
+}
+
+export interface LotInventorySummary {
+  itemId: Types.ObjectId;
+  warehouseId: Types.ObjectId;
+  sku: string;
+  qty: number;
 }
 
 @Injectable()
@@ -499,5 +506,45 @@ export class StockRepository {
       expiryDate: r.expiryDate,
       quantity: r.quantity,
     }));
+  }
+
+  /**
+   * Tổng InventoryStock.quantity của 1 lô, group theo warehouseId — dùng bởi
+   * ExpiredLotScanService để cộng dồn StockBalance.expired đúng cho từng kho
+   * (1 lô có thể nằm rải rác nhiều kho/shelf).
+   */
+  async sumInventoryByLot(
+    lotId: Types.ObjectId,
+  ): Promise<LotInventorySummary[]> {
+    const pipeline: PipelineStage[] = [
+      { $match: { lotId, quantity: { $gt: 0 } } },
+      {
+        $group: {
+          _id: { itemId: '$itemId', warehouseId: '$warehouseId' },
+          qty: { $sum: '$quantity' },
+        },
+      },
+      {
+        $lookup: {
+          from: 'warehouse_items',
+          localField: '_id.itemId',
+          foreignField: '_id',
+          as: 'item',
+        },
+      },
+      { $unwind: '$item' },
+      {
+        $project: {
+          _id: 0,
+          itemId: '$_id.itemId',
+          warehouseId: '$_id.warehouseId',
+          sku: '$item.sku',
+          qty: 1,
+        },
+      },
+    ];
+    return this.inventoryModel
+      .aggregate<LotInventorySummary>(pipeline)
+      .exec();
   }
 }
