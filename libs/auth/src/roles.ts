@@ -9,6 +9,7 @@ export enum WmsRole {
   PICKER = 'PICKER', // xuất/soạn hàng
   PRINTER = 'PRINTER', // in ly
   COUNTER = 'COUNTER', // kiểm kho
+  SHIPPER = 'SHIPPER', // quản lý vận đơn — từ lúc bàn giao hãng đến giao thành công/hoàn về
 }
 
 export enum EcomRole {
