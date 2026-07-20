@@ -92,7 +92,9 @@ export class PaymentController {
     summary: 'PayOS cancel URL (redirect từ cổng về khi hủy)',
   })
   payosCancel(@Query() query: Record<string, string>, @Res() res: any) {
-    const orderCodeNum = query['orderCode'] ? parseInt(query['orderCode'], 10) : 0;
+    const orderCodeNum = query['orderCode']
+      ? parseInt(query['orderCode'], 10)
+      : 0;
     const orderCodeStr = orderCodeNum ? numberToOrderCode(orderCodeNum) : '';
 
     const redirectUrl = this.svc.getCancelRedirectUrl(orderCodeStr);
