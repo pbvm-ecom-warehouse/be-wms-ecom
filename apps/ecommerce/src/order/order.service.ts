@@ -357,4 +357,25 @@ export class OrderService {
       `WMS cập nhật: Giao thành công đơn ${orderId} -> Đã đóng đơn`,
     );
   }
+
+  async onReturned(orderId: string) {
+    const order = await this.repo.findById(orderId);
+    if (!order) return;
+
+    const updates: Partial<Order> = {
+      fulfillmentStatus: FulfillmentStatus.RETURNED,
+      orderStatus: OrderStatus.CANCELLED,
+    };
+
+    // Return-to-sender (chưa từng giao thành công) — ONLINE đã trả trước cần hoàn tiền;
+    // COD chưa thu được đồng nào nên không cần hoàn.
+    if (order.paymentMethod === PaymentMethod.ONLINE) {
+      updates.paymentStatus = PaymentStatus.REFUND_PENDING;
+    }
+
+    await this.repo.updateOrder(orderId, updates);
+    this.logger.log(
+      `WMS cập nhật: Đơn ${orderId} hoàn về kho (chưa giao được) -> CANCELLED`,
+    );
+  }
 }
