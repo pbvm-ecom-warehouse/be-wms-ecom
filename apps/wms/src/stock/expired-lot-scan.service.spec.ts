@@ -68,5 +68,88 @@ describe('ExpiredLotScanService', () => {
         { jobId: `lot_expire:${lotId.toString()}:SKU-1` },
       );
     });
+
+    it('1 lô hết hạn, tồn rải rác 2 kho → tăng expired 2 lần, chỉ 1 job stock.expired với delta tổng', async () => {
+      const warehouseId2 = new Types.ObjectId();
+      lotModel.find.mockReturnValue({
+        exec: jest.fn().mockResolvedValue([{ _id: lotId }]),
+      });
+      stockRepo.sumInventoryByLot.mockResolvedValue([
+        { itemId, warehouseId, sku: 'SKU-1', qty: 5 },
+        { itemId, warehouseId: warehouseId2, sku: 'SKU-1', qty: 3 },
+      ]);
+
+      await svc.scanExpiredLots();
+
+      expect(stockRepo.upsertBalance).toHaveBeenCalledTimes(2);
+      expect(stockRepo.upsertBalance).toHaveBeenNthCalledWith(
+        1,
+        itemId,
+        warehouseId,
+        0,
+        0,
+        5,
+        {},
+      );
+      expect(stockRepo.upsertBalance).toHaveBeenNthCalledWith(
+        2,
+        itemId,
+        warehouseId2,
+        0,
+        0,
+        3,
+        {},
+      );
+      expect(stockQueue.add).toHaveBeenCalledTimes(1);
+      expect(stockQueue.add).toHaveBeenCalledWith(
+        'stock.expired',
+        { sku: 'SKU-1', delta: -8 },
+        { jobId: `lot_expire:${lotId.toString()}:SKU-1` },
+      );
+    });
+
+    it('lô hết hạn nhưng đã hết InventoryStock (đã bán/scrap hết) → chỉ set EXPIRED, không update balance, không phát event', async () => {
+      lotModel.find.mockReturnValue({
+        exec: jest.fn().mockResolvedValue([{ _id: lotId }]),
+      });
+      stockRepo.sumInventoryByLot.mockResolvedValue([]);
+
+      await svc.scanExpiredLots();
+
+      expect(stockRepo.upsertBalance).not.toHaveBeenCalled();
+      expect(lotModel.updateOne).toHaveBeenCalledWith(
+        { _id: lotId },
+        { status: LotStatus.EXPIRED },
+        { session: {} },
+      );
+      expect(stockQueue.add).not.toHaveBeenCalled();
+    });
+
+    it('không có lô nào hết hạn → không làm gì', async () => {
+      lotModel.find.mockReturnValue({
+        exec: jest.fn().mockResolvedValue([]),
+      });
+
+      await svc.scanExpiredLots();
+
+      expect(stockRepo.sumInventoryByLot).not.toHaveBeenCalled();
+      expect(stockRepo.upsertBalance).not.toHaveBeenCalled();
+      expect(stockQueue.add).not.toHaveBeenCalled();
+    });
+
+    it('$match theo status ACTIVE và expiryDate < now', async () => {
+      lotModel.find.mockReturnValue({
+        exec: jest.fn().mockResolvedValue([]),
+      });
+
+      await svc.scanExpiredLots();
+
+      const filter = lotModel.find.mock.calls[0][0] as {
+        status: string;
+        expiryDate: { $lt: Date };
+      };
+      expect(filter.status).toBe(LotStatus.ACTIVE);
+      expect(filter.expiryDate.$lt).toBeInstanceOf(Date);
+    });
   });
 });
