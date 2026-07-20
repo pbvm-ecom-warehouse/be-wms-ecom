@@ -57,23 +57,19 @@ export class PaymentController {
   @ApiOperation({
     summary: 'PayOS return URL (redirect từ cổng về, không cần auth)',
   })
-  @ApiOkResponse({ type: PaymentReturnResponseDto })
-  payosReturn(@Query() query: Record<string, string>) {
+  payosReturn(@Query() query: Record<string, string>, @Res() res: any) {
     const status = query['status'];
     const success = status === 'PAID';
     const orderCodeNum = query['orderCode'] ? parseInt(query['orderCode'], 10) : 0;
     const orderCodeStr = orderCodeNum ? numberToOrderCode(orderCodeNum) : '';
 
-    const payload = {
-      success,
-      orderCode: orderCodeStr,
-      message: success
-        ? 'Thanh toán đơn hàng thành công'
-        : 'Thanh toán đơn hàng thất bại hoặc đã hủy',
-    };
-    return plainToInstance(PaymentReturnResponseDto, payload, {
-      excludeExtraneousValues: true,
-    });
+    if (success) {
+      const redirectUrl = this.svc.getSuccessRedirectUrl(orderCodeStr);
+      return res.redirect(redirectUrl);
+    } else {
+      const redirectUrl = this.svc.getCancelRedirectUrl(orderCodeStr, true);
+      return res.redirect(redirectUrl);
+    }
   }
 
   /** Redirect cancel page khi khách hủy thanh toán trên cổng PayOS */
@@ -81,18 +77,11 @@ export class PaymentController {
   @ApiOperation({
     summary: 'PayOS cancel URL (redirect từ cổng về khi hủy)',
   })
-  @ApiOkResponse({ type: PaymentReturnResponseDto })
-  payosCancel(@Query() query: Record<string, string>) {
+  payosCancel(@Query() query: Record<string, string>, @Res() res: any) {
     const orderCodeNum = query['orderCode'] ? parseInt(query['orderCode'], 10) : 0;
     const orderCodeStr = orderCodeNum ? numberToOrderCode(orderCodeNum) : '';
 
-    const payload = {
-      success: false,
-      orderCode: orderCodeStr,
-      message: 'Người dùng hủy thanh toán đơn hàng',
-    };
-    return plainToInstance(PaymentReturnResponseDto, payload, {
-      excludeExtraneousValues: true,
-    });
+    const redirectUrl = this.svc.getCancelRedirectUrl(orderCodeStr);
+    return res.redirect(redirectUrl);
   }
 }
