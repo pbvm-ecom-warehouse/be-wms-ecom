@@ -42,6 +42,17 @@ export class WarehouseRepository {
       .exec();
   }
 
+  /** Id của mọi kho active (isActive=true, chưa soft-delete) — dùng khi ReservationService chọn kho ứng viên. */
+  async findAllActiveWarehouseIds(): Promise<Types.ObjectId[]> {
+    const rows = await this.warehouseModel
+      .find({ ...SOFT_DELETE_FILTER, isActive: true })
+      .select('_id')
+      .sort({ createdAt: 1 })
+      .lean()
+      .exec();
+    return rows.map((r) => r._id);
+  }
+
   async findWarehouseById(id: string): Promise<WarehouseDocument | null> {
     return this.warehouseModel
       .findOne({ _id: id, ...SOFT_DELETE_FILTER })
