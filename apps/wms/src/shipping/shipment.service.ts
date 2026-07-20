@@ -106,6 +106,16 @@ export class ShipmentService {
       throw new AppException('SHIPMENT_INVALID_TRANSITION');
     }
 
+    // Business rule riêng cho PENDING→PICKED_UP: phải đã /assign carrier trước.
+    // State machine ở trên chỉ chặn transition sai thứ tự, không biết gì về carrierId.
+    if (
+      fromStatus === ShipmentStatus.PENDING &&
+      toStatus === ShipmentStatus.PICKED_UP &&
+      !shipment.carrierId
+    ) {
+      throw new AppException('SHIPMENT_NOT_ASSIGNED');
+    }
+
     const now = new Date();
     const extra: Record<string, unknown> = {};
     if (
@@ -122,7 +132,7 @@ export class ShipmentService {
       if (options.failReason) extra['failReason'] = options.failReason;
     }
 
-    const updated = await this.repo.pushStatus(id, {
+    const updated = await this.repo.pushStatus(id, fromStatus, {
       shipmentStatus: toStatus,
       historyEntry: {
         status: toStatus,
@@ -132,7 +142,10 @@ export class ShipmentService {
       },
       extra,
     });
-    if (!updated) throw new AppException('SHIPMENT_NOT_FOUND');
+    // Compare-and-swap ở repo (filter shipmentStatus: fromStatus) trả null khi
+    // shipment đã bị request khác đổi trạng thái giữa lúc đọc và lúc ghi (mất race) —
+    // không còn đúng nghĩa "not found", nên dùng SHIPMENT_INVALID_TRANSITION.
+    if (!updated) throw new AppException('SHIPMENT_INVALID_TRANSITION');
 
     // Chỉ 3 mốc phát event sang Ecom — theo docs/shipping/data-model.md
     // §Quan hệ với Order. Retry FAILED→IN_TRANSIT KHÔNG bắn lại shipment.shipped

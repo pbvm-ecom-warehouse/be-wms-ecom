@@ -136,8 +136,19 @@ describe('ShipmentService', () => {
       expect(repo.pushStatus).not.toHaveBeenCalled();
     });
 
-    it('PENDING → PICKED_UP: ghi statusHistory, không phát event', async () => {
+    it('throw SHIPMENT_NOT_ASSIGNED khi PENDING → PICKED_UP mà chưa gán carrierId', async () => {
       repo.findById.mockResolvedValue(baseShipment(ShipmentStatus.PENDING));
+      await expect(
+        svc.updateStatus(shipmentId, ShipmentStatus.PICKED_UP, actorId, {}),
+      ).rejects.toMatchObject({ code: 'SHIPMENT_NOT_ASSIGNED' });
+      expect(repo.pushStatus).not.toHaveBeenCalled();
+    });
+
+    it('PENDING → PICKED_UP: ghi statusHistory, không phát event (đã gán carrierId)', async () => {
+      repo.findById.mockResolvedValue({
+        ...baseShipment(ShipmentStatus.PENDING),
+        carrierId,
+      });
       repo.pushStatus.mockResolvedValue({
         _id: shipmentId,
         shipmentStatus: ShipmentStatus.PICKED_UP,
@@ -145,6 +156,7 @@ describe('ShipmentService', () => {
       await svc.updateStatus(shipmentId, ShipmentStatus.PICKED_UP, actorId, {});
       expect(repo.pushStatus).toHaveBeenCalledWith(
         shipmentId,
+        ShipmentStatus.PENDING,
         expect.objectContaining({ shipmentStatus: ShipmentStatus.PICKED_UP }),
       );
       expect(queue.add).not.toHaveBeenCalled();
@@ -164,6 +176,7 @@ describe('ShipmentService', () => {
       );
       expect(repo.pushStatus).toHaveBeenCalledWith(
         shipmentId,
+        ShipmentStatus.PICKED_UP,
         expect.objectContaining({
           shipmentStatus: ShipmentStatus.IN_TRANSIT,
           extra: expect.objectContaining({ shippedAt: expect.any(Date) }),
@@ -200,6 +213,7 @@ describe('ShipmentService', () => {
       await svc.updateStatus(shipmentId, ShipmentStatus.DELIVERED, actorId, {});
       expect(repo.pushStatus).toHaveBeenCalledWith(
         shipmentId,
+        ShipmentStatus.IN_TRANSIT,
         expect.objectContaining({
           shipmentStatus: ShipmentStatus.DELIVERED,
           extra: expect.objectContaining({ deliveredAt: expect.any(Date) }),
@@ -224,6 +238,7 @@ describe('ShipmentService', () => {
       });
       expect(repo.pushStatus).toHaveBeenCalledWith(
         shipmentId,
+        ShipmentStatus.IN_TRANSIT,
         expect.objectContaining({
           shipmentStatus: ShipmentStatus.FAILED,
           extra: expect.objectContaining({
@@ -264,6 +279,19 @@ describe('ShipmentService', () => {
       await expect(
         svc.updateStatus(shipmentId, ShipmentStatus.RETURNING, actorId, {}),
       ).rejects.toMatchObject({ code: 'SHIPMENT_INVALID_TRANSITION' });
+    });
+
+    it('throw SHIPMENT_INVALID_TRANSITION khi pushStatus trả null do compare-and-swap mất race (shipment đã đổi trạng thái ở nơi khác)', async () => {
+      repo.findById.mockResolvedValue(baseShipment(ShipmentStatus.IN_TRANSIT));
+      repo.pushStatus.mockResolvedValue(null);
+      await expect(
+        svc.updateStatus(shipmentId, ShipmentStatus.DELIVERED, actorId, {}),
+      ).rejects.toMatchObject({ code: 'SHIPMENT_INVALID_TRANSITION' });
+      expect(repo.pushStatus).toHaveBeenCalledWith(
+        shipmentId,
+        ShipmentStatus.IN_TRANSIT,
+        expect.objectContaining({ shipmentStatus: ShipmentStatus.DELIVERED }),
+      );
     });
   });
 

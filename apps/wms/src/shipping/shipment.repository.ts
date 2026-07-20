@@ -69,9 +69,16 @@ export class ShipmentRepository {
       .exec();
   }
 
-  /** Ghi status mới + append statusHistory + set field thời điểm tương ứng nếu có. */
+  /**
+   * Ghi status mới + append statusHistory + set field thời điểm tương ứng nếu có.
+   * Compare-and-swap: filter kèm `shipmentStatus: fromStatus` — chỉ ghi nếu document
+   * vẫn đang ở đúng trạng thái mà caller đọc được lúc đầu, tránh race giữa 2 request
+   * cùng cập nhật 1 shipment (vd double-submit /status). Trả null nếu đã đổi trạng thái
+   * bởi request khác (mất race) — caller tự quyết định throw gì.
+   */
   pushStatus(
     id: string,
+    fromStatus: ShipmentStatus,
     update: {
       shipmentStatus: ShipmentStatus;
       historyEntry: {
@@ -85,7 +92,7 @@ export class ShipmentRepository {
   ): Promise<ShipmentDocument | null> {
     return this.model
       .findOneAndUpdate(
-        { _id: id },
+        { _id: id, shipmentStatus: fromStatus },
         {
           $set: { shipmentStatus: update.shipmentStatus, ...update.extra },
           $push: { statusHistory: update.historyEntry },
