@@ -120,6 +120,28 @@ describe('NotificationConsumer', () => {
     });
   });
 
+  describe('payment.success', () => {
+    it('gửi email xác nhận thanh toán tới customerEmail với idempotencyKey = job.id', async () => {
+      const { consumer, email } = make();
+      await consumer.process({
+        id: 'j6',
+        name: EVENTS.PAYMENT_SUCCESS,
+        data: {
+          orderId: 'order-1',
+          customerEmail: 'khach@example.com',
+          amount: 100000,
+        },
+      } as never);
+
+      expect(email.send).toHaveBeenCalledWith(
+        expect.objectContaining({
+          to: 'khach@example.com',
+          idempotencyKey: 'j6',
+        }),
+      );
+    });
+  });
+
   describe('stock.near_expiry', () => {
     const payload = {
       sku: 'SKU-1',

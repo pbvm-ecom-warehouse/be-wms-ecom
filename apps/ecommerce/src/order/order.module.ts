@@ -29,6 +29,7 @@ import { CacheModule } from '../cache/cache.module';
       { name: QUEUES.ORDER },
       { name: QUEUES.ORDER_REPLY },
       { name: QUEUES.SHIPMENT },
+      { name: QUEUES.NOTIFICATION },
     ),
     AuthModule,
     CartModule,

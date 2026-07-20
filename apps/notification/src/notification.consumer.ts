@@ -6,6 +6,7 @@ import {
   QUEUES,
   type CustomerEmailActionPayload,
   type CustomerGoogleRegisteredPayload,
+  type PaymentSuccessPayload,
   type StockLowPayload,
   type StockNearExpiryPayload,
 } from '@app/events';
@@ -17,6 +18,7 @@ import { ResetPasswordEmail } from './email/templates/reset-password';
 import { GoogleWelcomeEmail } from './email/templates/google-welcome';
 import { StockLowAlertEmail } from './email/templates/stock-low-alert';
 import { StockNearExpiryEmail } from './email/templates/stock-near-expiry';
+import { PaymentSuccessEmail } from './email/templates/payment-success';
 
 function toEmailPayload(raw: unknown): CustomerEmailActionPayload {
   return raw as CustomerEmailActionPayload;
@@ -25,10 +27,11 @@ function toEmailPayload(raw: unknown): CustomerEmailActionPayload {
 /**
  * CONSUMER thông báo: verify/reset → gửi email OTP qua Resend; stock.low/
  * stock.near_expiry (S4-04) → email + FCM push cho MANAGER kho, graceful
- * degradation nếu thiếu provider. Consumer THUẦN: không phát event, không DB.
+ * degradation nếu thiếu provider; payment.success → email xác nhận thanh toán
+ * cho khách hàng. Consumer THUẦN: không phát event, không DB.
  * idempotencyKey = job.id chống gửi trùng (chỉ có ý nghĩa với Resend — BullMQ
- * job.id KHÔNG deterministic cho stock.low/stock.near_expiry vì producer không
- * truyền jobId, nên mỗi job vẫn có id riêng do BullMQ tự sinh).
+ * job.id KHÔNG deterministic cho stock.low/stock.near_expiry/payment.success vì
+ * producer không truyền jobId, nên mỗi job vẫn có id riêng do BullMQ tự sinh).
  */
 @Processor(QUEUES.NOTIFICATION)
 export class NotificationConsumer extends WorkerHost {
@@ -149,10 +152,19 @@ export class NotificationConsumer extends WorkerHost {
         }
         break;
       }
-      case EVENTS.PAYMENT_SUCCESS:
-        // TODO: producer chưa build — tạm log để xác nhận đã nhận event. Ngoài scope S4-04.
-        this.logger.log(`📨 ${job.name} → ${JSON.stringify(job.data)}`);
+      case EVENTS.PAYMENT_SUCCESS: {
+        const payload = job.data as PaymentSuccessPayload;
+        await this.email.send({
+          to: payload.customerEmail,
+          subject: `Thanh toán thành công — Đơn hàng ${payload.orderId}`,
+          react: PaymentSuccessEmail({
+            orderId: payload.orderId,
+            amount: payload.amount,
+          }),
+          idempotencyKey: key,
+        });
         break;
+      }
       default:
         this.logger.warn(`Bỏ qua job lạ trên notification-queue: ${job.name}`);
     }

@@ -1,7 +1,7 @@
 import { Injectable, Logger, Inject, forwardRef } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
-import { EVENTS, QUEUES } from '@app/events';
+import { EVENTS, QUEUES, type PaymentSuccessPayload } from '@app/events';
 import { AppException } from '@app/common';
 import { OrderRepository } from './order.repository';
 import {
@@ -14,6 +14,7 @@ import {
 import { TxnStatus, TxnType } from './schemas/payment-transaction.schema';
 import { Types } from 'mongoose';
 import { PaymentService } from './payment.service';
+import { UserRepository } from '../auth/repositories/user.repository';
 
 const DUPLICATE_KEY_CODE = 11000;
 
@@ -26,6 +27,8 @@ export class OrderService {
     @InjectQueue(QUEUES.ORDER) private readonly orderQueue: Queue,
     @Inject(forwardRef(() => PaymentService))
     private readonly paymentService: PaymentService,
+    @InjectQueue(QUEUES.NOTIFICATION) private readonly notifyQueue: Queue,
+    private readonly userRepo: UserRepository,
   ) {}
 
   async findById(id: string) {
@@ -140,6 +143,23 @@ export class OrderService {
       orderStatus: OrderStatus.CONFIRMED,
       fulfillmentStatus: nextFulfillment,
     });
+
+    // Báo khách hàng thanh toán thành công (Ecom → Notification)
+    const customer = await this.userRepo.findActiveById(order.customerId);
+    if (customer) {
+      const payload: PaymentSuccessPayload = {
+        orderId,
+        customerEmail: customer.email,
+        amount,
+      };
+      await this.notifyQueue.add(EVENTS.PAYMENT_SUCCESS, payload, {
+        removeOnComplete: true,
+      });
+    } else {
+      this.logger.warn(
+        `Không tìm thấy customer ${order.customerId.toString()} cho đơn ${orderId} → bỏ qua payment.success`,
+      );
+    }
 
     if (order.hasPrintItems) {
       // Đơn ly in -> Phát lệnh in sang WMS xưởng in
