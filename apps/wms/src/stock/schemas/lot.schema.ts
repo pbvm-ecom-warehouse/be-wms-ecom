@@ -8,8 +8,12 @@ export enum LotStatus {
 
 /**
  * Lô hàng — chỉ dùng cho WarehouseItem.isPerishable = true.
- * Hàng hết hạn: consumer chạy cron đặt status = EXPIRED, bắn stock.expired event,
- * StockBalance.expired += qty, StockBalance.onHand -= qty.
+ * Hàng hết hạn: ExpiredLotScanService (cron) đặt status = EXPIRED, CHỈ tăng
+ * StockBalance.expired (KHÔNG đụng onHand/InventoryStock — hàng vẫn nằm vật
+ * lý trên kệ), rồi bắn stock.expired event. available = onHand-reserved-expired
+ * giảm đúng 1 lần. Dọn hàng vật lý thật (trừ onHand) vẫn là ScrapNote thủ công
+ * (UC-08) — xem ScrapNoteService.approveScrapNote (dòng có lotId trừ lại
+ * expired để available không đổi lần 2).
  */
 @Schema({ collection: 'lots', timestamps: true })
 export class Lot {
