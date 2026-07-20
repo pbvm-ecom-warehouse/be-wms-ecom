@@ -456,6 +456,44 @@ describe('StockCountService', () => {
         warehouseId,
       );
     });
+
+    it('approveStockCount gọi checkAndEmitStockLow 1 lần khi nhiều dòng lệch cùng itemId (dedup)', async () => {
+      const otherShelfId = new Types.ObjectId();
+      repo.findById.mockResolvedValue({
+        _id: 'sc1',
+        warehouseId,
+        status: StockCountStatus.COMPLETED,
+        items: [
+          {
+            itemId,
+            sku: 'SKU-1',
+            shelfId,
+            lotId: null,
+            systemQty: 50,
+            actualQty: 45,
+            delta: -5,
+          },
+          {
+            // cùng itemId, khác shelf/lot (kiểm 2 vị trí của cùng 1 SKU)
+            itemId,
+            sku: 'SKU-1',
+            shelfId: otherShelfId,
+            lotId: null,
+            systemQty: 20,
+            actualQty: 18,
+            delta: -2,
+          },
+        ],
+      });
+
+      await svc.approveStockCount('sc1', { reason: 'Duyệt' }, actorId);
+
+      expect(stockService.checkAndEmitStockLow).toHaveBeenCalledTimes(1);
+      expect(stockService.checkAndEmitStockLow).toHaveBeenCalledWith(
+        itemId,
+        warehouseId,
+      );
+    });
   });
 
   describe('getStockCount', () => {

@@ -377,7 +377,7 @@ describe('ScrapNoteService', () => {
       expect(stockQueue.add).not.toHaveBeenCalled();
     });
 
-    it('approveScrapNote gọi checkAndEmitStockLow cho mỗi dòng đã trừ tồn', async () => {
+    it('approveScrapNote gọi checkAndEmitStockLow 1 lần khi nhiều dòng cùng itemId (dedup)', async () => {
       repo.findById.mockResolvedValue({
         _id: 'sn1',
         warehouseId,
@@ -404,7 +404,7 @@ describe('ScrapNoteService', () => {
 
       await svc.approveScrapNote('sn1', actorId);
 
-      expect(stockService.checkAndEmitStockLow).toHaveBeenCalledTimes(2);
+      expect(stockService.checkAndEmitStockLow).toHaveBeenCalledTimes(1);
     });
 
     it('checkAndEmitStockLow chạy cho MỌI dòng kể cả lotId/skipAvailableSync — không bị filter như stock.changed', async () => {

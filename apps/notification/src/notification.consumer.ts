@@ -1,25 +1,44 @@
 import { Processor, WorkerHost } from '@nestjs/bullmq';
 import { Logger } from '@nestjs/common';
-import { EVENTS, QUEUES, type CustomerEmailActionPayload, type CustomerGoogleRegisteredPayload } from '@app/events';
+import { ConfigService } from '@nestjs/config';
+import {
+  EVENTS,
+  QUEUES,
+  type CustomerEmailActionPayload,
+  type CustomerGoogleRegisteredPayload,
+  type StockLowPayload,
+  type StockNearExpiryPayload,
+} from '@app/events';
 import { Job } from 'bullmq';
 import { EmailService } from './email/email.service';
+import { FirebaseService } from './firebase/firebase.service';
 import { VerifyEmail } from './email/templates/verify-email';
 import { ResetPasswordEmail } from './email/templates/reset-password';
 import { GoogleWelcomeEmail } from './email/templates/google-welcome';
+import { StockLowAlertEmail } from './email/templates/stock-low-alert';
+import { StockNearExpiryEmail } from './email/templates/stock-near-expiry';
 
 function toEmailPayload(raw: unknown): CustomerEmailActionPayload {
   return raw as CustomerEmailActionPayload;
 }
 
 /**
- * CONSUMER thông báo: verify/reset → gửi email OTP qua Resend.
- * Consumer THUẦN: không phát event, không DB. idempotencyKey = job.id chống gửi trùng.
+ * CONSUMER thông báo: verify/reset → gửi email OTP qua Resend; stock.low/
+ * stock.near_expiry (S4-04) → email + FCM push cho MANAGER kho, graceful
+ * degradation nếu thiếu provider. Consumer THUẦN: không phát event, không DB.
+ * idempotencyKey = job.id chống gửi trùng (chỉ có ý nghĩa với Resend — BullMQ
+ * job.id KHÔNG deterministic cho stock.low/stock.near_expiry vì producer không
+ * truyền jobId, nên mỗi job vẫn có id riêng do BullMQ tự sinh).
  */
 @Processor(QUEUES.NOTIFICATION)
 export class NotificationConsumer extends WorkerHost {
   private readonly logger = new Logger(NotificationConsumer.name);
 
-  constructor(private readonly email: EmailService) {
+  constructor(
+    private readonly email: EmailService,
+    private readonly firebase: FirebaseService,
+    private readonly config: ConfigService,
+  ) {
     super();
   }
 
@@ -52,17 +71,86 @@ export class NotificationConsumer extends WorkerHost {
         const { email, password } = job.data as CustomerGoogleRegisteredPayload;
         await this.email.send({
           to: email,
-          subject: 'Chào mừng bạn đến với MateStock — Mật khẩu tài khoản của bạn',
+          subject:
+            'Chào mừng bạn đến với MateStock — Mật khẩu tài khoản của bạn',
 
           react: GoogleWelcomeEmail({ password: password ?? '' }),
           idempotencyKey: key,
         });
         break;
       }
+      case EVENTS.STOCK_LOW: {
+        const payload = job.data as StockLowPayload;
+        const alertEmail = this.config.get<string>('WAREHOUSE_ALERT_EMAIL');
+        let sent = false;
+        if (this.email.isEnabled() && alertEmail) {
+          await this.email.send({
+            to: alertEmail,
+            subject: `⚠️ Tồn kho thấp — SKU: ${payload.sku}`,
+            react: StockLowAlertEmail(payload),
+            idempotencyKey: key,
+          });
+          sent = true;
+        }
+        if (this.firebase.isEnabled()) {
+          await this.firebase.getMessaging().send({
+            topic: `stock_alert_${payload.warehouseId}`,
+            notification: {
+              title: `Tồn kho thấp — ${payload.sku}`,
+              body: `Còn ${payload.available}/${payload.minQuantity}`,
+            },
+            data: {
+              sku: payload.sku,
+              warehouseId: payload.warehouseId,
+              available: String(payload.available),
+            },
+          });
+          sent = true;
+        }
+        if (!sent) {
+          this.logger.warn(
+            `stock.low cho ${payload.sku} — không có provider nào bật.`,
+          );
+        }
+        break;
+      }
+      case EVENTS.STOCK_NEAR_EXPIRY: {
+        const payload = job.data as StockNearExpiryPayload;
+        const alertEmail = this.config.get<string>('WAREHOUSE_ALERT_EMAIL');
+        let sent = false;
+        if (this.email.isEnabled() && alertEmail) {
+          await this.email.send({
+            to: alertEmail,
+            subject: `⏰ Lô hàng sắp hết hạn — SKU: ${payload.sku}`,
+            react: StockNearExpiryEmail(payload),
+            idempotencyKey: key,
+          });
+          sent = true;
+        }
+        if (this.firebase.isEnabled()) {
+          await this.firebase.getMessaging().send({
+            topic: 'stock_alert_expiry',
+            notification: {
+              title: `Hàng sắp hết hạn — ${payload.sku}`,
+              body: `Lô ${payload.lotNumber} hết hạn ${payload.expiryDate}`,
+            },
+            data: {
+              sku: payload.sku,
+              lotNumber: payload.lotNumber,
+              expiryDate: payload.expiryDate,
+            },
+          });
+          sent = true;
+        }
+        if (!sent) {
+          this.logger.warn(
+            `stock.near_expiry cho ${payload.sku} lô ${payload.lotNumber} — không có provider nào bật.`,
+          );
+        }
+        break;
+      }
       case EVENTS.PAYMENT_SUCCESS:
-      case EVENTS.STOCK_LOW:
-      case EVENTS.STOCK_NEAR_EXPIRY:
-        // TODO: producer chưa build — tạm log để xác nhận đã nhận event.
+        // TODO: producer chưa build — tạm log để xác nhận đã nhận event. Ngoài scope S4-04.
         this.logger.log(`📨 ${job.name} → ${JSON.stringify(job.data)}`);
         break;
       default:

@@ -33,7 +33,8 @@ export class RolesGuard implements CanActivate {
       .getRequest<Request & { user?: AuthUser }>();
     const roles = req.user?.roles ?? [];
 
-    if (roles.includes(WmsRole.ADMIN) || roles.includes(EcomRole.ECOM_MANAGER)) return true; // ADMIN/ECOM_MANAGER toàn quyền
+    if (roles.includes(WmsRole.ADMIN) || roles.includes(EcomRole.ECOM_MANAGER))
+      return true; // ADMIN/ECOM_MANAGER toàn quyền
     if (roles.some((r) => required.includes(r))) return true;
 
     throw new ForbiddenException('Không đủ quyền truy cập tài nguyên này');

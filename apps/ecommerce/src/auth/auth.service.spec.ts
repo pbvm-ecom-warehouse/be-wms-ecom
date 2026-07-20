@@ -38,7 +38,7 @@ function makeService(overrides: Partial<Record<string, any>> = {}) {
   };
   const notifyQueue = { add: jest.fn().mockResolvedValue(undefined) };
   const svc = new AuthService(
-    userRepo as any,
+    userRepo,
     refreshRepo as any,
     notifyQueue as any,
     {} as any, // jwt

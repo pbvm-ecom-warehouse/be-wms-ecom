@@ -14,7 +14,14 @@ import {
   ApiParam,
   ApiTags,
 } from '@nestjs/swagger';
-import { CurrentUser, JwtAuthGuard, CustomerGuard, Roles, RolesGuard, EcomRole } from '@app/auth';
+import {
+  CurrentUser,
+  JwtAuthGuard,
+  CustomerGuard,
+  Roles,
+  RolesGuard,
+  EcomRole,
+} from '@app/auth';
 import { CheckoutService } from './checkout.service';
 import { OrderService } from './order.service';
 import { CheckoutDto } from './dto/checkout.dto';

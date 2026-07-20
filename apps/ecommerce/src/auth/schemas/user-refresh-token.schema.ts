@@ -24,4 +24,5 @@ export class UserRefreshToken {
 }
 
 export type UserRefreshTokenDocument = HydratedDocument<UserRefreshToken>;
-export const UserRefreshTokenSchema = SchemaFactory.createForClass(UserRefreshToken);
+export const UserRefreshTokenSchema =
+  SchemaFactory.createForClass(UserRefreshToken);
