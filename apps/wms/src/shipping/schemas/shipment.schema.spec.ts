@@ -4,8 +4,7 @@ describe('ShipmentSchema', () => {
   it('có index unique trên goodsIssueId (1 GoodsIssue = 1 Shipment)', () => {
     const indexes = ShipmentSchema.indexes();
     const hasUnique = indexes.some(
-      ([fields, opts]) =>
-        fields['goodsIssueId'] === 1 && opts?.unique === true,
+      ([fields, opts]) => fields['goodsIssueId'] === 1 && opts?.unique === true,
     );
     expect(hasUnique).toBe(true);
   });
