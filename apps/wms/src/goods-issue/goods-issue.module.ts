@@ -23,6 +23,6 @@ import { StockModule } from '../stock/stock.module';
   ],
   providers: [GoodsIssueRepository, GoodsIssueService, OrderReadyConsumer],
   controllers: [GoodsIssueController],
-  exports: [GoodsIssueService],
+  exports: [GoodsIssueService, GoodsIssueRepository],
 })
 export class GoodsIssueModule {}
