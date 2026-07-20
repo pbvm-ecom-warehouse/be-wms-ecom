@@ -6,7 +6,11 @@ import {
   InventoryStockDocument,
 } from './schemas/inventory-stock.schema';
 import { Lot, LotDocument, LotStatus } from './schemas/lot.schema';
-import { MovementType, StockMovement } from './schemas/stock-movement.schema';
+import {
+  MovementType,
+  StockMovement,
+  StockMovementDocument,
+} from './schemas/stock-movement.schema';
 import {
   StockBalance,
   StockBalanceDocument,
@@ -164,6 +168,55 @@ export class StockRepository {
         { upsert: true, new: true, session },
       )
       .exec();
+  }
+
+  /**
+   * Atomic check-and-reserve: tăng reserved CHỈ KHI available (onHand-reserved-expired)
+   * còn đủ quantity, trong 1 query duy nhất — tránh race condition khi 2 đơn
+   * checkout cùng lúc cùng sku (không tách "đọc rồi ghi").
+   */
+  async reserveIfAvailable(
+    itemId: Types.ObjectId,
+    warehouseId: Types.ObjectId,
+    quantity: number,
+    session: ClientSession,
+  ): Promise<boolean> {
+    const updated = await this.balanceModel
+      .findOneAndUpdate(
+        {
+          itemId,
+          warehouseId,
+          $expr: {
+            $gte: [
+              { $subtract: ['$onHand', '$reserved', '$expired'] },
+              quantity,
+            ],
+          },
+        },
+        { $inc: { reserved: quantity } },
+        { new: true, session },
+      )
+      .exec();
+    return updated !== null;
+  }
+
+  /** Có ít nhất 1 movement cho refType+refId chưa — dùng làm khóa idempotency. */
+  async hasMovementForRef(
+    refType: string,
+    refId: Types.ObjectId,
+  ): Promise<boolean> {
+    const count = await this.movementModel
+      .countDocuments({ refType, refId })
+      .exec();
+    return count > 0;
+  }
+
+  /** Toàn bộ movement của 1 refType+refId — dùng để đọc lại đã reserve gì lúc release. */
+  findMovementsByRef(
+    refType: string,
+    refId: Types.ObjectId,
+  ): Promise<StockMovementDocument[]> {
+    return this.movementModel.find({ refType, refId }).exec();
   }
 
   findInventory(

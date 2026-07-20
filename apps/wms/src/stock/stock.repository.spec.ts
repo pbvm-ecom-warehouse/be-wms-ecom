@@ -5,7 +5,7 @@ import { StockRepository } from './stock.repository';
 import { InventoryStock } from './schemas/inventory-stock.schema';
 import { Lot } from './schemas/lot.schema';
 import { StockBalance } from './schemas/stock-balance.schema';
-import { StockMovement } from './schemas/stock-movement.schema';
+import { MovementType, StockMovement } from './schemas/stock-movement.schema';
 import { ItemType, WarehouseItem } from './schemas/warehouse-item.schema';
 
 const itemId = new Types.ObjectId();
@@ -184,6 +184,94 @@ describe('StockRepository', () => {
       await repo.insertMovement(data, mockSession);
       expect(movementModel.create).toHaveBeenCalledWith([data], {
         session: mockSession,
+      });
+    });
+  });
+
+  describe('reserveIfAvailable', () => {
+    it('gọi findOneAndUpdate với $expr đúng và trả về true khi có kết quả', async () => {
+      balanceModel.exec.mockResolvedValueOnce({ reserved: 4 });
+      const mockSession = {} as never;
+
+      const result = await repo.reserveIfAvailable(
+        itemId,
+        warehouseId,
+        4,
+        mockSession,
+      );
+
+      expect(result).toBe(true);
+      expect(balanceModel.findOneAndUpdate).toHaveBeenCalledWith(
+        {
+          itemId,
+          warehouseId,
+          $expr: {
+            $gte: [{ $subtract: ['$onHand', '$reserved', '$expired'] }, 4],
+          },
+        },
+        { $inc: { reserved: 4 } },
+        { new: true, session: mockSession },
+      );
+    });
+
+    it('trả về false khi findOneAndUpdate không tìm thấy document khớp (available không đủ)', async () => {
+      balanceModel.exec.mockResolvedValueOnce(null);
+      const result = await repo.reserveIfAvailable(
+        itemId,
+        warehouseId,
+        100,
+        {} as never,
+      );
+      expect(result).toBe(false);
+    });
+  });
+
+  describe('hasMovementForRef', () => {
+    it('trả về true khi countDocuments > 0', async () => {
+      movementModel.countDocuments = jest.fn().mockReturnThis();
+      movementModel.exec.mockResolvedValueOnce(1);
+      const refId = new Types.ObjectId();
+
+      const result = await repo.hasMovementForRef('reservation', refId);
+
+      expect(result).toBe(true);
+      expect(movementModel.countDocuments).toHaveBeenCalledWith({
+        refType: 'reservation',
+        refId,
+      });
+    });
+
+    it('trả về false khi countDocuments = 0', async () => {
+      movementModel.countDocuments = jest.fn().mockReturnThis();
+      movementModel.exec.mockResolvedValueOnce(0);
+      const result = await repo.hasMovementForRef(
+        'reservation',
+        new Types.ObjectId(),
+      );
+      expect(result).toBe(false);
+    });
+  });
+
+  describe('findMovementsByRef', () => {
+    it('gọi find với refType+refId và trả về danh sách movement', async () => {
+      movementModel.find = jest.fn().mockReturnThis();
+      const refId = new Types.ObjectId();
+      const rows = [
+        {
+          itemId,
+          warehouseId,
+          quantity: 3,
+          type: MovementType.RESERVE,
+        },
+      ];
+      movementModel.exec.mockResolvedValueOnce(rows);
+
+      const result = await repo.findMovementsByRef('reservation', refId);
+
+      expect(result).toBe(rows);
+      expect(movementModel.find).toHaveBeenCalledWith({
+        refType: 'reservation',
+        refId,
       });
     });
   });

@@ -15,7 +15,7 @@ import { CheckoutService } from './checkout.service';
 import { PaymentService } from './payment.service';
 import { OrderController, OrderAdminController } from './order.controller';
 import { PaymentController } from './payment.controller';
-import { ReserveConsumer } from './reserve.consumer';
+import { ReserveConsumer, ReservationReplyConsumer } from './reserve.consumer';
 import { ShipmentConsumer } from './order.consumer';
 import { CacheModule } from '../cache/cache.module';
 
@@ -25,7 +25,11 @@ import { CacheModule } from '../cache/cache.module';
       { name: Order.name, schema: OrderSchema },
       { name: PaymentTransaction.name, schema: PaymentTransactionSchema },
     ]),
-    BullModule.registerQueue({ name: QUEUES.ORDER }, { name: QUEUES.SHIPMENT }),
+    BullModule.registerQueue(
+      { name: QUEUES.ORDER },
+      { name: QUEUES.ORDER_REPLY },
+      { name: QUEUES.SHIPMENT },
+    ),
     AuthModule,
     CartModule,
     CacheModule,
@@ -37,6 +41,7 @@ import { CacheModule } from '../cache/cache.module';
     CheckoutService,
     PaymentService,
     ReserveConsumer,
+    ReservationReplyConsumer,
     ShipmentConsumer,
   ],
   exports: [OrderService, CheckoutService, PaymentService],

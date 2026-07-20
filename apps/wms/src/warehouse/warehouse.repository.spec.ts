@@ -21,17 +21,19 @@ const makeModel = (overrides: Record<string, jest.Mock> = {}) => ({
 
 describe('WarehouseRepository', () => {
   let repo: WarehouseRepository;
+  let warehouseModel: ReturnType<typeof makeModel>;
   let rackModel: ReturnType<typeof makeModel>;
   let shelfModel: ReturnType<typeof makeModel>;
   const warehouseId = new Types.ObjectId().toString();
 
   beforeEach(async () => {
+    warehouseModel = makeModel();
     rackModel = makeModel();
     shelfModel = makeModel();
     const module = await Test.createTestingModule({
       providers: [
         WarehouseRepository,
-        { provide: getModelToken(Warehouse.name), useValue: makeModel() },
+        { provide: getModelToken(Warehouse.name), useValue: warehouseModel },
         { provide: getModelToken(Zone.name), useValue: makeModel() },
         { provide: getModelToken(Rack.name), useValue: rackModel },
         { provide: getModelToken(Shelf.name), useValue: shelfModel },
@@ -127,6 +129,27 @@ describe('WarehouseRepository', () => {
       const ids = await repo.findShelfIdsByZone(zoneId);
 
       expect(ids).toEqual([]);
+    });
+  });
+
+  describe('findAllActiveWarehouseIds', () => {
+    it('lọc isActive=true, chưa soft-delete, sort theo createdAt asc, chỉ lấy _id', async () => {
+      const ids = [new Types.ObjectId(), new Types.ObjectId()];
+      warehouseModel.select = jest.fn().mockReturnThis();
+      warehouseModel.lean = jest.fn().mockReturnThis();
+      warehouseModel.exec.mockResolvedValueOnce([
+        { _id: ids[0] },
+        { _id: ids[1] },
+      ]);
+
+      const result = await repo.findAllActiveWarehouseIds();
+
+      expect(result).toEqual(ids);
+      expect(warehouseModel.find).toHaveBeenCalledWith({
+        deletedAt: null,
+        isActive: true,
+      });
+      expect(warehouseModel.sort).toHaveBeenCalledWith({ createdAt: 1 });
     });
   });
 });

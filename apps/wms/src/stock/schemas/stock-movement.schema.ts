@@ -10,6 +10,8 @@ export enum MovementType {
   PRINT_CONSUME = 'PRINT_CONSUME',
   PRINT_OUTPUT = 'PRINT_OUTPUT',
   RETURN_IN = 'RETURN_IN',
+  RESERVE = 'RESERVE',
+  RELEASE = 'RELEASE',
 }
 
 /**
