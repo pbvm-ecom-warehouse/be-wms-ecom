@@ -543,8 +543,6 @@ export class StockRepository {
         },
       },
     ];
-    return this.inventoryModel
-      .aggregate<LotInventorySummary>(pipeline)
-      .exec();
+    return this.inventoryModel.aggregate<LotInventorySummary>(pipeline).exec();
   }
 }

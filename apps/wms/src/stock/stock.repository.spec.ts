@@ -478,9 +478,7 @@ describe('StockRepository', () => {
   describe('sumInventoryByLot', () => {
     it('gộp quantity theo warehouseId, join sku từ warehouse_items', async () => {
       const lotId = new Types.ObjectId();
-      const aggregateResult = [
-        { itemId, warehouseId, sku: 'SKU-1', qty: 5 },
-      ];
+      const aggregateResult = [{ itemId, warehouseId, sku: 'SKU-1', qty: 5 }];
       inventoryModel.aggregate = jest.fn().mockReturnValue({
         exec: jest.fn().mockResolvedValue(aggregateResult),
       });
