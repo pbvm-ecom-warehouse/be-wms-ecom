@@ -10,7 +10,12 @@ import { GoodsIssueModule } from '../goods-issue/goods-issue.module';
 @Module({
   imports: [
     // ORDER: consume stock.reserve_requested + order.cancelled
-    BullModule.registerQueue({ name: QUEUES.ORDER }),
+    // ORDER_REPLY: publish stock.reserved / stock.reserve_failed (WMS → Ecom) —
+    // queue riêng để tránh worker khác của WMS trên ORDER "cướp" job phản hồi
+    BullModule.registerQueue(
+      { name: QUEUES.ORDER },
+      { name: QUEUES.ORDER_REPLY },
+    ),
     StockModule, // StockRepository + StockTransactionHelper
     WarehouseModule, // findAllActiveWarehouseIds + findStagingShelfByWarehouse
     GoodsIssueModule, // GoodsIssueRepository — kiểm tra GoodsIssue tồn tại trước khi release

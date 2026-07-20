@@ -56,7 +56,7 @@ describe('ReservationService', () => {
       txHelper as never,
       warehouseRepo as never,
       goodsIssueRepo as never,
-      queue as never,
+      queue as never, // orderReplyQueue (QUEUES.ORDER_REPLY) — WMS chỉ publish, không consume
     );
   });
 

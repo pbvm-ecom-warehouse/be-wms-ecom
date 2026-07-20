@@ -32,7 +32,7 @@ export class ReservationService {
     private readonly stockTransactionHelper: StockTransactionHelper,
     private readonly warehouseRepo: WarehouseRepository,
     private readonly goodsIssueRepo: GoodsIssueRepository,
-    @InjectQueue(QUEUES.ORDER) private readonly orderQueue: Queue,
+    @InjectQueue(QUEUES.ORDER_REPLY) private readonly orderReplyQueue: Queue,
   ) {}
 
   /**
@@ -174,7 +174,7 @@ export class ReservationService {
       orderId,
       fulfillWarehouseId: warehouseId.toString(),
     };
-    await this.orderQueue.add(EVENTS.STOCK_RESERVED, payload, {
+    await this.orderReplyQueue.add(EVENTS.STOCK_RESERVED, payload, {
       jobId: `reservation:${orderId}`,
     });
     this.logger.log(
@@ -188,7 +188,7 @@ export class ReservationService {
     failedSkus: string[],
   ): Promise<void> {
     const payload: StockReserveFailedPayload = { orderId, reason, failedSkus };
-    await this.orderQueue.add(EVENTS.STOCK_RESERVE_FAILED, payload, {
+    await this.orderReplyQueue.add(EVENTS.STOCK_RESERVE_FAILED, payload, {
       jobId: `reservation-failed:${orderId}`,
     });
     this.logger.warn(
