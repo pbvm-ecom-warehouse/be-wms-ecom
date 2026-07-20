@@ -13,6 +13,16 @@ export interface CreateGoodsIssueLineInput {
   quantity: number;
 }
 
+export interface CreateGoodsIssueInput {
+  orderId: string;
+  warehouseId: Types.ObjectId;
+  lines: CreateGoodsIssueLineInput[];
+  shippingAddress: Record<string, unknown>;
+  recipient: { name: string; phone: string };
+  paymentMethod: 'COD' | 'ONLINE';
+  codAmount: number;
+}
+
 export interface QueryGoodsIssueInput {
   status?: GoodsIssueStatus;
   page?: number;
@@ -36,16 +46,18 @@ export class GoodsIssueRepository {
 
   // remainingQty = quantity lúc khởi tạo — chưa xuất gì nên còn lại đúng bằng số lượng cần xuất
   async createGoodsIssue(
-    orderId: string,
-    warehouseId: Types.ObjectId,
-    lines: CreateGoodsIssueLineInput[],
+    input: CreateGoodsIssueInput,
   ): Promise<GoodsIssueDocument> {
     const [doc] = await this.model.create([
       {
-        orderId,
-        warehouseId,
+        orderId: input.orderId,
+        warehouseId: input.warehouseId,
         status: GoodsIssueStatus.PENDING,
-        items: lines.map((l) => ({
+        shippingAddress: input.shippingAddress,
+        recipient: input.recipient,
+        paymentMethod: input.paymentMethod,
+        codAmount: input.codAmount,
+        items: input.lines.map((l) => ({
           itemId: l.itemId,
           sku: l.sku,
           quantity: l.quantity,

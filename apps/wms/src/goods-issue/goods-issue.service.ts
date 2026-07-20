@@ -47,6 +47,10 @@ export class GoodsIssueService {
     orderId: string,
     warehouseId: string,
     items: OrderReadyItem[],
+    shippingAddress: Record<string, unknown>,
+    recipient: { name: string; phone: string },
+    paymentMethod: 'COD' | 'ONLINE',
+    codAmount: number,
   ): Promise<void> {
     const existing = await this.repo.findByOrderId(orderId);
     if (existing) {
@@ -80,11 +84,15 @@ export class GoodsIssueService {
       return;
     }
 
-    await this.repo.createGoodsIssue(
+    await this.repo.createGoodsIssue({
       orderId,
-      new Types.ObjectId(warehouseId),
+      warehouseId: new Types.ObjectId(warehouseId),
       lines,
-    );
+      shippingAddress,
+      recipient,
+      paymentMethod,
+      codAmount,
+    });
   }
 
   async getPickSuggestions(

@@ -34,4 +34,12 @@ describe('GoodsIssueSchema', () => {
   it('export GoodsIssue class dùng được với SchemaFactory (smoke test)', () => {
     expect(GoodsIssue).toBeDefined();
   });
+
+  it('có field snapshot recipient/paymentMethod/codAmount/shippingAddress', () => {
+    const paths = GoodsIssueSchema.paths;
+    expect(paths['recipient']).toBeDefined();
+    expect(paths['paymentMethod']).toBeDefined();
+    expect(paths['codAmount']).toBeDefined();
+    expect(paths['shippingAddress']).toBeDefined();
+  });
 });
