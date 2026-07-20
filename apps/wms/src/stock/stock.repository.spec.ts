@@ -563,6 +563,25 @@ describe('StockRepository', () => {
     });
   });
 
+  describe('sumInventoryByLot', () => {
+    it('gộp quantity theo warehouseId, join sku từ warehouse_items', async () => {
+      const lotId = new Types.ObjectId();
+      const aggregateResult = [{ itemId, warehouseId, sku: 'SKU-1', qty: 5 }];
+      inventoryModel.aggregate = jest.fn().mockReturnValue({
+        exec: jest.fn().mockResolvedValue(aggregateResult),
+      });
+
+      const rows = await repo.sumInventoryByLot(lotId);
+
+      expect(rows).toEqual(aggregateResult);
+      const pipeline = (inventoryModel.aggregate as jest.Mock).mock
+        .calls[0][0] as Record<string, unknown>[];
+      expect(pipeline[0]).toEqual({
+        $match: { lotId, quantity: { $gt: 0 } },
+      });
+    });
+  });
+
   describe('findAvailableStockForPick', () => {
     it('hàng perishable: dùng aggregate join Lot + Shelf, sắp expiryDate tăng dần (FEFO), loại EXPIRED trong pipeline, trả kèm shelfCode', async () => {
       const pickItemId = new Types.ObjectId();
