@@ -46,6 +46,7 @@ describe('GoodsIssueService', () => {
   let warehouseRepo: ReturnType<typeof makeWarehouseRepo>;
   let txHelper: ReturnType<typeof makeTxHelper>;
   let queue: ReturnType<typeof makeQueue>;
+  let internalQueue: ReturnType<typeof makeQueue>;
 
   const actorId = new Types.ObjectId().toString();
   const orderId = 'order-1';
@@ -59,6 +60,7 @@ describe('GoodsIssueService', () => {
     warehouseRepo = makeWarehouseRepo();
     txHelper = makeTxHelper();
     queue = makeQueue();
+    internalQueue = makeQueue();
     svc = new GoodsIssueService(
       repo as never,
       stockRepo as never,
@@ -66,6 +68,7 @@ describe('GoodsIssueService', () => {
       warehouseRepo as never,
       txHelper as never,
       queue as never,
+      internalQueue as never,
     );
   });
 
@@ -356,9 +359,10 @@ describe('GoodsIssueService', () => {
         expect.anything(),
       );
       expect(queue.add).not.toHaveBeenCalled();
+      expect(internalQueue.add).not.toHaveBeenCalled();
     });
 
-    it('emit goods.issued đúng 1 lần khi markConfirmedIfAllDone trả true', async () => {
+    it('emit goods.issued đúng 1 lần khi markConfirmedIfAllDone trả true — trên CẢ 2 queue (SHIPMENT + SHIPMENT_INTERNAL)', async () => {
       repo.findById.mockResolvedValueOnce(baseGi()).mockResolvedValueOnce({
         ...baseGi(),
         status: GoodsIssueStatus.CONFIRMED,
@@ -379,6 +383,12 @@ describe('GoodsIssueService', () => {
 
       expect(queue.add).toHaveBeenCalledTimes(1);
       expect(queue.add).toHaveBeenCalledWith(
+        'goods.issued',
+        { orderId, goodsIssueId: giId },
+        { jobId: `goods_issue:${giId}` },
+      );
+      expect(internalQueue.add).toHaveBeenCalledTimes(1);
+      expect(internalQueue.add).toHaveBeenCalledWith(
         'goods.issued',
         { orderId, goodsIssueId: giId },
         { jobId: `goods_issue:${giId}` },

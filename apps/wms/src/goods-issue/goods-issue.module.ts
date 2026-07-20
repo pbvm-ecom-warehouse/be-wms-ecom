@@ -12,9 +12,15 @@ import { StockModule } from '../stock/stock.module';
 
 @Module({
   imports: [
-    // ORDER: consume order.ready_to_fulfill · SHIPMENT: produce goods.issued
+    // ORDER: consume order.ready_to_fulfill · SHIPMENT: produce goods.issued cho Ecom
     // (khớp apps/ecommerce/src/order/order.consumer.ts đang lắng nghe QUEUES.SHIPMENT)
-    BullModule.registerQueue({ name: QUEUES.ORDER }, { name: QUEUES.SHIPMENT }),
+    // SHIPMENT_INTERNAL: produce goods.issued cho GoodsIssuedConsumer nội bộ WMS
+    // (tách khỏi SHIPMENT để tránh 2 worker cùng cạnh tranh 1 job — xem ORDER_REPLY)
+    BullModule.registerQueue(
+      { name: QUEUES.ORDER },
+      { name: QUEUES.SHIPMENT },
+      { name: QUEUES.SHIPMENT_INTERNAL },
+    ),
     MongooseModule.forFeature([
       { name: GoodsIssue.name, schema: GoodsIssueSchema },
     ]),

@@ -15,8 +15,13 @@ import { GoodsIssueModule } from '../goods-issue/goods-issue.module';
 
 @Module({
   imports: [
-    // SHIPMENT: consume goods.issued (auto-sinh Shipment) · produce shipment.shipped/delivered/returned
-    BullModule.registerQueue({ name: QUEUES.SHIPMENT }),
+    // SHIPMENT: produce shipment.shipped/delivered/returned (ShipmentService)
+    // SHIPMENT_INTERNAL: consume goods.issued (auto-sinh Shipment) — queue riêng,
+    // tránh cạnh tranh job với apps/ecommerce/src/order/order.consumer.ts trên QUEUES.SHIPMENT
+    BullModule.registerQueue(
+      { name: QUEUES.SHIPMENT },
+      { name: QUEUES.SHIPMENT_INTERNAL },
+    ),
     MongooseModule.forFeature([
       { name: Carrier.name, schema: CarrierSchema },
       { name: Shipment.name, schema: ShipmentSchema },

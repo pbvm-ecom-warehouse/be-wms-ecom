@@ -6,11 +6,14 @@ import { ShipmentService } from './shipment.service';
 import { GoodsIssueRepository } from '../goods-issue/goods-issue.repository';
 
 /**
- * Consumer nội bộ WMS — nhận goods.issued (do GoodsIssueService phát trên
- * cùng QUEUES.SHIPMENT mà Ecommerce cũng lắng nghe). 2 process riêng biệt
- * cùng đọc 1 queue Redis, không xung đột.
+ * Consumer nội bộ WMS — nhận goods.issued trên QUEUES.SHIPMENT_INTERNAL (KHÔNG
+ * phải QUEUES.SHIPMENT mà Ecommerce dùng). BullMQ Worker là competing consumer:
+ * nếu dùng chung 1 queue, mỗi job chỉ được 1 trong 2 process nhận — Ecom hoặc WMS
+ * sẽ ngẫu nhiên bỏ lỡ xử lý. GoodsIssueService.emitGoodsIssued phát goods.issued
+ * lên CẢ 2 queue (SHIPMENT cho Ecom, SHIPMENT_INTERNAL cho WMS) để cả 2 side đều
+ * nhận được. Tiền lệ: QUEUES.ORDER_REPLY tách khỏi QUEUES.ORDER vì lý do tương tự.
  */
-@Processor(QUEUES.SHIPMENT)
+@Processor(QUEUES.SHIPMENT_INTERNAL)
 export class GoodsIssuedConsumer extends WorkerHost {
   private readonly logger = new Logger(GoodsIssuedConsumer.name);
 
