@@ -155,6 +155,30 @@ export const WMS_ERRORS = {
     status: HttpStatus.BAD_REQUEST,
     message: 'Mặt hàng có hạn sử dụng phải chọn lô khi nhập lại hàng tốt',
   },
+  CARRIER_NOT_FOUND: {
+    status: HttpStatus.NOT_FOUND,
+    message: 'Không tìm thấy đơn vị vận chuyển',
+  },
+  CARRIER_CODE_CONFLICT: {
+    status: HttpStatus.CONFLICT,
+    message: 'Mã đơn vị vận chuyển đã tồn tại',
+  },
+  CARRIER_INACTIVE: {
+    status: HttpStatus.BAD_REQUEST,
+    message: 'Đơn vị vận chuyển đã ngừng hoạt động',
+  },
+  SHIPMENT_NOT_FOUND: {
+    status: HttpStatus.NOT_FOUND,
+    message: 'Không tìm thấy vận đơn',
+  },
+  SHIPMENT_INVALID_TRANSITION: {
+    status: HttpStatus.BAD_REQUEST,
+    message: 'Không thể chuyển sang trạng thái này từ trạng thái hiện tại',
+  },
+  SHIPMENT_NOT_ASSIGNED: {
+    status: HttpStatus.BAD_REQUEST,
+    message: 'Vận đơn chưa được gán hãng vận chuyển',
+  },
 } as const satisfies Record<
   string,
   { status: HttpStatusType; message: string }
