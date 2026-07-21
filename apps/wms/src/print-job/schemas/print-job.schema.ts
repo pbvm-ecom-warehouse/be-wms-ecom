@@ -76,6 +76,5 @@ export class PrintJob {
 export type PrintJobDocument = HydratedDocument<PrintJob>;
 export const PrintJobSchema = SchemaFactory.createForClass(PrintJob);
 
-// 1 đơn 1 lệnh in — chặn consumer tạo trùng nếu event redeliver
-PrintJobSchema.index({ orderId: 1 }, { unique: true });
+// unique index cho orderId đã khai báo qua @Prop({ unique: true }) ở trên
 PrintJobSchema.index({ status: 1 });
