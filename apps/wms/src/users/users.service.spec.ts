@@ -113,6 +113,51 @@ describe('UsersService', () => {
     });
   });
 
+  describe('lock/unlock — idempotency (gọi lại khi user đã ở đúng trạng thái)', () => {
+    const pickerTarget = { _id: TARGET_ID, roles: ['PICKER'] };
+
+    it('lock user đã LOCKED sẵn → vẫn OK, không throw, vẫn revoke token', async () => {
+      userRepo.findActiveById.mockResolvedValue({
+        ...pickerTarget,
+        status: UserStatus.LOCKED,
+      });
+      userRepo.updateStatus.mockResolvedValue({
+        _id: TARGET_ID,
+        status: UserStatus.LOCKED,
+      });
+
+      await expect(svc.lock(TARGET_ID, adminActor)).resolves.toMatchObject({
+        status: UserStatus.LOCKED,
+      });
+      expect(userRepo.updateStatus).toHaveBeenCalledWith(
+        TARGET_ID,
+        UserStatus.LOCKED,
+        expect.anything(),
+      );
+      expect(refreshRepo.revokeAllForUser).toHaveBeenCalledWith(TARGET_ID);
+    });
+
+    it('unlock user đã ACTIVE sẵn → vẫn OK, không throw', async () => {
+      userRepo.findActiveById.mockResolvedValue({
+        ...pickerTarget,
+        status: UserStatus.ACTIVE,
+      });
+      userRepo.updateStatus.mockResolvedValue({
+        _id: TARGET_ID,
+        status: UserStatus.ACTIVE,
+      });
+
+      await expect(svc.unlock(TARGET_ID, adminActor)).resolves.toMatchObject({
+        status: UserStatus.ACTIVE,
+      });
+      expect(userRepo.updateStatus).toHaveBeenCalledWith(
+        TARGET_ID,
+        UserStatus.ACTIVE,
+        expect.anything(),
+      );
+    });
+  });
+
   describe('updateRoles — chặn cả gán mới lẫn target hiện có ADMIN', () => {
     it('MANAGER gán role ADMIN cho user thường → throw', async () => {
       userRepo.findActiveById.mockResolvedValue({
