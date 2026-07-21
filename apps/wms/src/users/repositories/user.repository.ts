@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { WmsRole } from '@app/auth';
 import { Model, Types } from 'mongoose';
-import { UserStatus, User } from '../schemas/user.schema';
+import { UserStatus, User, UserDocument } from '../schemas/user.schema';
 
 export interface CreateUserInput {
   username: string;
@@ -15,6 +15,23 @@ export interface CreateUserInput {
   createdBy?: Types.ObjectId;
 }
 
+export interface FindAllUsersQuery {
+  page: number;
+  limit: number;
+  role?: string;
+  status?: UserStatus;
+  warehouseId?: string;
+  search?: string;
+}
+
+export interface UpdateUserProfileInput {
+  name?: string;
+  email?: string;
+  warehouseId?: string;
+}
+
+const SOFT_DELETE_FILTER = { deletedAt: null } as const;
+
 @Injectable()
 export class UserRepository {
   constructor(@InjectModel(User.name) private readonly model: Model<User>) {}
@@ -22,7 +39,7 @@ export class UserRepository {
   findActiveByUsername(username: string, includePasswordHash = false) {
     const q = this.model.findOne({
       username,
-      deletedAt: null,
+      ...SOFT_DELETE_FILTER,
       status: UserStatus.ACTIVE,
     });
     return (includePasswordHash ? q.select('+passwordHash') : q).exec();
@@ -31,21 +48,21 @@ export class UserRepository {
   findActiveByEmail(email: string, includePasswordHash = false) {
     const q = this.model.findOne({
       email,
-      deletedAt: null,
+      ...SOFT_DELETE_FILTER,
       status: UserStatus.ACTIVE,
     });
     return (includePasswordHash ? q.select('+passwordHash') : q).exec();
   }
 
   findByFirebaseUid(firebaseUid: string, includePasswordHash = false) {
-    const q = this.model.findOne({ firebaseUid, deletedAt: null });
+    const q = this.model.findOne({ firebaseUid, ...SOFT_DELETE_FILTER });
     return (includePasswordHash ? q.select('+passwordHash') : q).exec();
   }
 
   linkFirebaseUid(id: string | Types.ObjectId, firebaseUid: string) {
     return this.model
       .findOneAndUpdate(
-        { _id: id, deletedAt: null },
+        { _id: id, ...SOFT_DELETE_FILTER },
         { $set: { firebaseUid } },
         { new: true },
       )
@@ -53,12 +70,12 @@ export class UserRepository {
   }
 
   findActiveById(id: string | Types.ObjectId) {
-    return this.model.findOne({ _id: id, deletedAt: null }).exec();
+    return this.model.findOne({ _id: id, ...SOFT_DELETE_FILTER }).exec();
   }
 
   findByIdWithPassword(id: string | Types.ObjectId) {
     return this.model
-      .findOne({ _id: id, deletedAt: null, status: UserStatus.ACTIVE })
+      .findOne({ _id: id, ...SOFT_DELETE_FILTER, status: UserStatus.ACTIVE })
       .select('+passwordHash')
       .exec();
   }
@@ -74,6 +91,33 @@ export class UserRepository {
     });
   }
 
+  async findAll(
+    query: FindAllUsersQuery,
+  ): Promise<{ items: UserDocument[]; total: number }> {
+    const filter: Record<string, unknown> = { ...SOFT_DELETE_FILTER };
+    if (query.role) filter['roles'] = query.role;
+    if (query.status) filter['status'] = query.status;
+    if (query.warehouseId) filter['warehouseId'] = query.warehouseId;
+    if (query.search) {
+      filter['$or'] = [
+        { username: { $regex: query.search, $options: 'i' } },
+        { name: { $regex: query.search, $options: 'i' } },
+        { email: { $regex: query.search, $options: 'i' } },
+      ];
+    }
+
+    const [items, total] = await Promise.all([
+      this.model
+        .find(filter)
+        .sort({ createdAt: -1 })
+        .skip((query.page - 1) * query.limit)
+        .limit(query.limit)
+        .exec(),
+      this.model.countDocuments(filter).exec(),
+    ]);
+    return { items, total };
+  }
+
   updateRoles(
     id: string | Types.ObjectId,
     roles: string[],
@@ -81,7 +125,7 @@ export class UserRepository {
   ) {
     return this.model
       .findOneAndUpdate(
-        { _id: id, deletedAt: null },
+        { _id: id, ...SOFT_DELETE_FILTER },
         { $set: { roles, updatedBy } },
         { new: true },
       )
@@ -95,7 +139,7 @@ export class UserRepository {
   ) {
     return this.model
       .findOneAndUpdate(
-        { _id: id, deletedAt: null },
+        { _id: id, ...SOFT_DELETE_FILTER },
         { $set: { status, updatedBy } },
         { new: true },
       )
@@ -110,7 +154,7 @@ export class UserRepository {
   ) {
     return this.model
       .findOneAndUpdate(
-        { _id: id, deletedAt: null, status: UserStatus.ACTIVE },
+        { _id: id, ...SOFT_DELETE_FILTER, status: UserStatus.ACTIVE },
         {
           $set: {
             passwordHash,
@@ -121,5 +165,32 @@ export class UserRepository {
         { new: true },
       )
       .exec();
+  }
+
+  updateProfile(
+    id: string | Types.ObjectId,
+    data: UpdateUserProfileInput,
+    updatedBy: Types.ObjectId,
+  ) {
+    return this.model
+      .findOneAndUpdate(
+        { _id: id, ...SOFT_DELETE_FILTER },
+        { $set: { ...data, updatedBy } },
+        { new: true },
+      )
+      .exec();
+  }
+
+  async softDelete(
+    id: string | Types.ObjectId,
+    updatedBy: Types.ObjectId,
+  ): Promise<boolean> {
+    const res = await this.model
+      .updateOne(
+        { _id: id, ...SOFT_DELETE_FILTER },
+        { $set: { deletedAt: new Date(), updatedBy } },
+      )
+      .exec();
+    return res.modifiedCount > 0;
   }
 }

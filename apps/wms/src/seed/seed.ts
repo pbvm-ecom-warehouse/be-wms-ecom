@@ -6,7 +6,7 @@ import { WmsRole } from '@app/auth';
 import { AppModule } from '../app.module';
 import { AuthService } from '../auth/auth.service';
 import { CreateUserDto } from '../auth/dto/auth.dto';
-import { User } from '../auth/schemas/user.schema';
+import { User } from '../users/schemas/user.schema';
 import { WarehouseService } from '../warehouse/warehouse.service';
 import { StockService } from '../stock/stock.service';
 import { SupplierService } from '../supplier/supplier.service';
