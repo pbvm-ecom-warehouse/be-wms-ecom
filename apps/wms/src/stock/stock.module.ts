@@ -19,6 +19,7 @@ import {
   WarehouseItem,
   WarehouseItemSchema,
 } from './schemas/warehouse-item.schema';
+import { ExpiredLotScanService } from './expired-lot-scan.service';
 import { StockTransactionHelper } from './helpers/with-stock-transaction.helper';
 import { NearExpiryScanService } from './near-expiry-scan.service';
 import { StockController } from './stock.controller';
@@ -45,6 +46,7 @@ import { StockService } from './stock.service';
     StockService,
     StockTransactionHelper,
     NearExpiryScanService, // S4-04: cron 06:00 quét lot sắp hết hạn → stock.near_expiry
+    ExpiredLotScanService, // cron 07:00 quét lot ĐÃ hết hạn → tăng expired + stock.expired (issue #7)
   ],
   exports: [StockService, StockTransactionHelper, StockRepository],
 })

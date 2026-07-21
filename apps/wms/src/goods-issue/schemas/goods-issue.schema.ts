@@ -29,8 +29,9 @@ const GoodsIssueItemSchema = SchemaFactory.createForClass(GoodsIssueItem);
 /**
  * Phiếu xuất kho (UC-05). Sinh tự động khi nhận order.ready_to_fulfill.
  * Chứng từ giao dịch — hủy bằng status, KHÔNG soft-delete.
- * Không lưu shippingAddress/recipient/paymentMethod/codAmount — thuộc
- * trách nhiệm module Shipping (đọc lại từ event gốc khi implement).
+ * Lưu snapshot shippingAddress/recipient/paymentMethod/codAmount từ payload
+ * gốc — module Shipping đọc lại qua GoodsIssueRepository.findById để dựng
+ * Shipment, không đọc chéo ecom_db.
  */
 @Schema({ collection: 'goods_issues', timestamps: true })
 export class GoodsIssue {
@@ -40,6 +41,20 @@ export class GoodsIssue {
 
   @Prop({ type: Types.ObjectId, required: true })
   warehouseId!: Types.ObjectId;
+
+  /** Snapshot địa chỉ giao — từ payload order.ready_to_fulfill, không đổi theo thời gian */
+  @Prop({ type: Object, required: true })
+  shippingAddress!: Record<string, unknown>;
+
+  /** Snapshot người nhận — dùng để dựng Shipment (module Shipping đọc lại qua goodsIssueId) */
+  @Prop({ type: { name: String, phone: String }, required: true })
+  recipient!: { name: string; phone: string };
+
+  @Prop({ enum: ['COD', 'ONLINE'], required: true })
+  paymentMethod!: 'COD' | 'ONLINE';
+
+  @Prop({ type: Number, default: 0 })
+  codAmount!: number;
 
   @Prop({ enum: GoodsIssueStatus, default: GoodsIssueStatus.PENDING })
   status!: GoodsIssueStatus;

@@ -3,6 +3,7 @@ import { VerifyEmail } from './verify-email';
 import { ResetPasswordEmail } from './reset-password';
 import { StockLowAlertEmail } from './stock-low-alert';
 import { StockNearExpiryEmail } from './stock-near-expiry';
+import { PaymentSuccessEmail } from './payment-success';
 
 describe('email templates', () => {
   it('VerifyEmail chứa mã', async () => {
@@ -61,5 +62,14 @@ describe('email templates', () => {
     // Ngày format theo vi-VN locale sẽ là 31/12/2026 (giá trị tính toán đơn, không có
     // vấn đề thứ tự — giữ nguyên theo review).
     expect(html).toContain('31/12/2026');
+  });
+
+  it('PaymentSuccessEmail chứa mã đơn hàng và số tiền định dạng VND', async () => {
+    const html = await render(
+      PaymentSuccessEmail({ orderId: 'ORD-20260720-001', amount: 150000 }),
+    );
+    expect(html).toContain('ORD-20260720-001');
+    // Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }) → "150.000 ₫"
+    expect(html).toContain('150.000');
   });
 });

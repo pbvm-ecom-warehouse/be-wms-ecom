@@ -35,6 +35,8 @@ export class GoodsIssueService {
     private readonly warehouseRepo: WarehouseRepository,
     private readonly stockTransactionHelper: StockTransactionHelper,
     @InjectQueue(QUEUES.SHIPMENT) private readonly shipmentQueue: Queue,
+    @InjectQueue(QUEUES.SHIPMENT_INTERNAL)
+    private readonly shipmentInternalQueue: Queue,
   ) {}
 
   /**
@@ -47,6 +49,10 @@ export class GoodsIssueService {
     orderId: string,
     warehouseId: string,
     items: OrderReadyItem[],
+    shippingAddress: Record<string, unknown>,
+    recipient: { name: string; phone: string },
+    paymentMethod: 'COD' | 'ONLINE',
+    codAmount: number,
   ): Promise<void> {
     const existing = await this.repo.findByOrderId(orderId);
     if (existing) {
@@ -80,11 +86,15 @@ export class GoodsIssueService {
       return;
     }
 
-    await this.repo.createGoodsIssue(
+    await this.repo.createGoodsIssue({
       orderId,
-      new Types.ObjectId(warehouseId),
+      warehouseId: new Types.ObjectId(warehouseId),
       lines,
-    );
+      shippingAddress,
+      recipient,
+      paymentMethod,
+      codAmount,
+    });
   }
 
   async getPickSuggestions(
@@ -208,7 +218,12 @@ export class GoodsIssueService {
   ): Promise<void> {
     const payload: GoodsIssuedPayload = { orderId, goodsIssueId };
     const jobId = `goods_issue:${goodsIssueId}`;
-    await this.shipmentQueue.add(EVENTS.GOODS_ISSUED, payload, { jobId });
+    // 2 queue riêng — QUEUES.SHIPMENT cho Ecom, QUEUES.SHIPMENT_INTERNAL cho WMS tự xử lý —
+    // tránh 2 worker cùng cạnh tranh 1 job trên cùng queue (BullMQ competing consumer).
+    await Promise.all([
+      this.shipmentQueue.add(EVENTS.GOODS_ISSUED, payload, { jobId }),
+      this.shipmentInternalQueue.add(EVENTS.GOODS_ISSUED, payload, { jobId }),
+    ]);
     this.logger.log(
       `goods.issued → orderId=${orderId} goodsIssueId=${goodsIssueId}`,
     );

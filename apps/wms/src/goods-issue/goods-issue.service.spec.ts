@@ -46,6 +46,7 @@ describe('GoodsIssueService', () => {
   let warehouseRepo: ReturnType<typeof makeWarehouseRepo>;
   let txHelper: ReturnType<typeof makeTxHelper>;
   let queue: ReturnType<typeof makeQueue>;
+  let internalQueue: ReturnType<typeof makeQueue>;
 
   const actorId = new Types.ObjectId().toString();
   const orderId = 'order-1';
@@ -59,6 +60,7 @@ describe('GoodsIssueService', () => {
     warehouseRepo = makeWarehouseRepo();
     txHelper = makeTxHelper();
     queue = makeQueue();
+    internalQueue = makeQueue();
     svc = new GoodsIssueService(
       repo as never,
       stockRepo as never,
@@ -66,15 +68,27 @@ describe('GoodsIssueService', () => {
       warehouseRepo as never,
       txHelper as never,
       queue as never,
+      internalQueue as never,
     );
   });
+
+  const snapshotArgs = () =>
+    [
+      { street: '123 Le Loi' },
+      { name: 'Nguyen Van A', phone: '0900000000' },
+      'COD' as const,
+      0,
+    ] as const;
 
   describe('createFromOrderReady', () => {
     it('bỏ qua nếu đã có GoodsIssue cho orderId này (idempotent)', async () => {
       repo.findByOrderId.mockResolvedValue({ _id: 'gi1' });
-      await svc.createFromOrderReady(orderId, warehouseId.toString(), [
-        { sku: 'SKU-1', quantity: 5 },
-      ]);
+      await svc.createFromOrderReady(
+        orderId,
+        warehouseId.toString(),
+        [{ sku: 'SKU-1', quantity: 5 }],
+        ...snapshotArgs(),
+      );
       expect(repo.createGoodsIssue).not.toHaveBeenCalled();
     });
 
@@ -85,21 +99,40 @@ describe('GoodsIssueService', () => {
           ? Promise.resolve({ _id: itemId, sku: 'SKU-1' })
           : Promise.resolve(null),
       );
-      await svc.createFromOrderReady(orderId, warehouseId.toString(), [
-        { sku: 'SKU-1', quantity: 5 },
-        { sku: 'SKU-UNKNOWN', quantity: 3 },
-      ]);
-      expect(repo.createGoodsIssue).toHaveBeenCalledWith(orderId, warehouseId, [
-        { itemId, sku: 'SKU-1', quantity: 5 },
-      ]);
+      const [shippingAddress, recipient, paymentMethod, codAmount] =
+        snapshotArgs();
+      await svc.createFromOrderReady(
+        orderId,
+        warehouseId.toString(),
+        [
+          { sku: 'SKU-1', quantity: 5 },
+          { sku: 'SKU-UNKNOWN', quantity: 3 },
+        ],
+        shippingAddress,
+        recipient,
+        paymentMethod,
+        codAmount,
+      );
+      expect(repo.createGoodsIssue).toHaveBeenCalledWith({
+        orderId,
+        warehouseId,
+        lines: [{ itemId, sku: 'SKU-1', quantity: 5 }],
+        shippingAddress,
+        recipient,
+        paymentMethod,
+        codAmount,
+      });
     });
 
     it('không tạo phiếu nếu không có dòng nào khớp sku', async () => {
       repo.findByOrderId.mockResolvedValue(null);
       stockRepo.findItemBySku.mockResolvedValue(null);
-      await svc.createFromOrderReady(orderId, warehouseId.toString(), [
-        { sku: 'SKU-UNKNOWN', quantity: 3 },
-      ]);
+      await svc.createFromOrderReady(
+        orderId,
+        warehouseId.toString(),
+        [{ sku: 'SKU-UNKNOWN', quantity: 3 }],
+        ...snapshotArgs(),
+      );
       expect(repo.createGoodsIssue).not.toHaveBeenCalled();
     });
   });
@@ -326,9 +359,10 @@ describe('GoodsIssueService', () => {
         expect.anything(),
       );
       expect(queue.add).not.toHaveBeenCalled();
+      expect(internalQueue.add).not.toHaveBeenCalled();
     });
 
-    it('emit goods.issued đúng 1 lần khi markConfirmedIfAllDone trả true', async () => {
+    it('emit goods.issued đúng 1 lần khi markConfirmedIfAllDone trả true — trên CẢ 2 queue (SHIPMENT + SHIPMENT_INTERNAL)', async () => {
       repo.findById.mockResolvedValueOnce(baseGi()).mockResolvedValueOnce({
         ...baseGi(),
         status: GoodsIssueStatus.CONFIRMED,
@@ -349,6 +383,12 @@ describe('GoodsIssueService', () => {
 
       expect(queue.add).toHaveBeenCalledTimes(1);
       expect(queue.add).toHaveBeenCalledWith(
+        'goods.issued',
+        { orderId, goodsIssueId: giId },
+        { jobId: `goods_issue:${giId}` },
+      );
+      expect(internalQueue.add).toHaveBeenCalledTimes(1);
+      expect(internalQueue.add).toHaveBeenCalledWith(
         'goods.issued',
         { orderId, goodsIssueId: giId },
         { jobId: `goods_issue:${giId}` },

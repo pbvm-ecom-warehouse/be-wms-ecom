@@ -1,7 +1,7 @@
 import { Injectable, Logger, Inject, forwardRef } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
-import { EVENTS, QUEUES } from '@app/events';
+import { EVENTS, QUEUES, type PaymentSuccessPayload } from '@app/events';
 import { AppException } from '@app/common';
 import { OrderRepository } from './order.repository';
 import {
@@ -143,6 +143,23 @@ export class OrderService {
       orderStatus: OrderStatus.CONFIRMED,
       fulfillmentStatus: nextFulfillment,
     });
+
+    // Báo khách hàng thanh toán thành công (Ecom → Notification)
+    const customer = await this.userRepo.findActiveById(order.customerId);
+    if (customer) {
+      const payload: PaymentSuccessPayload = {
+        orderId,
+        customerEmail: customer.email,
+        amount,
+      };
+      await this.notifyQueue.add(EVENTS.PAYMENT_SUCCESS, payload, {
+        removeOnComplete: true,
+      });
+    } else {
+      this.logger.warn(
+        `Không tìm thấy customer ${order.customerId.toString()} cho đơn ${orderId} → bỏ qua payment.success`,
+      );
+    }
 
     if (order.hasPrintItems) {
       // Đơn ly in -> Phát lệnh in sang WMS xưởng in
@@ -372,6 +389,27 @@ export class OrderService {
     await this.repo.updateOrder(orderId, updates);
     this.logger.log(
       `WMS cập nhật: Giao thành công đơn ${orderId} -> Đã đóng đơn`,
+    );
+  }
+
+  async onReturned(orderId: string) {
+    const order = await this.repo.findById(orderId);
+    if (!order) return;
+
+    const updates: Partial<Order> = {
+      fulfillmentStatus: FulfillmentStatus.RETURNED,
+      orderStatus: OrderStatus.CANCELLED,
+    };
+
+    // Return-to-sender (chưa từng giao thành công) — ONLINE đã trả trước cần hoàn tiền;
+    // COD chưa thu được đồng nào nên không cần hoàn.
+    if (order.paymentMethod === PaymentMethod.ONLINE) {
+      updates.paymentStatus = PaymentStatus.REFUND_PENDING;
+    }
+
+    await this.repo.updateOrder(orderId, updates);
+    this.logger.log(
+      `WMS cập nhật: Đơn ${orderId} hoàn về kho (chưa giao được) -> CANCELLED`,
     );
   }
 }

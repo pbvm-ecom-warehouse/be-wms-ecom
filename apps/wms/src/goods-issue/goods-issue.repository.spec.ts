@@ -41,14 +41,26 @@ describe('GoodsIssueRepository', () => {
   describe('createGoodsIssue', () => {
     it('tạo document với remainingQty = quantity khởi tạo, status PENDING', async () => {
       model.create.mockResolvedValue([{ _id: 'gi1' }]);
-      await repo.createGoodsIssue(orderId, warehouseId, [
-        { itemId, sku: 'SKU-1', quantity: 10 },
-      ]);
+      const shippingAddress = { street: '123 Le Loi' };
+      const recipient = { name: 'Nguyen Van A', phone: '0900000000' };
+      await repo.createGoodsIssue({
+        orderId,
+        warehouseId,
+        lines: [{ itemId, sku: 'SKU-1', quantity: 10 }],
+        shippingAddress,
+        recipient,
+        paymentMethod: 'COD',
+        codAmount: 0,
+      });
       expect(model.create).toHaveBeenCalledWith([
         {
           orderId,
           warehouseId,
           status: GoodsIssueStatus.PENDING,
+          shippingAddress,
+          recipient,
+          paymentMethod: 'COD',
+          codAmount: 0,
           items: [{ itemId, sku: 'SKU-1', quantity: 10, remainingQty: 10 }],
         },
       ]);

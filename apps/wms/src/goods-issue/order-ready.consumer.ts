@@ -28,6 +28,10 @@ export class OrderReadyConsumer extends WorkerHost {
           data.orderId,
           data.fulfillWarehouseId,
           data.items,
+          data.shippingAddress,
+          data.recipient,
+          data.paymentMethod,
+          data.codAmount ?? 0,
         );
         break;
       }

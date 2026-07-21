@@ -59,6 +59,15 @@ export class ShipmentConsumer extends WorkerHost {
         await this.orderService.onDelivered(data.orderId);
         break;
       }
+      case EVENTS.SHIPMENT_RETURNED: {
+        const data = job.data as ShipmentEventPayload;
+        if (!data.orderId) return;
+        this.logger.log(
+          `Nhận sự kiện fulfillment: ${job.name} cho đơn hàng ${data.orderId}`,
+        );
+        await this.orderService.onReturned(data.orderId);
+        break;
+      }
       default:
       // Bỏ qua các sự kiện khác
     }

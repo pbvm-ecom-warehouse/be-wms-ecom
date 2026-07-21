@@ -10,8 +10,10 @@
 export const QUEUES = {
   STOCK: 'stock-queue', // tồn kho: WMS → Ecommerce
   ORDER: 'order-queue', // đơn hàng: Ecommerce ↔ WMS
+  ORDER_REPLY: 'order-reply-queue', // phản hồi giữ tồn: WMS → Ecommerce
   PRINT: 'print-queue', // in ly: Ecommerce ↔ WMS
   SHIPMENT: 'shipment-queue', // vận đơn: WMS → Ecommerce
+  SHIPMENT_INTERNAL: 'shipment-internal-queue', // goods.issued → Shipment{PENDING} nội bộ WMS (tách khỏi SHIPMENT để tránh 2 worker cùng nhận goods.issued — xem ORDER_REPLY cho tiền lệ)
   NOTIFICATION: 'notification-queue', // thông báo: * → Notification
 } as const;
 

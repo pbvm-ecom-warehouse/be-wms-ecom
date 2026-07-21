@@ -201,7 +201,9 @@ export class PaymentService {
 
   getCancelRedirectUrl(orderCode: string, isFail = false): string {
     const url = this.config.get<string>('FRONTEND_PAY_CANCEL_URL');
-    const messageText = isFail ? 'Thanh toán đơn hàng thất bại hoặc bị hủy' : 'Người dùng hủy thanh toán đơn hàng';
+    const messageText = isFail
+      ? 'Thanh toán đơn hàng thất bại hoặc bị hủy'
+      : 'Người dùng hủy thanh toán đơn hàng';
     const msg = encodeURIComponent(messageText);
     const statusVal = isFail ? 'fail' : 'cancel';
     return `${url}?orderCode=${orderCode}&status=${statusVal}&message=${msg}`;

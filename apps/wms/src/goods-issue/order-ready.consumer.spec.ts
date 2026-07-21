@@ -17,9 +17,10 @@ describe('OrderReadyConsumer', () => {
         orderId: 'order-1',
         fulfillWarehouseId: 'wh-1',
         items: [{ sku: 'SKU-1', quantity: 5 }],
-        shippingAddress: {},
+        shippingAddress: { street: '123 Le Loi' },
         recipient: { name: 'A', phone: '0900000000' },
         paymentMethod: 'COD',
+        codAmount: 0,
       },
     } as never;
 
@@ -29,6 +30,10 @@ describe('OrderReadyConsumer', () => {
       'order-1',
       'wh-1',
       [{ sku: 'SKU-1', quantity: 5 }],
+      { street: '123 Le Loi' },
+      { name: 'A', phone: '0900000000' },
+      'COD',
+      0,
     );
   });
 

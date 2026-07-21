@@ -17,6 +17,7 @@ import {
   ApiOkResponse,
 } from '@nestjs/swagger';
 import type { Webhook } from '@payos/node';
+import type { Response } from 'express';
 import { JwtAuthGuard, CustomerGuard } from '@app/auth';
 import { PaymentService, numberToOrderCode } from './payment.service';
 import { plainToInstance } from 'class-transformer';
@@ -70,7 +71,7 @@ export class PaymentController {
   @ApiOperation({
     summary: 'PayOS return URL (redirect từ cổng về, không cần auth)',
   })
-  payosReturn(@Query() query: Record<string, string>, @Res() res: any) {
+  payosReturn(@Query() query: Record<string, string>, @Res() res: Response) {
     const status = query['status'];
     const success = status === 'PAID';
     const orderCodeNum = query['orderCode']
@@ -92,8 +93,10 @@ export class PaymentController {
   @ApiOperation({
     summary: 'PayOS cancel URL (redirect từ cổng về khi hủy)',
   })
-  payosCancel(@Query() query: Record<string, string>, @Res() res: any) {
-    const orderCodeNum = query['orderCode'] ? parseInt(query['orderCode'], 10) : 0;
+  payosCancel(@Query() query: Record<string, string>, @Res() res: Response) {
+    const orderCodeNum = query['orderCode']
+      ? parseInt(query['orderCode'], 10)
+      : 0;
     const orderCodeStr = orderCodeNum ? numberToOrderCode(orderCodeNum) : '';
 
     const redirectUrl = this.svc.getCancelRedirectUrl(orderCodeStr);
