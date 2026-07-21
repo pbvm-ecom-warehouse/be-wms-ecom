@@ -194,20 +194,6 @@ export class OrderService {
       );
     }
 
-    // Phát sự kiện thanh toán thành công để gửi email thông báo
-    try {
-      const user = await this.userRepo.findActiveById(order.customerId);
-      const customerEmail = user?.email ?? '';
-      await this.notifyQueue.add(EVENTS.PAYMENT_SUCCESS, {
-        orderId: order._id.toString(),
-        customerEmail,
-        amount: order.total,
-      });
-      this.logger.log(`Phát sự kiện PAYMENT_SUCCESS thành công cho đơn ${order.code}`);
-    } catch (err: any) {
-      this.logger.error(`Lỗi khi phát sự kiện PAYMENT_SUCCESS cho đơn ${order.code}:`, err);
-    }
- 
     return updated;
   }
 
