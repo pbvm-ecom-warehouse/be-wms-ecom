@@ -59,7 +59,7 @@ export class AuthService {
 
   async login(username: string, password: string) {
     const user = await this.validateUser(username, password);
-    const tokens = await this.issueTokens(user._id, user.roles, user.username);
+    const tokens = await this.issueTokens(user._id, user.role, user.username);
     return { ...tokens, mustChangePassword: user.mustChangePassword };
   }
 
@@ -93,19 +93,19 @@ export class AuthService {
       throw new AppException('AUTH_WMS_NOT_INITIALIZED');
     }
 
-    const tokens = await this.issueTokens(user._id, user.roles, user.username);
+    const tokens = await this.issueTokens(user._id, user.role, user.username);
     return { ...tokens, mustChangePassword: user.mustChangePassword };
   }
 
   private async issueTokens(
     userId: Types.ObjectId,
-    roles: string[],
+    role: string,
     username: string,
   ) {
     const payload: JwtPayload = {
       sub: userId.toString(),
       type: 'user',
-      roles,
+      role,
       username,
     };
     const accessToken = await this.jwt.signAsync(payload, {
@@ -136,7 +136,7 @@ export class AuthService {
 
     doc.revokedAt = new Date();
     await doc.save();
-    return this.issueTokens(user._id, user.roles, user.username);
+    return this.issueTokens(user._id, user.role, user.username);
   }
 
   async logout(refreshToken: string) {
@@ -157,8 +157,8 @@ export class AuthService {
       throw new AppException('AUTH_BOOTSTRAP_FORBIDDEN');
     }
     return this.usersService.create(
-      { ...dto, roles: [WmsRole.ADMIN] },
-      { sub: '', roles: [WmsRole.ADMIN] },
+      { ...dto, role: WmsRole.ADMIN },
+      { sub: '', role: WmsRole.ADMIN },
     );
   }
 

@@ -23,7 +23,7 @@ describe('JwtStrategy', () => {
     const payload = {
       sub: 'id1',
       type: 'user' as const,
-      roles: ['ADMIN'],
+      role: 'ADMIN',
       username: 'admin',
     };
     expect(strategy.validate(payload)).toEqual(payload);
@@ -31,7 +31,6 @@ describe('JwtStrategy', () => {
 
   it('validate throw khi type≠user', () => {
     const payload = { sub: 'id1', type: 'customer' as const, email: 'x@x.com' };
-    // @ts-expect-error — kiểm tra runtime guard
     expect(() => strategy.validate(payload)).toThrow();
   });
 });

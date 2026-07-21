@@ -160,7 +160,7 @@ describe('AuthController', () => {
       mockAuthService.me.mockResolvedValue({
         _id: { toString: () => 'uid' },
         username: 'admin',
-        roles: ['ADMIN'],
+        role: 'ADMIN',
         status: 'ACTIVE',
         mustChangePassword: false,
         passwordHash: 'secret',
@@ -171,7 +171,7 @@ describe('AuthController', () => {
       const result = await controller.me('uid');
       expect(result).toBeInstanceOf(UserResponseDto);
       expect(
-        (result as Record<string, unknown>)['passwordHash'],
+        (result as unknown as Record<string, unknown>)['passwordHash'],
       ).toBeUndefined();
       expect(result.id).toBe('uid');
     });
