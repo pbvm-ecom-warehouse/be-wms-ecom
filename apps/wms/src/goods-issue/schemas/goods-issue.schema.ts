@@ -66,6 +66,5 @@ export class GoodsIssue {
 export type GoodsIssueDocument = HydratedDocument<GoodsIssue>;
 export const GoodsIssueSchema = SchemaFactory.createForClass(GoodsIssue);
 
-// 1 đơn 1 phiếu xuất — chặn consumer tạo trùng nếu event redeliver
-GoodsIssueSchema.index({ orderId: 1 }, { unique: true });
+// unique index cho orderId đã khai báo qua @Prop({ unique: true }) ở trên
 GoodsIssueSchema.index({ status: 1 });

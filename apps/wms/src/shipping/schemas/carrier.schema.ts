@@ -44,5 +44,5 @@ export class Carrier {
 export type CarrierDocument = HydratedDocument<Carrier>;
 export const CarrierSchema = SchemaFactory.createForClass(Carrier);
 
-CarrierSchema.index({ code: 1 }, { unique: true });
+// unique index cho code đã khai báo qua @Prop({ unique: true }) ở trên
 CarrierSchema.index({ status: 1 });
