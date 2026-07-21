@@ -94,9 +94,9 @@ describe('UserRepository', () => {
       });
       const repo = new UserRepository(model as never);
 
-      await expect(
-        repo.softDelete('u1', 'actor1' as never),
-      ).resolves.toBe(true);
+      await expect(repo.softDelete('u1', 'actor1' as never)).resolves.toBe(
+        true,
+      );
     });
 
     it('trả false khi không tìm thấy user để xóa', async () => {
@@ -106,9 +106,9 @@ describe('UserRepository', () => {
       });
       const repo = new UserRepository(model as never);
 
-      await expect(
-        repo.softDelete('missing', 'actor1' as never),
-      ).resolves.toBe(false);
+      await expect(repo.softDelete('missing', 'actor1' as never)).resolves.toBe(
+        false,
+      );
     });
   });
 });

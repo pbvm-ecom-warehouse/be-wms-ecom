@@ -2,7 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { appConfig } from '../config/app.config';
-import { UserResponseDto } from './dto/auth.dto';
+import { UserResponseDto } from '../users/dto/user.response.dto';
 
 const mockAuthService = {
   login: jest.fn(),
@@ -11,11 +11,6 @@ const mockAuthService = {
   logout: jest.fn(),
   me: jest.fn(),
   bootstrapAdmin: jest.fn(),
-  createUser: jest.fn(),
-  updateRoles: jest.fn(),
-  lockUser: jest.fn(),
-  unlockUser: jest.fn(),
-  resetTemporaryPassword: jest.fn(),
   changePassword: jest.fn(),
 };
 

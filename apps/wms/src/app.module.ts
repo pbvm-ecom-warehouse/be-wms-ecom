@@ -14,6 +14,7 @@ import { EventsModule } from '@app/events';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { AuthModule } from './auth/auth.module';
+import { UsersModule } from './users/users.module';
 import { HealthModule } from './health/health.module';
 import { StockModule } from './stock/stock.module';
 import { WarehouseModule } from './warehouse/warehouse.module';
@@ -52,7 +53,8 @@ import { validateEnv } from './config/env.validation';
     DatabaseModule.forApp('WMS_DATABASE_URL'), // Mongoose → wms_db
     EventsModule, // BullMQ + Redis
     ScheduleModule.forRoot(), // S4-04: cron NearExpiryScanService (06:00 quét lot sắp hết hạn)
-    AuthModule, // đăng nhập nhân viên (users) + JWT
+    AuthModule, // đăng nhập nhân viên + JWT
+    UsersModule, // CRUD nhân viên cho ADMIN/MANAGER (list/get/create/update/roles/lock/unlock/reset-password/soft-delete)
     HealthModule, // GET /api/wms/health
     StockModule, // producer mẫu: stock.changed
     WarehouseModule, // CRUD cấu trúc kho: Warehouse/Zone/Rack/Shelf

@@ -4,8 +4,6 @@ import {
   Get,
   HttpCode,
   Inject,
-  Param,
-  Patch,
   Post,
   Req,
   Res,
@@ -14,7 +12,6 @@ import {
 import {
   ApiBearerAuth,
   ApiBody,
-  ApiParam,
   ApiCreatedResponse,
   ApiForbiddenResponse,
   ApiOkResponse,
@@ -22,31 +19,25 @@ import {
   ApiTags,
   ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
-import {
-  CurrentUser,
-  JwtAuthGuard,
-  Roles,
-  RolesGuard,
-  WmsRole,
-} from '@app/auth';
+import { CurrentUser, JwtAuthGuard } from '@app/auth';
 import { AppException, AuthThrottle } from '@app/common';
 import type { ConfigType } from '@nestjs/config';
 import { plainToInstance } from 'class-transformer';
 import type { Request, Response } from 'express';
 import { appConfig } from '../config/app.config';
+import { CreateUserDto } from '../users/dto/create-user.dto';
+import {
+  CreateUserResponseDto,
+  UserResponseDto,
+} from '../users/dto/user.response.dto';
 import { AuthService } from './auth.service';
 import {
   AuthTokenResponseDto,
   ChangePasswordDto,
-  CreateUserDto,
-  CreateUserResponseDto,
   GoogleLoginDto,
   LoginDto,
   LogoutDto,
   RefreshDto,
-  ResetUserPasswordDto,
-  UpdateUserRolesDto,
-  UserResponseDto,
 } from './dto/auth.dto';
 
 @ApiTags('auth')
@@ -258,116 +249,6 @@ export class AuthController {
     return plainToInstance(CreateUserResponseDto, user, {
       excludeExtraneousValues: true,
     });
-  }
-
-  @Post('users')
-  @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(WmsRole.ADMIN)
-  @ApiBearerAuth()
-  @ApiOperation({ summary: 'Tạo nhân viên mới — [ADMIN]' })
-  @ApiBody({
-    type: CreateUserDto,
-    examples: {
-      receiver: {
-        value: {
-          username: 'receiver01',
-          password: 'TempP@ssw0rd123!',
-          email: 'receiver01@example.com',
-          name: 'Receiver 01',
-          roles: ['RECEIVER'],
-        },
-      },
-    },
-  })
-  @ApiCreatedResponse({ type: CreateUserResponseDto })
-  async createUser(
-    @Body() dto: CreateUserDto,
-    @CurrentUser('sub') by: string,
-  ): Promise<CreateUserResponseDto> {
-    const user = await this.auth.createUser(dto, by);
-    return plainToInstance(CreateUserResponseDto, user, {
-      excludeExtraneousValues: true,
-    });
-  }
-
-  @Patch('users/:id/roles')
-  @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(WmsRole.ADMIN)
-  @ApiBearerAuth()
-  @ApiOperation({ summary: 'Gán/sửa roles nhân viên — [ADMIN]' })
-  @ApiParam({ name: 'id', description: 'Mongo ObjectId của user' })
-  @ApiBody({
-    type: UpdateUserRolesDto,
-    examples: { roles: { value: { roles: ['RECEIVER', 'PICKER'] } } },
-  })
-  @ApiOkResponse({ type: UserResponseDto })
-  async updateRoles(
-    @Param('id') id: string,
-    @Body() dto: UpdateUserRolesDto,
-    @CurrentUser('sub') by: string,
-  ): Promise<UserResponseDto> {
-    const user = await this.auth.updateRoles(id, dto.roles, by);
-    return plainToInstance(UserResponseDto, user, {
-      excludeExtraneousValues: true,
-    });
-  }
-
-  @Post('users/:id/lock')
-  @HttpCode(200)
-  @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(WmsRole.ADMIN)
-  @ApiBearerAuth()
-  @ApiOperation({
-    summary: 'Khóa tài khoản và revoke tất cả refresh token — [ADMIN]',
-  })
-  @ApiParam({ name: 'id', description: 'Mongo ObjectId của user' })
-  @ApiOkResponse({ type: UserResponseDto })
-  async lockUser(
-    @Param('id') id: string,
-    @CurrentUser('sub') by: string,
-  ): Promise<UserResponseDto> {
-    const user = await this.auth.lockUser(id, by);
-    return plainToInstance(UserResponseDto, user, {
-      excludeExtraneousValues: true,
-    });
-  }
-
-  @Post('users/:id/unlock')
-  @HttpCode(200)
-  @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(WmsRole.ADMIN)
-  @ApiBearerAuth()
-  @ApiOperation({ summary: 'Mở khóa tài khoản — [ADMIN]' })
-  @ApiParam({ name: 'id', description: 'Mongo ObjectId của user' })
-  @ApiOkResponse({ type: UserResponseDto })
-  async unlockUser(
-    @Param('id') id: string,
-    @CurrentUser('sub') by: string,
-  ): Promise<UserResponseDto> {
-    const user = await this.auth.unlockUser(id, by);
-    return plainToInstance(UserResponseDto, user, {
-      excludeExtraneousValues: true,
-    });
-  }
-
-  @Post('users/:id/reset-password')
-  @HttpCode(200)
-  @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(WmsRole.ADMIN)
-  @ApiBearerAuth()
-  @ApiOperation({ summary: 'Reset mật khẩu tạm và bắt đổi mật khẩu — [ADMIN]' })
-  @ApiParam({ name: 'id', description: 'Mongo ObjectId của user' })
-  @ApiBody({
-    type: ResetUserPasswordDto,
-    examples: { reset: { value: { temporaryPassword: 'TempP@ssw0rd123!' } } },
-  })
-  @ApiOkResponse({ description: '{ success: true, mustChangePassword: true }' })
-  resetPassword(
-    @Param('id') id: string,
-    @Body() dto: ResetUserPasswordDto,
-    @CurrentUser('sub') by: string,
-  ): Promise<{ success: boolean; mustChangePassword: boolean }> {
-    return this.auth.resetTemporaryPassword(id, dto.temporaryPassword, by);
   }
 
   @Post('change-password')

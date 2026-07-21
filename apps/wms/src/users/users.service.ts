@@ -72,7 +72,10 @@ export class UsersService {
       roles: dto.roles ?? [],
       passwordHash,
       mustChangePassword: true,
-      createdBy: this.objectId(actor.sub),
+      createdBy:
+        actor.sub && Types.ObjectId.isValid(actor.sub)
+          ? this.objectId(actor.sub)
+          : undefined,
     });
   }
 
