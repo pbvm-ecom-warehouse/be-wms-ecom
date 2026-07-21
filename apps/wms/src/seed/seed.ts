@@ -5,8 +5,9 @@ import { Model } from 'mongoose';
 import { WmsRole } from '@app/auth';
 import { AppModule } from '../app.module';
 import { AuthService } from '../auth/auth.service';
-import { CreateUserDto } from '../auth/dto/auth.dto';
-import { User } from '../auth/schemas/user.schema';
+import { CreateUserDto } from '../users/dto/create-user.dto';
+import { User } from '../users/schemas/user.schema';
+import { UsersService } from '../users/users.service';
 import { WarehouseService } from '../warehouse/warehouse.service';
 import { StockService } from '../stock/stock.service';
 import { SupplierService } from '../supplier/supplier.service';
@@ -45,6 +46,7 @@ async function seedUsers(
   app: INestApplicationContext,
 ): Promise<{ adminId: string }> {
   const authService = app.get(AuthService);
+  const usersService = app.get(UsersService);
   // UserRepository không có method tìm theo username "trần trụi" (chỉ có
   // findActiveByUsername — lọc thêm status: ACTIVE, không hợp cho
   // existence-check trước khi user được tạo/kích hoạt). Theo brief: KHÔNG
@@ -85,7 +87,7 @@ async function seedUsers(
       name: u.name,
       roles: [u.role],
     };
-    await authService.createUser(dto, adminId);
+    await usersService.create(dto, { sub: adminId, roles: [WmsRole.ADMIN] });
     logger.log(`Tạo ${u.username} (${u.role}) / ${SEED_PASSWORD}`);
   }
 

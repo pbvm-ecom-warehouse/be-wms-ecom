@@ -176,6 +176,20 @@ export const ERROR_CATALOG = {
     message:
       'Đơn đặt hàng đã hủy hoặc đã nhận đủ, không thể tạo phiếu nhập mới',
   },
+
+  // ── WMS — Users ────────────────────────────────────────────────────────────
+  USER_NOT_FOUND: {
+    status: HttpStatus.NOT_FOUND,
+    message: 'Không tìm thấy nhân viên',
+  },
+  USER_FORBIDDEN_ADMIN_TARGET: {
+    status: HttpStatus.FORBIDDEN,
+    message: 'Không đủ quyền thao tác với tài khoản có vai trò ADMIN',
+  },
+  USER_CANNOT_DELETE_SELF: {
+    status: HttpStatus.FORBIDDEN,
+    message: 'Không thể tự xóa tài khoản của chính mình',
+  },
 } as const;
 
 export type CommonErrorCode = keyof typeof ERROR_CATALOG;

@@ -13,10 +13,12 @@ import {
 import * as bcrypt from 'bcryptjs';
 import { Types } from 'mongoose';
 import { authConfig } from '../config/auth.config';
-import { ChangePasswordDto, CreateUserDto } from './dto/auth.dto';
+import { CreateUserDto } from '../users/dto/create-user.dto';
+import { UserRepository } from '../users/repositories/user.repository';
+import { UserStatus } from '../users/schemas/user.schema';
+import { UsersService } from '../users/users.service';
+import { ChangePasswordDto } from './dto/auth.dto';
 import { UserRefreshTokenRepository } from './repositories/user-refresh-token.repository';
-import { UserRepository } from './repositories/user.repository';
-import { UserStatus } from './schemas/user.schema';
 
 type MsDuration = Exclude<JwtSignOptions['expiresIn'], number | undefined>;
 
@@ -27,6 +29,7 @@ const INVALID_BCRYPT_HASH = '$2a$12$invalidinvalidinvalidinvalidin';
 export class AuthService {
   constructor(
     private readonly userRepo: UserRepository,
+    private readonly usersService: UsersService,
     private readonly refreshRepo: UserRefreshTokenRepository,
     private readonly jwt: JwtService,
     private readonly firebaseAdmin: FirebaseAdminService,
@@ -153,75 +156,10 @@ export class AuthService {
     if (count > 0) {
       throw new AppException('AUTH_BOOTSTRAP_FORBIDDEN');
     }
-    return this.createUser({ ...dto, roles: [WmsRole.ADMIN] });
-  }
-
-  async createUser(dto: CreateUserDto, createdBy?: string) {
-    const passwordHash = await bcrypt.hash(dto.password, BCRYPT_ROUNDS);
-    const user = await this.userRepo.create({
-      username: dto.username,
-      email: dto.email,
-      name: dto.name,
-      roles: dto.roles ?? [],
-      passwordHash,
-      mustChangePassword: true,
-      createdBy: createdBy ? this.objectId(createdBy) : undefined,
-    });
-    return {
-      id: user._id,
-      username: user.username,
-      email: user.email,
-      roles: user.roles,
-      mustChangePassword: user.mustChangePassword,
-    };
-  }
-
-  async updateRoles(userId: string, roles: string[], actorId: string) {
-    const user = await this.userRepo.updateRoles(
-      this.objectId(userId),
-      roles,
-      this.objectId(actorId),
+    return this.usersService.create(
+      { ...dto, roles: [WmsRole.ADMIN] },
+      { sub: '', roles: [WmsRole.ADMIN] },
     );
-    if (!user) throw new AppException('NOT_FOUND', 'User not found');
-    return user;
-  }
-
-  async lockUser(userId: string, actorId: string) {
-    const user = await this.userRepo.updateStatus(
-      this.objectId(userId),
-      UserStatus.LOCKED,
-      this.objectId(actorId),
-    );
-    if (!user) throw new AppException('NOT_FOUND', 'User not found');
-    await this.refreshRepo.revokeAllForUser(user._id);
-    return user;
-  }
-
-  async unlockUser(userId: string, actorId: string) {
-    const user = await this.userRepo.updateStatus(
-      this.objectId(userId),
-      UserStatus.ACTIVE,
-      this.objectId(actorId),
-    );
-    if (!user) throw new AppException('NOT_FOUND', 'User not found');
-    return user;
-  }
-
-  async resetTemporaryPassword(
-    userId: string,
-    temporaryPassword: string,
-    actorId: string,
-  ) {
-    const passwordHash = await bcrypt.hash(temporaryPassword, BCRYPT_ROUNDS);
-    const user = await this.userRepo.updatePassword(
-      this.objectId(userId),
-      passwordHash,
-      true,
-      this.objectId(actorId),
-    );
-    if (!user) throw new AppException('NOT_FOUND', 'User not found');
-    await this.refreshRepo.revokeAllForUser(user._id);
-    return { success: true, mustChangePassword: user.mustChangePassword };
   }
 
   async changePassword(userId: string, dto: ChangePasswordDto) {
