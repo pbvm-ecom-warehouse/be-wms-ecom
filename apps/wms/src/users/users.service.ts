@@ -14,7 +14,7 @@ const BCRYPT_ROUNDS = 12;
 
 export interface Actor {
   sub: string;
-  roles: string[];
+  role: string;
 }
 
 @Injectable()
@@ -33,12 +33,10 @@ export class UsersService {
    * MANAGER không được tạo/sửa tài khoản ADMIN (chống leo thang quyền).
    * ADMIN luôn qua được — hàm chỉ gọi khi actor KHÔNG có role ADMIN.
    */
-  private assertManagerCanActOnTarget(
-    actor: Actor,
-    targetRolesBeforeAndAfter: string[],
-  ): void {
-    if (actor.roles.includes(WmsRole.ADMIN)) return;
-    if (targetRolesBeforeAndAfter.includes(WmsRole.ADMIN)) {
+  private assertManagerCanActOnTarget(actor: Actor, targetRole: string): void {
+    const adminRole: string = WmsRole.ADMIN;
+    if (actor.role === adminRole) return;
+    if (targetRole === adminRole) {
       throw new AppException('USER_FORBIDDEN_ADMIN_TARGET');
     }
   }
@@ -63,13 +61,13 @@ export class UsersService {
   }
 
   async create(dto: CreateUserDto, actor: Actor): Promise<UserDocument> {
-    this.assertManagerCanActOnTarget(actor, dto.roles ?? []);
+    this.assertManagerCanActOnTarget(actor, dto.role ?? WmsRole.RECEIVER);
     const passwordHash = await bcrypt.hash(dto.password, BCRYPT_ROUNDS);
     return this.userRepo.create({
       username: dto.username,
       email: dto.email,
       name: dto.name,
-      roles: dto.roles ?? [],
+      role: dto.role,
       passwordHash,
       mustChangePassword: true,
       createdBy:
@@ -85,7 +83,7 @@ export class UsersService {
     actor: Actor,
   ): Promise<UserDocument> {
     const target = await this.getById(id);
-    this.assertManagerCanActOnTarget(actor, target.roles);
+    this.assertManagerCanActOnTarget(actor, target.role);
     const updated = await this.userRepo.updateProfile(
       target._id,
       dto,
@@ -95,16 +93,18 @@ export class UsersService {
     return updated;
   }
 
-  async updateRoles(
+  async updateRole(
     id: string,
-    roles: string[],
+    role: WmsRole,
     actor: Actor,
   ): Promise<UserDocument> {
     const target = await this.getById(id);
-    this.assertManagerCanActOnTarget(actor, [...target.roles, ...roles]);
-    const updated = await this.userRepo.updateRoles(
+    // Chặn cả 2 chiều: không cho gỡ role ADMIN của người khác, không cho gán role ADMIN.
+    this.assertManagerCanActOnTarget(actor, target.role);
+    this.assertManagerCanActOnTarget(actor, role);
+    const updated = await this.userRepo.updateRole(
       target._id,
-      roles,
+      role,
       this.objectId(actor.sub),
     );
     if (!updated) throw new AppException('USER_NOT_FOUND');
@@ -113,7 +113,7 @@ export class UsersService {
 
   async lock(id: string, actor: Actor): Promise<UserDocument> {
     const target = await this.getById(id);
-    this.assertManagerCanActOnTarget(actor, target.roles);
+    this.assertManagerCanActOnTarget(actor, target.role);
     const updated = await this.userRepo.updateStatus(
       target._id,
       UserStatus.LOCKED,
@@ -126,7 +126,7 @@ export class UsersService {
 
   async unlock(id: string, actor: Actor): Promise<UserDocument> {
     const target = await this.getById(id);
-    this.assertManagerCanActOnTarget(actor, target.roles);
+    this.assertManagerCanActOnTarget(actor, target.role);
     const updated = await this.userRepo.updateStatus(
       target._id,
       UserStatus.ACTIVE,
@@ -142,7 +142,7 @@ export class UsersService {
     actor: Actor,
   ): Promise<{ success: true; mustChangePassword: true }> {
     const target = await this.getById(id);
-    this.assertManagerCanActOnTarget(actor, target.roles);
+    this.assertManagerCanActOnTarget(actor, target.role);
     const passwordHash = await bcrypt.hash(temporaryPassword, BCRYPT_ROUNDS);
     const updated = await this.userRepo.updatePassword(
       target._id,
@@ -160,7 +160,7 @@ export class UsersService {
       throw new AppException('USER_CANNOT_DELETE_SELF');
     }
     const target = await this.getById(id);
-    this.assertManagerCanActOnTarget(actor, target.roles);
+    this.assertManagerCanActOnTarget(actor, target.role);
     const deleted = await this.userRepo.softDelete(
       target._id,
       this.objectId(actor.sub),

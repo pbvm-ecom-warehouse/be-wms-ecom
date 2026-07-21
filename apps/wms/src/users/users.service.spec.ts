@@ -6,7 +6,7 @@ const makeUserRepo = () => ({
   findActiveById: jest.fn(),
   create: jest.fn(),
   updateProfile: jest.fn(),
-  updateRoles: jest.fn(),
+  updateRole: jest.fn(),
   updateStatus: jest.fn(),
   updatePassword: jest.fn(),
   softDelete: jest.fn(),
@@ -26,8 +26,8 @@ const TARGET_ID = '6a5f13c791e8fea26de53bae';
 const OTHER_TARGET_ID = '6a5f13c791e8fea26de53baf';
 const MISSING_ID = '6a5f13c791e8fea26de53bb0';
 
-const adminActor = { sub: ADMIN_ACTOR_ID, roles: ['ADMIN'] };
-const managerActor = { sub: MANAGER_ACTOR_ID, roles: ['MANAGER'] };
+const adminActor = { sub: ADMIN_ACTOR_ID, role: 'ADMIN' };
+const managerActor = { sub: MANAGER_ACTOR_ID, role: 'MANAGER' };
 
 describe('UsersService', () => {
   let svc: UsersService;
@@ -41,10 +41,10 @@ describe('UsersService', () => {
   });
 
   describe('create — rule leo thang quyền', () => {
-    it('MANAGER tạo user với roles chứa ADMIN → throw USER_FORBIDDEN_ADMIN_TARGET', async () => {
+    it('MANAGER tạo user với role ADMIN → throw USER_FORBIDDEN_ADMIN_TARGET', async () => {
       await expect(
         svc.create(
-          { username: 'x', password: 'p', roles: ['ADMIN'] },
+          { username: 'x', password: 'p', role: 'ADMIN' } as never,
           managerActor,
         ),
       ).rejects.toMatchObject({ code: 'USER_FORBIDDEN_ADMIN_TARGET' });
@@ -55,7 +55,7 @@ describe('UsersService', () => {
       userRepo.create.mockResolvedValue({ _id: 'u1' });
       await expect(
         svc.create(
-          { username: 'x', password: 'p', roles: ['PICKER'] },
+          { username: 'x', password: 'p', role: 'PICKER' } as never,
           managerActor,
         ),
       ).resolves.toMatchObject({ _id: 'u1' });
@@ -65,7 +65,7 @@ describe('UsersService', () => {
       userRepo.create.mockResolvedValue({ _id: 'u1' });
       await expect(
         svc.create(
-          { username: 'x', password: 'p', roles: ['ADMIN'] },
+          { username: 'x', password: 'p', role: 'ADMIN' } as never,
           adminActor,
         ),
       ).resolves.toMatchObject({ _id: 'u1' });
@@ -75,7 +75,7 @@ describe('UsersService', () => {
   describe('update/lock/unlock/resetPassword — chặn MANAGER thao tác target ADMIN', () => {
     const adminTarget = {
       _id: TARGET_ID,
-      roles: ['ADMIN'],
+      role: 'ADMIN',
       username: 'admin2',
     };
 
@@ -114,7 +114,7 @@ describe('UsersService', () => {
   });
 
   describe('lock/unlock — idempotency (gọi lại khi user đã ở đúng trạng thái)', () => {
-    const pickerTarget = { _id: TARGET_ID, roles: ['PICKER'] };
+    const pickerTarget = { _id: TARGET_ID, role: 'PICKER' };
 
     it('lock user đã LOCKED sẵn → vẫn OK, không throw, vẫn revoke token', async () => {
       userRepo.findActiveById.mockResolvedValue({
@@ -158,15 +158,37 @@ describe('UsersService', () => {
     });
   });
 
-  describe('updateRoles — chặn cả gán mới lẫn target hiện có ADMIN', () => {
+  describe('updateRole — chặn cả gán mới lẫn target hiện có ADMIN', () => {
     it('MANAGER gán role ADMIN cho user thường → throw', async () => {
       userRepo.findActiveById.mockResolvedValue({
         _id: OTHER_TARGET_ID,
-        roles: ['PICKER'],
+        role: 'PICKER',
       });
       await expect(
-        svc.updateRoles(OTHER_TARGET_ID, ['ADMIN'], managerActor),
+        svc.updateRole(OTHER_TARGET_ID, 'ADMIN' as never, managerActor),
       ).rejects.toMatchObject({ code: 'USER_FORBIDDEN_ADMIN_TARGET' });
+    });
+
+    it('MANAGER gỡ role ADMIN của user hiện có role ADMIN → throw (chặn chiều target hiện tại)', async () => {
+      userRepo.findActiveById.mockResolvedValue({
+        _id: TARGET_ID,
+        role: 'ADMIN',
+      });
+      await expect(
+        svc.updateRole(TARGET_ID, 'PICKER' as never, managerActor),
+      ).rejects.toMatchObject({ code: 'USER_FORBIDDEN_ADMIN_TARGET' });
+      expect(userRepo.updateRole).not.toHaveBeenCalled();
+    });
+
+    it('ADMIN đổi role bất kỳ → OK', async () => {
+      userRepo.findActiveById.mockResolvedValue({
+        _id: TARGET_ID,
+        role: 'PICKER',
+      });
+      userRepo.updateRole.mockResolvedValue({ _id: TARGET_ID, role: 'ADMIN' });
+      await expect(
+        svc.updateRole(TARGET_ID, 'ADMIN' as never, adminActor),
+      ).resolves.toMatchObject({ role: 'ADMIN' });
     });
   });
 
@@ -181,7 +203,7 @@ describe('UsersService', () => {
     it('MANAGER xóa user ADMIN → throw USER_FORBIDDEN_ADMIN_TARGET', async () => {
       userRepo.findActiveById.mockResolvedValue({
         _id: TARGET_ID,
-        roles: ['ADMIN'],
+        role: 'ADMIN',
       });
       await expect(svc.remove(TARGET_ID, managerActor)).rejects.toMatchObject({
         code: 'USER_FORBIDDEN_ADMIN_TARGET',
@@ -192,7 +214,7 @@ describe('UsersService', () => {
     it('xóa hợp lệ → gọi softDelete', async () => {
       userRepo.findActiveById.mockResolvedValue({
         _id: TARGET_ID,
-        roles: ['PICKER'],
+        role: 'PICKER',
       });
       userRepo.softDelete.mockResolvedValue(true);
       await svc.remove(TARGET_ID, managerActor);
