@@ -10,7 +10,7 @@ export interface CreateUserInput {
   passwordHash: string;
   email?: string;
   name?: string;
-  roles?: string[];
+  role?: WmsRole;
   mustChangePassword?: boolean;
   createdBy?: Types.ObjectId;
 }
@@ -93,7 +93,7 @@ export class UserRepository {
   create(data: CreateUserInput) {
     return this.model.create({
       ...data,
-      roles: data.roles ?? [WmsRole.RECEIVER],
+      role: data.role ?? WmsRole.RECEIVER,
     });
   }
 
@@ -101,7 +101,7 @@ export class UserRepository {
     query: FindAllUsersQuery,
   ): Promise<{ items: UserDocument[]; total: number }> {
     const filter: Record<string, unknown> = { ...SOFT_DELETE_FILTER };
-    if (query.role) filter['roles'] = query.role;
+    if (query.role) filter['role'] = query.role;
     if (query.status) filter['status'] = query.status;
     if (query.warehouseId) filter['warehouseId'] = query.warehouseId;
     if (query.search) {
@@ -125,15 +125,15 @@ export class UserRepository {
     return { items, total };
   }
 
-  updateRoles(
+  updateRole(
     id: string | Types.ObjectId,
-    roles: string[],
+    role: WmsRole,
     updatedBy: Types.ObjectId,
   ) {
     return this.model
       .findOneAndUpdate(
         { _id: id, ...SOFT_DELETE_FILTER },
-        { $set: { roles, updatedBy } },
+        { $set: { role, updatedBy } },
         { new: true },
       )
       .exec();

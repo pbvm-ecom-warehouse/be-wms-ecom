@@ -11,6 +11,7 @@ export enum UserStatus {
 /**
  * Nhân viên WMS — danh bạ nhân viên DUY NHẤT cho cả kho lẫn back-office shop.
  * Nhóm MASTER → audit đầy đủ + soft-delete (deletedAt). collection giữ tên 'users'.
+ * Mỗi nhân viên chỉ có ĐÚNG 1 role (không multi-role).
  */
 @Schema({ collection: 'users', timestamps: true })
 export class User {
@@ -30,8 +31,8 @@ export class User {
   @Prop()
   name?: string;
 
-  @Prop({ type: [String], enum: WmsRole, default: [] })
-  roles: string[];
+  @Prop({ type: String, enum: WmsRole, required: true })
+  role: WmsRole;
 
   @Prop({ enum: UserStatus, default: UserStatus.ACTIVE })
   status: UserStatus;

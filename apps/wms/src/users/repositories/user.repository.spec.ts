@@ -12,6 +12,7 @@ const makeModel = () => {
   return {
     find: jest.fn().mockReturnValue(chain),
     countDocuments: jest.fn().mockReturnValue({ exec: jest.fn() }),
+    findOneAndUpdate: jest.fn().mockReturnValue({ exec: jest.fn() }),
     updateOne: jest.fn().mockReturnValue({ exec: jest.fn() }),
     __chain: chain,
   };
@@ -76,13 +77,29 @@ describe('UserRepository', () => {
       expect(model.find).toHaveBeenCalledWith(
         expect.objectContaining({
           deletedAt: null,
-          roles: 'PICKER',
+          role: 'PICKER',
           status: UserStatus.LOCKED,
           warehouseId: 'wh1',
         }),
       );
       expect(model.__chain.skip).toHaveBeenCalledWith(10); // (page-1)*limit
       expect(model.__chain.limit).toHaveBeenCalledWith(10);
+    });
+  });
+
+  describe('updateRole', () => {
+    it('cập nhật một role cùng updatedBy và bỏ qua user đã soft-delete', async () => {
+      const model = makeModel();
+      const repo = new UserRepository(model as never);
+      const updatedBy = 'actor1' as never;
+
+      await repo.updateRole('u1', 'PICKER' as never, updatedBy);
+
+      expect(model.findOneAndUpdate).toHaveBeenCalledWith(
+        { _id: 'u1', deletedAt: null },
+        { $set: { role: 'PICKER', updatedBy } },
+        { new: true },
+      );
     });
   });
 
