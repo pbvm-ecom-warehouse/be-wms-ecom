@@ -14,8 +14,8 @@ import { AuthUser } from '../jwt-payload.interface';
  * Kiểm tra role nhân viên WMS. Đặt SAU JwtAuthGuard (cần request.user đã có).
  *
  * - Route không khai @Roles → cho qua (chỉ cần đăng nhập).
- * - ADMIN luôn bypass.
- * - Còn lại: cho qua nếu user.roles giao với danh sách role yêu cầu.
+ * - ADMIN/ECOM_MANAGER luôn bypass.
+ * - Còn lại: cho qua nếu user.role nằm trong danh sách role yêu cầu của route.
  */
 @Injectable()
 export class RolesGuard implements CanActivate {
@@ -31,11 +31,10 @@ export class RolesGuard implements CanActivate {
     const req = context
       .switchToHttp()
       .getRequest<Request & { user?: AuthUser }>();
-    const roles = req.user?.roles ?? [];
+    const role = req.user?.role;
 
-    if (roles.includes(WmsRole.ADMIN) || roles.includes(EcomRole.ECOM_MANAGER))
-      return true; // ADMIN/ECOM_MANAGER toàn quyền
-    if (roles.some((r) => required.includes(r))) return true;
+    if (role === WmsRole.ADMIN || role === EcomRole.ECOM_MANAGER) return true;
+    if (role !== undefined && required.includes(role)) return true;
 
     throw new ForbiddenException('Không đủ quyền truy cập tài nguyên này');
   }
