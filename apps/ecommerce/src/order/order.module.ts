@@ -25,7 +25,11 @@ import { CacheModule } from '../cache/cache.module';
       { name: Order.name, schema: OrderSchema },
       { name: PaymentTransaction.name, schema: PaymentTransactionSchema },
     ]),
-    BullModule.registerQueue({ name: QUEUES.ORDER }, { name: QUEUES.SHIPMENT }),
+    BullModule.registerQueue(
+      { name: QUEUES.ORDER },
+      { name: QUEUES.SHIPMENT },
+      { name: QUEUES.NOTIFICATION },
+    ),
     AuthModule,
     CartModule,
     CacheModule,

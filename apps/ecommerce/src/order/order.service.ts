@@ -14,6 +14,7 @@ import {
 import { TxnStatus, TxnType } from './schemas/payment-transaction.schema';
 import { Types } from 'mongoose';
 import { PaymentService } from './payment.service';
+import { UserRepository } from '../auth/repositories/user.repository';
 
 const DUPLICATE_KEY_CODE = 11000;
 
@@ -24,8 +25,10 @@ export class OrderService {
   constructor(
     private readonly repo: OrderRepository,
     @InjectQueue(QUEUES.ORDER) private readonly orderQueue: Queue,
+    @InjectQueue(QUEUES.NOTIFICATION) private readonly notifyQueue: Queue,
     @Inject(forwardRef(() => PaymentService))
     private readonly paymentService: PaymentService,
+    private readonly userRepo: UserRepository,
   ) {}
 
   async findById(id: string) {
@@ -174,6 +177,20 @@ export class OrderService {
       );
     }
 
+    // Phát sự kiện thanh toán thành công để gửi email thông báo
+    try {
+      const user = await this.userRepo.findActiveById(order.customerId);
+      const customerEmail = user?.email ?? '';
+      await this.notifyQueue.add(EVENTS.PAYMENT_SUCCESS, {
+        orderId: order._id.toString(),
+        customerEmail,
+        amount: order.total,
+      });
+      this.logger.log(`Phát sự kiện PAYMENT_SUCCESS thành công cho đơn ${order.code}`);
+    } catch (err: any) {
+      this.logger.error(`Lỗi khi phát sự kiện PAYMENT_SUCCESS cho đơn ${order.code}:`, err);
+    }
+ 
     return updated;
   }
 

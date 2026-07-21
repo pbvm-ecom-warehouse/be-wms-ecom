@@ -7,6 +7,7 @@ import {
   Body,
   HttpCode,
   UseGuards,
+  Res,
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
