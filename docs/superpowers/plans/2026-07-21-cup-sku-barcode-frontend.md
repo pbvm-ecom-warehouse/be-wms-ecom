@@ -1,8 +1,8 @@
-# Cup SKU and EAN-13 Frontend Implementation Plan
+# Warehouse Item SKU Templates and EAN-13 Frontend Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Thay form nhập SKU/barcode thủ công của `CUP_BLANK` bằng lựa chọn thuộc tính, SKU preview read-only và màn hình kết quả barcode EAN-13.
+**Goal:** Thay form nhập SKU/barcode thủ công của `CUP_BLANK`, `MATERIAL`, `PACKAGING` bằng template thuộc tính, SKU preview read-only và màn hình kết quả barcode EAN-13.
 
 **Architecture:** Service layer giữ toàn bộ API types/functions. Dialog tạo item được tách khỏi `warehouse-items-client.tsx`; component template fields chỉ render contract BE trả về. React Query quản lý template/preview/options và debounce preview 400 ms.
 
@@ -11,10 +11,10 @@
 ## Global Constraints
 
 - Repo: `pbvm-ecom-warehouse/fe-pbvm-warehouse`, branch mặc định `main`.
-- Không sinh barcode nội bộ ở FE và không gửi `sku`/`barcode` khi tạo `CUP_BLANK`.
+- Không sinh barcode nội bộ ở FE và không gửi `sku`/`barcode` khi tạo item theo template.
 - SKU preview luôn read-only; BE response sau create là nguồn sự thật.
 - ADMIN quản lý option; MANAGER chỉ dùng option active để tạo item.
-- Giữ form legacy cho item type chưa có template.
+- Không cho tạo thủ công `CUP_PRINTED`; loại này được sinh qua print-job.
 
 ---
 
@@ -47,7 +47,11 @@ Expected: FAIL because functions/types do not exist.
 - [ ] **Step 3: Implement exact API types**
 
 ```ts
-export type AttributeKey = 'CUP_STYLE' | 'MATERIAL' | 'CAPACITY' | 'COLOR';
+export type AttributeKey =
+  | 'CUP_STYLE' | 'MATERIAL' | 'CAPACITY' | 'COLOR'
+  | 'MATERIAL_CATEGORY' | 'MATERIAL_TYPE' | 'FLAVOR' | 'SPEC'
+  | 'PACKAGING_CATEGORY' | 'PACKAGING_STYLE' | 'COMPATIBILITY'
+  | 'DIAMETER' | 'LENGTH' | 'SIZE';
 export type AttributeOption = {
   id: string; key: AttributeKey; name: string; code: string;
   isActive: boolean; sortOrder: number; used: boolean;
@@ -56,11 +60,16 @@ export type SkuTemplateField = {
   key: AttributeKey; label: string; required: true; options: AttributeOption[];
 };
 export type SkuTemplate = {
-  type: 'CUP_BLANK'; prefix: 'CUP'; fields: SkuTemplateField[];
+  templateId: string;
+  type: 'CUP_BLANK' | 'MATERIAL' | 'PACKAGING';
+  prefix: string;
+  category?: { key: AttributeKey; optionId: string; code: string };
+  fields: SkuTemplateField[];
 };
-export type CupBlankCreateInput = Omit<CreateWarehouseItemInput, 'sku' | 'barcode' | 'attributes'> & {
-  type: 'CUP_BLANK';
-  attributeOptionIds: Record<AttributeKey, string>;
+export type TemplatedWarehouseItemCreateInput = Omit<CreateWarehouseItemInput, 'sku' | 'barcode' | 'attributes'> & {
+  type: 'CUP_BLANK' | 'MATERIAL' | 'PACKAGING';
+  templateId: string;
+  attributeOptionIds: Partial<Record<AttributeKey, string>>;
 };
 ```
 
@@ -74,7 +83,7 @@ Commit: `feat(products): add generated SKU API contract`
 
 ---
 
-### Task 2: CUP_BLANK create dialog and SKU preview
+### Task 2: Template-driven create dialog and SKU preview
 
 **Files:**
 - Create: `src/features/products/components/create-warehouse-item-dialog.tsx`
@@ -88,7 +97,7 @@ Commit: `feat(products): add generated SKU API contract`
 
 - [ ] **Step 1: Write failing UI tests**
 
-Render dialog with mocked template. Assert four selects render in BE order; selecting HRT/PET/500/CLR renders `CUP-HRT-PET-500-CLR`; there is no editable SKU or primary barcode input; preview fires once after 400 ms; duplicate preview disables submit.
+Render dialog with mocked templates. Assert CUP renders four selects; MATERIAL and PACKAGING render category first then child fields; STRAW renders diameter/length/color; there is no editable SKU or primary barcode input; preview fires once after 400 ms; duplicate preview disables submit.
 
 - [ ] **Step 2: Verify RED**
 
@@ -114,11 +123,11 @@ Expected: FAIL because dialog does not exist.
 ))}
 ```
 
-Compute immediate preview from selected option codes; debounce complete selection 400 ms and confirm with preview API. Incomplete selection never calls preview. Keep legacy fields for non-CUP_BLANK type.
+Compute immediate preview from selected option codes; debounce complete selection 400 ms and confirm with preview API. Incomplete selection never calls preview. For MATERIAL/PACKAGING, changing category clears stale child selections, cancels the old preview and resolves a new child template. Hide/disable CUP_PRINTED in the public create form.
 
 - [ ] **Step 4: Submit canonical payload and show API errors**
 
-For CUP_BLANK send option IDs, name/unit/stock metadata and alternate barcodes only. Map `STOCK_ITEM_SKU_CONFLICT` and `STOCK_ITEM_BARCODE_CONFLICT` into inline banners; keep toast for connection/unexpected errors.
+For every templated type send template ID, option IDs, name/unit/stock metadata and alternate barcodes only. Map `STOCK_ITEM_SKU_CONFLICT`, template/option errors and `STOCK_ITEM_BARCODE_CONFLICT` into inline banners; keep toast for connection/unexpected errors.
 
 - [ ] **Step 5: Run tests and commit**
 
@@ -142,7 +151,7 @@ Commit: `feat(products): create cups from read-only generated SKU`
 
 - [ ] **Step 1: Write failing tests**
 
-Assert blank/duplicate alternate codes are rejected locally; successful response keeps dialog open; SKU and barcode response values render with copy buttons; “Tạo mặt hàng tiếp” resets form. Assert “In tem” is disabled with explanatory tooltip when no print endpoint/callback exists.
+Assert blank/duplicate alternate codes are rejected locally; successful response keeps dialog open; SKU and barcode response values render with copy buttons; “Tạo mặt hàng tiếp” resets type/category/template/selection. Assert “In tem” is disabled with explanatory tooltip when no print endpoint/callback exists.
 
 - [ ] **Step 2: Verify RED**
 
@@ -181,7 +190,7 @@ Commit: `feat(products): show generated SKU and barcode after create`
 
 - [ ] **Step 1: Write failing tests**
 
-Assert button/dialog is absent for MANAGER; ADMIN sees tabs Kiểu ly/Chất liệu/Dung tích/Màu sắc; typing “Ly nắp tim” requests and fills suggested `LNT`; submit remains disabled until ADMIN focuses/confirms the code field; used option code is read-only; deactivate replaces delete.
+Assert button/dialog is absent for MANAGER; ADMIN sees metadata-driven groups for cup/material/packaging; typing “Ly nắp tim” requests and fills suggested `LNT`; submit remains disabled until ADMIN focuses/confirms the code field; used option code is read-only; deactivate replaces delete. Category groups do not show create action because adding a category also requires a BE template registry entry.
 
 - [ ] **Step 2: Verify RED**
 
@@ -210,7 +219,7 @@ Commit: `feat(products): manage SKU attribute options`
 
 - [ ] **Step 1: Add mocked/integration browser path**
 
-Cover ADMIN opens create dialog, selects CUP_BLANK attributes, sees read-only SKU, creates, sees returned barcode, copies it and resets. Cover conflict response keeping selections intact.
+Cover ADMIN creates one CUP, one syrup material and one straw packaging item; each shows the expected read-only SKU and returned barcode. Cover category switching and conflict response keeping current valid selections intact.
 
 - [ ] **Step 2: Run focused and full checks**
 

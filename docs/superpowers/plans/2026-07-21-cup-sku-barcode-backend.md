@@ -1,17 +1,17 @@
-# Cup SKU and EAN-13 Backend Implementation Plan
+# Warehouse Item SKU Templates and EAN-13 Backend Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Sinh SKU có ý nghĩa và barcode EAN-13 duy nhất khi WMS tạo `CUP_BLANK`, đồng thời cung cấp danh mục thuộc tính do ADMIN quản lý.
+**Goal:** Sinh SKU có ý nghĩa và barcode EAN-13 duy nhất khi WMS tạo `CUP_BLANK`, `MATERIAL`, `PACKAGING`, đồng thời cung cấp danh mục thuộc tính do ADMIN quản lý.
 
-**Architecture:** Giữ template `CUP-{CUP_STYLE}-{MATERIAL}-{CAPACITY}-{COLOR}` trong BE; option value nằm trong MongoDB. `SkuBuilderService` là nguồn sinh SKU duy nhất. `BarcodeService` cấp sequence atomic, tính checksum; `barcode_registry` là nguồn định danh quét duy nhất cho primary/alternate barcode.
+**Architecture:** Template registry trong BE resolve template theo item type và category; option value nằm trong MongoDB. `SkuBuilderService` là nguồn sinh SKU duy nhất. `BarcodeService` cấp sequence atomic, tính checksum; `barcode_registry` là nguồn định danh quét duy nhất cho primary/alternate barcode.
 
 **Tech Stack:** NestJS 11, TypeScript, Mongoose, MongoDB transaction, class-validator, Jest.
 
 ## Global Constraints
 
-- Chỉ thay contract tạo tự động cho `type=CUP_BLANK`; item type khác giữ contract cũ.
-- SKU `CUP_BLANK` không nhận từ client, immutable và unique kể cả item soft-delete.
+- Thay contract tạo tự động cho `CUP_BLANK`, `MATERIAL`, `PACKAGING`; `CUP_PRINTED` chỉ do print-job tạo.
+- SKU theo template không nhận từ client, immutable và unique kể cả item soft-delete.
 - Barcode nội bộ gồm prefix `20`, sequence 10 chữ số và checksum EAN-13.
 - ADMIN quản lý option; ADMIN và MANAGER được đọc option active/template.
 - Không đọc chéo Ecommerce DB và không thêm dependency mới.
@@ -53,6 +53,16 @@ export enum AttributeKey {
   MATERIAL = 'MATERIAL',
   CAPACITY = 'CAPACITY',
   COLOR = 'COLOR',
+  MATERIAL_CATEGORY = 'MATERIAL_CATEGORY',
+  MATERIAL_TYPE = 'MATERIAL_TYPE',
+  FLAVOR = 'FLAVOR',
+  SPEC = 'SPEC',
+  PACKAGING_CATEGORY = 'PACKAGING_CATEGORY',
+  PACKAGING_STYLE = 'PACKAGING_STYLE',
+  COMPATIBILITY = 'COMPATIBILITY',
+  DIAMETER = 'DIAMETER',
+  LENGTH = 'LENGTH',
+  SIZE = 'SIZE',
 }
 
 @Schema({ collection: 'item_attribute_options', timestamps: true })
@@ -75,7 +85,9 @@ Suggestion: bỏ dấu bằng `normalize('NFD')`, loại combining marks, tách 
 
 - [ ] **Step 4: Register schema and seed idempotently**
 
-Seed `RND/SQR/HRT`, `PET/PLA`, `350/500`, `CLR/RED` bằng upsert `{key,code}`; không overwrite tên option đã được ADMIN sửa.
+Seed option CUP; material category `TEA/MILK/SUGAR/TOPPING/SYRUP/POWDER`;
+packaging category `LID/STRAW/BAG/BOX`; và các option ví dụ trong spec bằng
+upsert `{key,code}`; không overwrite tên option đã được ADMIN sửa.
 
 - [ ] **Step 5: Run tests and commit**
 
@@ -85,7 +97,7 @@ Commit: `feat(wms): add SKU attribute option catalog`
 
 ---
 
-### Task 2: SKU template and builder
+### Task 2: SKU template registry, resolver and builder
 
 **Files:**
 - Create: `apps/wms/src/stock/services/sku-builder.service.ts`
@@ -96,7 +108,7 @@ Commit: `feat(wms): add SKU attribute option catalog`
 
 **Interfaces:**
 - Consumes: `AttributeKey`, active `ItemAttributeOption` rows.
-- Produces: `CUP_BLANK_ATTRIBUTE_ORDER`, `buildCupBlankSku(optionsByKey)`, attribute snapshots with `key` and `optionId`.
+- Produces: `SKU_TEMPLATE_REGISTRY`, `resolveTemplate(type, categoryCode)`, `buildSku(template, optionsByKey)`, attribute snapshots with `key` and `optionId`.
 
 - [ ] **Step 1: Write failing builder tests**
 
@@ -107,8 +119,10 @@ const options = new Map([
   [AttributeKey.CUP_STYLE, option(AttributeKey.CUP_STYLE, 'HRT')],
   [AttributeKey.MATERIAL, option(AttributeKey.MATERIAL, 'PET')],
 ]);
-expect(service.buildCupBlankSku(options)).toBe('CUP-HRT-PET-500-CLR');
-expect(() => service.buildCupBlankSku(new Map())).toThrow();
+expect(service.buildSku(service.resolveTemplate('CUP_BLANK'), options)).toBe('CUP-HRT-PET-500-CLR');
+expect(service.resolveTemplate('MATERIAL', 'SYRUP')).toMatchObject({ prefix: ['MAT', 'SYR'], fields: ['FLAVOR', 'SPEC'] });
+expect(service.resolveTemplate('PACKAGING', 'STRAW')).toMatchObject({ prefix: ['PKG', 'STR'], fields: ['DIAMETER', 'LENGTH', 'COLOR'] });
+expect(() => service.resolveTemplate('PACKAGING', 'UNKNOWN')).toThrow();
 ```
 
 - [ ] **Step 2: Verify RED**
@@ -119,22 +133,29 @@ Expected: FAIL because builder is missing.
 - [ ] **Step 3: Implement fixed ordered template**
 
 ```ts
-export const CUP_BLANK_ATTRIBUTE_ORDER = [
-  AttributeKey.CUP_STYLE,
-  AttributeKey.MATERIAL,
-  AttributeKey.CAPACITY,
-  AttributeKey.COLOR,
-] as const;
+export const SKU_TEMPLATE_REGISTRY: SkuTemplateDefinition[] = [
+  { id: 'CUP_BLANK:DEFAULT', type: ItemType.CUP_BLANK, prefix: ['CUP'], fields: [AttributeKey.CUP_STYLE, AttributeKey.MATERIAL, AttributeKey.CAPACITY, AttributeKey.COLOR] },
+  { id: 'MATERIAL:TEA', type: ItemType.MATERIAL, categoryCode: 'TEA', prefix: ['MAT', 'TEA'], fields: [AttributeKey.MATERIAL_TYPE, AttributeKey.FLAVOR, AttributeKey.SPEC] },
+  { id: 'MATERIAL:MILK', type: ItemType.MATERIAL, categoryCode: 'MILK', prefix: ['MAT', 'MILK'], fields: [AttributeKey.MATERIAL_TYPE, AttributeKey.SPEC] },
+  { id: 'MATERIAL:SUGAR', type: ItemType.MATERIAL, categoryCode: 'SUGAR', prefix: ['MAT', 'SUGAR'], fields: [AttributeKey.MATERIAL_TYPE, AttributeKey.SPEC] },
+  { id: 'MATERIAL:TOPPING', type: ItemType.MATERIAL, categoryCode: 'TOPPING', prefix: ['MAT', 'TOP'], fields: [AttributeKey.MATERIAL_TYPE, AttributeKey.FLAVOR, AttributeKey.SPEC] },
+  { id: 'MATERIAL:SYRUP', type: ItemType.MATERIAL, categoryCode: 'SYRUP', prefix: ['MAT', 'SYR'], fields: [AttributeKey.FLAVOR, AttributeKey.SPEC] },
+  { id: 'MATERIAL:POWDER', type: ItemType.MATERIAL, categoryCode: 'POWDER', prefix: ['MAT', 'PWD'], fields: [AttributeKey.FLAVOR, AttributeKey.SPEC] },
+  { id: 'PACKAGING:LID', type: ItemType.PACKAGING, categoryCode: 'LID', prefix: ['PKG', 'LID'], fields: [AttributeKey.PACKAGING_STYLE, AttributeKey.COMPATIBILITY, AttributeKey.COLOR] },
+  { id: 'PACKAGING:STRAW', type: ItemType.PACKAGING, categoryCode: 'STRAW', prefix: ['PKG', 'STR'], fields: [AttributeKey.DIAMETER, AttributeKey.LENGTH, AttributeKey.COLOR] },
+  { id: 'PACKAGING:BAG', type: ItemType.PACKAGING, categoryCode: 'BAG', prefix: ['PKG', 'BAG'], fields: [AttributeKey.MATERIAL, AttributeKey.SIZE, AttributeKey.COLOR] },
+  { id: 'PACKAGING:BOX', type: ItemType.PACKAGING, categoryCode: 'BOX', prefix: ['PKG', 'BOX'], fields: [AttributeKey.MATERIAL, AttributeKey.SIZE, AttributeKey.COLOR] },
+];
 
-buildCupBlankSku(options: Map<AttributeKey, ItemAttributeOption>): string {
-  const segments = CUP_BLANK_ATTRIBUTE_ORDER.map((key) => {
+buildSku(template: SkuTemplateDefinition, options: Map<AttributeKey, ItemAttributeOption>): string {
+  const optionSegments = template.fields.map((key) => {
     const option = options.get(key);
     if (!option || !option.isActive || option.deletedAt) {
       throw new AppException('STOCK_ATTRIBUTE_OPTION_NOT_FOUND');
     }
     return option.code;
   });
-  return ['CUP', ...segments].join('-');
+  return [...template.prefix, ...optionSegments].join('-');
 }
 ```
 
@@ -147,7 +168,7 @@ Expected: PASS.
 
 - [ ] **Step 5: Commit**
 
-Commit: `feat(wms): build CUP_BLANK SKU from catalog options`
+Commit: `feat(wms): build warehouse SKU from type templates`
 
 ---
 
@@ -206,7 +227,7 @@ Commit: `feat(wms): add atomic internal EAN-13 barcode generation`
 
 ---
 
-### Task 4: Preview, create and ADMIN APIs
+### Task 4: Root/child template, preview, create and ADMIN APIs
 
 **Files:**
 - Modify: `apps/wms/src/stock/dto/create-warehouse-item.dto.ts`
@@ -222,7 +243,7 @@ Commit: `feat(wms): add atomic internal EAN-13 barcode generation`
 
 - [ ] **Step 1: Add failing service tests**
 
-Cover: unordered option IDs build the canonical SKU; inactive/wrong-group option fails; create ignores client SKU for CUP_BLANK; duplicate SKU maps to `STOCK_ITEM_SKU_CONFLICT`; duplicate registry code maps to `STOCK_ITEM_BARCODE_CONFLICT`; used option code is immutable.
+Cover: root template returns category options; category resolves correct child template; unordered option IDs build canonical SKU for CUP/MATERIAL/PACKAGING; inactive/wrong-group option fails; create ignores client SKU for templated types; duplicate SKU maps to `STOCK_ITEM_SKU_CONFLICT`; duplicate registry code maps to `STOCK_ITEM_BARCODE_CONFLICT`; used option code is immutable.
 
 - [ ] **Step 2: Verify RED**
 
@@ -239,16 +260,17 @@ export class CreateCupBlankAttributeSelectionDto {
   @IsMongoId() COLOR!: string;
 }
 
-// On type=CUP_BLANK, service requires attributeOptionIds and does not use dto.sku/dto.barcode.
+// On CUP_BLANK/MATERIAL/PACKAGING, service requires templateId + option IDs and does not use dto.sku/dto.barcode.
 const options = await repo.findActiveAttributeOptions(dto.attributeOptionIds);
-const sku = skuBuilder.buildCupBlankSku(toOptionMap(options));
+const template = skuBuilder.resolveAndValidateTemplate(dto.type, dto.templateId, options);
+const sku = skuBuilder.buildSku(template, toOptionMap(options));
 const barcode = await barcodeService.generateInternalBarcode();
 return transactionHelper.run((session) =>
   repo.createItemWithBarcodeRegistry({ ...data, sku, barcode, attributes }, session),
 );
 ```
 
-Keep legacy create path for `MATERIAL`, `PACKAGING` and internal `CUP_PRINTED` creation. Catch Mongo `11000` by inspected index/key, never map every duplicate blindly to SKU.
+Keep only the internal `CUP_PRINTED` creation path outside the public template contract. Catch Mongo `11000` by inspected index/key, never map every duplicate blindly to SKU.
 
 - [ ] **Step 4: Add controller routes and roles**
 
@@ -311,7 +333,7 @@ Commit: `feat(wms): backfill and resolve scan codes through barcode registry`
 
 - [ ] **Step 1: Add E2E scenario**
 
-Create/seed options, preview `CUP-HRT-PET-500-CLR`, create CUP_BLANK without SKU/barcode, assert returned EAN-13, assert second create returns 409, and confirm put-away scan resolves the returned barcode.
+Create/seed options; preview and create one SKU for each type (`CUP-HRT-PET-500-CLR`, `MAT-SYR-PEACH-750ML`, `PKG-STR-12MM-230MM-BLK`) without client SKU/barcode; assert returned EAN-13, duplicate returns 409, and put-away scan resolves the returned barcode.
 
 - [ ] **Step 2: Run E2E and fix only contract defects**
 

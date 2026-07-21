@@ -1,7 +1,7 @@
-# Tạo mặt hàng ly với SKU có ý nghĩa và barcode EAN-13 — Design Spec
+# Tạo mặt hàng kho với SKU theo template và barcode EAN-13 — Design Spec
 
 **Ngày:** 2026-07-21  
-**Scope:** WMS — tạo `CUP_BLANK`, danh mục thuộc tính SKU và barcode nội bộ  
+**Scope:** WMS — tạo `CUP_BLANK`, `MATERIAL`, `PACKAGING`, danh mục thuộc tính SKU và barcode nội bộ  
 **Trạng thái:** Approved, chờ implementation
 
 ---
@@ -9,8 +9,9 @@
 ## Mục tiêu
 
 - Người dùng không nhập hoặc sửa SKU trực tiếp.
-- SKU `CUP_BLANK` được sinh từ template theo loại mặt hàng:
-  `CUP-{CUP_STYLE}-{MATERIAL}-{CAPACITY}-{COLOR}`.
+- SKU được sinh từ template theo loại mặt hàng và nhóm con. `CUP_BLANK` dùng
+  `CUP-{CUP_STYLE}-{MATERIAL}-{CAPACITY}-{COLOR}`; `MATERIAL` và `PACKAGING`
+  resolve template sau khi người dùng chọn nhóm nguyên liệu/bao bì.
 - ADMIN quản lý các lựa chọn dùng để sinh SKU trong database; thêm lựa chọn mới
   không cần sửa FE.
 - Mỗi mặt hàng mới nhận một barcode nội bộ EAN-13 dạng số, do BE sinh và bảo
@@ -39,7 +40,8 @@ Barcode: 20xxxxxxxxxxC
 ### Trong scope
 
 - Template và form tạo `CUP_BLANK`.
-- Danh mục `CUP_STYLE`, `MATERIAL`, `CAPACITY`, `COLOR` do ADMIN quản lý.
+- Template theo nhóm con và form tạo `MATERIAL`, `PACKAGING`.
+- Danh mục option phục vụ mọi segment SKU do ADMIN quản lý.
 - Gợi ý code khi ADMIN tạo lựa chọn; ADMIN phải xác nhận trước khi lưu.
 - Preview và kiểm tra khả dụng của SKU.
 - BE sinh lại SKU khi tạo, không tin SKU do client ghép.
@@ -50,8 +52,6 @@ Barcode: 20xxxxxxxxxxC
 
 ### Ngoài scope
 
-- Template SKU chi tiết cho `MATERIAL` và `PACKAGING`; cần chốt thuộc tính
-  nghiệp vụ riêng trước khi triển khai.
 - Tạo thủ công `CUP_PRINTED`; loại này tiếp tục được tạo từ print job theo
   blank SKU và design code.
 - Tạo hàng loạt bằng ma trận biến thể.
@@ -67,24 +67,49 @@ Barcode: 20xxxxxxxxxxC
 
 - SKU cuối cùng do BE sinh từ các option ID, không nhận chuỗi SKU làm nguồn sự
   thật từ FE.
-- Template `CUP_BLANK` cố định trong phiên bản này:
+- Template `CUP_BLANK`:
 
 ```text
 CUP-{CUP_STYLE}-{MATERIAL}-{CAPACITY}-{COLOR}
 ```
 
+Template `MATERIAL` theo nhóm con:
+
+| Nhóm | Template | Ví dụ |
+|---|---|---|
+| Trà `TEA` | `MAT-TEA-{MATERIAL_TYPE}-{FLAVOR}-{SPEC}` | `MAT-TEA-BLK-ORG-500G` |
+| Sữa `MILK` | `MAT-MILK-{MATERIAL_TYPE}-{SPEC}` | `MAT-MILK-WHOLE-1KG` |
+| Đường `SUGAR` | `MAT-SUGAR-{MATERIAL_TYPE}-{SPEC}` | `MAT-SUGAR-BROWN-1KG` |
+| Topping `TOPPING` | `MAT-TOP-{MATERIAL_TYPE}-{FLAVOR}-{SPEC}` | `MAT-TOP-JELLY-PEACH-1KG` |
+| Syrup `SYRUP` | `MAT-SYR-{FLAVOR}-{SPEC}` | `MAT-SYR-PEACH-750ML` |
+| Bột `POWDER` | `MAT-PWD-{FLAVOR}-{SPEC}` | `MAT-PWD-MATCHA-500G` |
+
+Template `PACKAGING` theo nhóm con:
+
+| Nhóm | Template | Ví dụ |
+|---|---|---|
+| Nắp ly `LID` | `PKG-LID-{PACKAGING_STYLE}-{COMPATIBILITY}-{COLOR}` | `PKG-LID-HRT-95MM-CLR` |
+| Ống hút `STRAW` | `PKG-STR-{DIAMETER}-{LENGTH}-{COLOR}` | `PKG-STR-12MM-230MM-BLK` |
+| Túi `BAG` | `PKG-BAG-{MATERIAL}-{SIZE}-{COLOR}` | `PKG-BAG-KRAFT-L-BRN` |
+| Hộp `BOX` | `PKG-BOX-{MATERIAL}-{SIZE}-{COLOR}` | `PKG-BOX-PAPER-20X20-WHT` |
+
+`SPEC` mô tả quy cách của một đơn vị tồn (`500G`, `1KG`, `750ML`), không lấy
+đơn vị nhập hàng như thùng/bao từ `altUnits` để ghép SKU.
+
 - Mỗi segment được chuẩn hóa thành chữ hoa và chỉ chứa `[A-Z0-9]`.
 - SKU chỉ chứa `[A-Z0-9-]`, không có dấu cách, không có hai dấu `-` liên tiếp.
 - SKU immutable sau khi tạo.
 - SKU unique toàn bộ `warehouse_items`, kể cả item đã soft-delete.
+- `CUP_PRINTED` không xuất hiện trong form tạo thủ công; print-job sinh SKU từ
+  blank SKU và design code, ví dụ `CUP-HRT-PET-500-CLR-DSG042`.
 - Preview từ FE chỉ phục vụ UX; endpoint create luôn tải lại option, ghép lại
   SKU và kiểm tra unique.
 - Mongo duplicate key `11000` phải được map thành `STOCK_ITEM_SKU_CONFLICT` để
   xử lý race condition giữa hai request tạo đồng thời.
 
-### 2. Danh mục thuộc tính
+### 2. Danh mục thuộc tính và template
 
-Các nhóm dùng cho `CUP_BLANK`:
+Các option group:
 
 | Key | Tên hiển thị | Ví dụ |
 |---|---|---|
@@ -92,6 +117,16 @@ Các nhóm dùng cho `CUP_BLANK`:
 | `MATERIAL` | Chất liệu | PET `PET`, PLA `PLA` |
 | `CAPACITY` | Dung tích | 350 ml `350`, 500 ml `500` |
 | `COLOR` | Màu sắc | Trong suốt `CLR`, Đỏ `RED` |
+| `MATERIAL_CATEGORY` | Nhóm nguyên liệu | Trà `TEA`, Sữa `MILK`, Syrup `SYRUP` |
+| `MATERIAL_TYPE` | Loại/biến thể nguyên liệu | Trà đen `BLK`, Nguyên kem `WHOLE` |
+| `FLAVOR` | Hương vị | Đào `PEACH`, Matcha `MATCHA`, Nguyên bản `ORG` |
+| `SPEC` | Quy cách đơn vị tồn | 500 g `500G`, 1 kg `1KG`, 750 ml `750ML` |
+| `PACKAGING_CATEGORY` | Nhóm bao bì | Nắp ly `LID`, Ống hút `STRAW`, Túi `BAG`, Hộp `BOX` |
+| `PACKAGING_STYLE` | Kiểu bao bì | Nắp tim `HRT`, Nắp phẳng `FLAT` |
+| `COMPATIBILITY` | Kích thước tương thích | Miệng ly 95 mm `95MM` |
+| `DIAMETER` | Đường kính | 12 mm `12MM` |
+| `LENGTH` | Chiều dài | 230 mm `230MM` |
+| `SIZE` | Kích thước/quy cách | Lớn `L`, 20×20 cm `20X20` |
 
 Quy tắc option:
 
@@ -123,7 +158,7 @@ Collection option:
 
 ```text
 item_attribute_options
-  key         CUP_STYLE | MATERIAL | CAPACITY | COLOR
+  key         AttributeKey
   name        String
   code        String
   isActive    Boolean
@@ -136,6 +171,18 @@ item_attribute_options
 Index unique `{ key: 1, code: 1 }`. Các key/template hợp lệ được định nghĩa ở
 BE trong phiên bản này; ADMIN quản lý option value, không tự sửa cấu trúc
 template.
+
+Template engine dùng registry cấu hình trong BE với hai cấp:
+
+1. Template gốc trả field phân loại (`MATERIAL_CATEGORY` hoặc
+   `PACKAGING_CATEGORY`).
+2. Sau khi chọn category, BE resolve template con và trả đúng các field còn
+   lại. FE không hard-code bảng template.
+
+ADMIN được đổi tên/deactivate category đã seed, nhưng không được tạo category
+mới nếu BE chưa có template tương ứng. Điều này tránh tạo category có option
+nhưng không thể sinh SKU. Thêm category/template mới cần thay đổi registry BE
+và seed option trong cùng một release.
 
 ### 3. Barcode
 
@@ -193,22 +240,47 @@ Không tự chọn một item thắng khi dữ liệu cũ bị trùng.
 
 ## Thiết kế API BE
 
-### API đọc template cho form
+### API đọc/resolve template cho form
 
 ```http
 GET /api/wms/stock/item-types/CUP_BLANK/sku-template
 ```
 
-Response chứa prefix, thứ tự field và các option active:
+`CUP_BLANK` trả template cuối ngay. `MATERIAL` và `PACKAGING` lần đầu trả field
+category; sau khi chọn category, FE gọi lại với `categoryOptionId`:
+
+```http
+GET /api/wms/stock/item-types/MATERIAL/sku-template?categoryOptionId=64b7f1d2c3a4e5f607182940
+GET /api/wms/stock/item-types/PACKAGING/sku-template?categoryOptionId=64b7f1d2c3a4e5f607182941
+```
+
+Response chứa template ID, prefix, thứ tự field và các option active:
 
 ```json
 {
+  "templateId": "CUP_BLANK:DEFAULT",
   "type": "CUP_BLANK",
   "prefix": "CUP",
   "fields": [
     { "key": "CUP_STYLE", "label": "Kiểu ly", "required": true, "options": [] },
     { "key": "MATERIAL", "label": "Chất liệu", "required": true, "options": [] },
     { "key": "CAPACITY", "label": "Dung tích", "required": true, "options": [] },
+    { "key": "COLOR", "label": "Màu sắc", "required": true, "options": [] }
+  ]
+}
+```
+
+Ví dụ response sau khi chọn `PACKAGING_CATEGORY=STRAW`:
+
+```json
+{
+  "templateId": "PACKAGING:STRAW",
+  "type": "PACKAGING",
+  "prefix": "PKG-STR",
+  "category": { "key": "PACKAGING_CATEGORY", "optionId": "64b7f1d2c3a4e5f607182941", "code": "STRAW" },
+  "fields": [
+    { "key": "DIAMETER", "label": "Đường kính", "required": true, "options": [] },
+    { "key": "LENGTH", "label": "Chiều dài", "required": true, "options": [] },
     { "key": "COLOR", "label": "Màu sắc", "required": true, "options": [] }
   ]
 }
@@ -223,6 +295,7 @@ POST /api/wms/stock/items/sku-preview
 ```json
 {
   "type": "CUP_BLANK",
+  "templateId": "CUP_BLANK:DEFAULT",
   "attributeOptionIds": {
     "CUP_STYLE": "64b7f1d2c3a4e5f607182930",
     "MATERIAL": "64b7f1d2c3a4e5f607182931",
@@ -246,12 +319,14 @@ endpoint create bằng unique index.
 
 ### API tạo WarehouseItem
 
-`POST /api/wms/stock/items` với `type=CUP_BLANK` nhận:
+`POST /api/wms/stock/items` với type đã có template nhận `templateId` và
+`attributeOptionIds`:
 
 ```json
 {
   "name": "Ly PET nắp tim 500 ml trong suốt",
   "type": "CUP_BLANK",
+  "templateId": "CUP_BLANK:DEFAULT",
   "unit": "cái",
   "attributeOptionIds": {
     "CUP_STYLE": "64b7f1d2c3a4e5f607182930",
@@ -268,8 +343,9 @@ endpoint create bằng unique index.
 }
 ```
 
-Response trả SKU và barcode cuối cùng do BE sinh. Với các item type chưa được
-chuyển sang template, contract cũ được giữ để không phá các luồng hiện tại.
+Response trả SKU và barcode cuối cùng do BE sinh. `templateId` không đủ để tin
+client: BE phải resolve lại template theo type/category option, kiểm tra template
+ID khớp và load lại toàn bộ option trước khi build SKU.
 
 ### API quản trị option
 
@@ -303,7 +379,9 @@ PATCH  /api/wms/stock/attribute-options/:id
 ### Form một trang
 
 Giữ form một trang thay vì wizard để thao tác tạo một mặt hàng nhanh. Khi chọn
-`CUP_BLANK`, FE gọi template API và render field theo thứ tự BE trả về.
+`CUP_BLANK`, FE nhận template cuối ngay. Khi chọn `MATERIAL` hoặc `PACKAGING`,
+FE hiển thị category trước; sau lựa chọn này, FE resolve và render các field con
+theo đúng thứ tự BE trả về.
 
 ```text
 Thông tin cơ bản
@@ -329,6 +407,8 @@ Thông tin kho
 ### Hành vi
 
 - SKU là preview read-only, không có nút mở khóa hay sửa thủ công.
+- Đổi item type hoặc category xóa toàn bộ selection không còn thuộc template
+  mới, hủy preview query cũ và resolve template lại.
 - Thay option làm cập nhật preview ngay trên client từ `code` đã tải.
 - Sau khi người dùng ngừng thay đổi 300–500 ms, FE gọi preview API để kiểm tra
   lại SKU và trạng thái unique.
@@ -347,7 +427,8 @@ Barcode: 2000000001234            [Sao chép] [In tem]
 
 ### Màn hình ADMIN quản lý option
 
-- Tabs theo group: Kiểu ly, Chất liệu, Dung tích, Màu sắc.
+- Tabs/group bao phủ thuộc tính ly, nguyên liệu và bao bì; danh sách group lấy
+  từ API metadata để FE không hard-code menu quản trị.
 - Danh sách có tên, code, trạng thái và thứ tự.
 - Form thêm mới tự gọi/gợi ý code khi nhập tên; ADMIN phải xác nhận code.
 - Khi option đã được dùng, field code read-only và giải thích lý do.
@@ -358,9 +439,10 @@ Barcode: 2000000001234            [Sao chép] [In tem]
 ## Data flow
 
 ```text
-FE chọn CUP_BLANK
-  → GET template + option active
-  → Người dùng chọn 4 option
+FE chọn item type
+  → GET root template + option active
+  → Nếu MATERIAL/PACKAGING: chọn category và resolve child template
+  → Người dùng chọn đủ option của template
   → FE ghép preview read-only
   → POST sku-preview (debounce)
   → Người dùng submit option IDs
@@ -379,6 +461,8 @@ FE chọn CUP_BLANK
 
 - Unit test code suggestion, SKU builder và EAN-13 checksum.
 - SKU builder không phụ thuộc thứ tự key trong request.
+- Resolve đúng toàn bộ template `CUP_BLANK`, 6 category MATERIAL và 4 category
+  PACKAGING; category không có registry template bị reject.
 - Reject thiếu option, sai group, option inactive và option không tồn tại.
 - Preview và create trả cùng SKU với cùng option.
 - Không tin/không dùng SKU do client tự gửi cho `CUP_BLANK`.
@@ -396,6 +480,8 @@ FE chọn CUP_BLANK
 ### FE
 
 - Chọn `CUP_BLANK` tải đúng bốn field theo template.
+- Chọn MATERIAL/PACKAGING hiển thị category trước, sau đó render đúng child
+  template; đổi category không giữ selection/preview của category cũ.
 - SKU thay đổi đúng khi đổi từng option và không thể chỉnh trực tiếp.
 - Preview được debounce, không gọi API cho tổ hợp chưa đầy đủ.
 - Trạng thái SKU trùng disable submit và hiển thị thông báo rõ ràng.
@@ -408,10 +494,11 @@ FE chọn CUP_BLANK
 
 ## Chia issue
 
-1. **BE:** danh mục option, SKU builder cho `CUP_BLANK`, preview API, EAN-13
-   atomic counter và barcode registry.
-2. **FE Warehouse:** form tạo `CUP_BLANK` theo template, preview SKU read-only,
-   alt barcode, kết quả barcode và màn hình ADMIN quản lý option.
+1. **BE:** danh mục option, template registry/SKU builder cho `CUP_BLANK`,
+   `MATERIAL`, `PACKAGING`, preview API, EAN-13 atomic counter và barcode
+   registry.
+2. **FE Warehouse:** form tạo item theo root/child template, preview SKU
+   read-only, alt barcode, kết quả barcode và màn hình ADMIN quản lý option.
 
 Hai issue liên kết qua API contract trong tài liệu này. FE có thể dựng UI với
 mock response trước, nhưng chỉ hoàn tất integration sau khi BE cung cấp các
