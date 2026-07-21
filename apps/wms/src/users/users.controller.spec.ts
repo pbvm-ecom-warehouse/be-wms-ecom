@@ -8,14 +8,14 @@ const mockUsersService = {
   getById: jest.fn(),
   create: jest.fn(),
   update: jest.fn(),
-  updateRoles: jest.fn(),
+  updateRole: jest.fn(),
   lock: jest.fn(),
   unlock: jest.fn(),
   resetPassword: jest.fn(),
   remove: jest.fn(),
 };
 
-const actor = { sub: 'admin1', roles: ['ADMIN'] };
+const actor = { sub: 'admin1', role: 'ADMIN' };
 
 describe('UsersController', () => {
   let controller: UsersController;
@@ -36,7 +36,7 @@ describe('UsersController', () => {
           {
             _id: { toString: () => 'u1' },
             username: 'staff1',
-            roles: ['PICKER'],
+            role: 'PICKER',
             status: 'ACTIVE',
             mustChangePassword: false,
             createdAt: new Date(),
@@ -63,7 +63,7 @@ describe('UsersController', () => {
       mockUsersService.getById.mockResolvedValue({
         _id: { toString: () => 'u1' },
         username: 'staff1',
-        roles: ['PICKER'],
+        role: 'PICKER',
         status: 'ACTIVE',
         mustChangePassword: false,
         passwordHash: 'secret',
@@ -73,9 +73,7 @@ describe('UsersController', () => {
 
       const result = await controller.getById('u1');
       expect(result).toBeInstanceOf(UserResponseDto);
-      expect(
-        (result as Record<string, unknown>)['passwordHash'],
-      ).toBeUndefined();
+      expect(result).not.toHaveProperty('passwordHash');
     });
   });
 
@@ -84,7 +82,7 @@ describe('UsersController', () => {
       mockUsersService.create.mockResolvedValue({
         _id: { toString: () => 'u2' },
         username: 'new1',
-        roles: ['PICKER'],
+        role: 'PICKER',
         mustChangePassword: true,
       });
 
@@ -95,6 +93,28 @@ describe('UsersController', () => {
 
       expect(mockUsersService.create).toHaveBeenCalledWith(
         { username: 'new1', password: 'P@ss1234' },
+        actor,
+      );
+    });
+  });
+
+  describe('updateRole', () => {
+    it('gọi service.updateRole với id/role/actor', async () => {
+      mockUsersService.updateRole.mockResolvedValue({
+        _id: { toString: () => 'u1' },
+        username: 'staff1',
+        role: 'MANAGER',
+        status: 'ACTIVE',
+        mustChangePassword: false,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
+
+      await controller.updateRole('u1', { role: 'MANAGER' } as never, actor);
+
+      expect(mockUsersService.updateRole).toHaveBeenCalledWith(
+        'u1',
+        'MANAGER',
         actor,
       );
     });

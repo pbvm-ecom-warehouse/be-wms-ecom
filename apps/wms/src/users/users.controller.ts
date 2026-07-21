@@ -32,7 +32,7 @@ import { plainToInstance } from 'class-transformer';
 import { UsersService } from './users.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
-import { UpdateUserRolesDto } from './dto/update-user-roles.dto';
+import { UpdateUserRoleDto } from './dto/update-user-role.dto';
 import { ResetUserPasswordDto } from './dto/reset-user-password.dto';
 import { QueryUsersDto } from './dto/query-users.dto';
 import {
@@ -78,7 +78,7 @@ export class UsersController {
   @ApiCreatedResponse({ type: CreateUserResponseDto })
   async create(
     @Body() dto: CreateUserDto,
-    @CurrentUser() actor: { sub: string; roles: string[] },
+    @CurrentUser() actor: { sub: string; role: string },
   ): Promise<CreateUserResponseDto> {
     const user = await this.svc.create(dto, actor);
     return plainToInstance(CreateUserResponseDto, user, TO_OPTS);
@@ -93,22 +93,22 @@ export class UsersController {
   async update(
     @Param('id') id: string,
     @Body() dto: UpdateUserDto,
-    @CurrentUser() actor: { sub: string; roles: string[] },
+    @CurrentUser() actor: { sub: string; role: string },
   ): Promise<UserResponseDto> {
     const user = await this.svc.update(id, dto, actor);
     return plainToInstance(UserResponseDto, user, TO_OPTS);
   }
 
-  @Patch(':id/roles')
-  @ApiOperation({ summary: 'Gán/sửa roles nhân viên — [ADMIN, MANAGER]' })
+  @Patch(':id/role')
+  @ApiOperation({ summary: 'Đổi role nhân viên — [ADMIN, MANAGER]' })
   @ApiParam({ name: 'id', description: 'Mongo ObjectId của user' })
   @ApiOkResponse({ type: UserResponseDto })
-  async updateRoles(
+  async updateRole(
     @Param('id') id: string,
-    @Body() dto: UpdateUserRolesDto,
-    @CurrentUser() actor: { sub: string; roles: string[] },
+    @Body() dto: UpdateUserRoleDto,
+    @CurrentUser() actor: { sub: string; role: string },
   ): Promise<UserResponseDto> {
-    const user = await this.svc.updateRoles(id, dto.roles, actor);
+    const user = await this.svc.updateRole(id, dto.role, actor);
     return plainToInstance(UserResponseDto, user, TO_OPTS);
   }
 
@@ -121,7 +121,7 @@ export class UsersController {
   @ApiOkResponse({ type: UserResponseDto })
   async lock(
     @Param('id') id: string,
-    @CurrentUser() actor: { sub: string; roles: string[] },
+    @CurrentUser() actor: { sub: string; role: string },
   ): Promise<UserResponseDto> {
     const user = await this.svc.lock(id, actor);
     return plainToInstance(UserResponseDto, user, TO_OPTS);
@@ -134,7 +134,7 @@ export class UsersController {
   @ApiOkResponse({ type: UserResponseDto })
   async unlock(
     @Param('id') id: string,
-    @CurrentUser() actor: { sub: string; roles: string[] },
+    @CurrentUser() actor: { sub: string; role: string },
   ): Promise<UserResponseDto> {
     const user = await this.svc.unlock(id, actor);
     return plainToInstance(UserResponseDto, user, TO_OPTS);
@@ -150,7 +150,7 @@ export class UsersController {
   resetPassword(
     @Param('id') id: string,
     @Body() dto: ResetUserPasswordDto,
-    @CurrentUser() actor: { sub: string; roles: string[] },
+    @CurrentUser() actor: { sub: string; role: string },
   ): Promise<{ success: boolean; mustChangePassword: boolean }> {
     return this.svc.resetPassword(id, dto.temporaryPassword, actor);
   }
@@ -162,7 +162,7 @@ export class UsersController {
   @ApiNoContentResponse()
   async remove(
     @Param('id') id: string,
-    @CurrentUser() actor: { sub: string; roles: string[] },
+    @CurrentUser() actor: { sub: string; role: string },
   ): Promise<void> {
     await this.svc.remove(id, actor);
   }
