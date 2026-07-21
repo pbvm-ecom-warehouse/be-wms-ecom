@@ -1,6 +1,4 @@
 import {
-  ArrayNotEmpty,
-  IsArray,
   IsEmail,
   IsIn,
   IsOptional,
@@ -31,14 +29,8 @@ export class CreateUserDto {
   @IsString()
   name?: string;
 
-  @ApiPropertyOptional({
-    example: [WmsRole.RECEIVER],
-    enum: WmsRole,
-    isArray: true,
-  })
+  @ApiPropertyOptional({ example: WmsRole.RECEIVER, enum: WmsRole })
   @IsOptional()
-  @IsArray()
-  @ArrayNotEmpty()
-  @IsIn(Object.values(WmsRole), { each: true })
-  roles?: string[];
+  @IsIn(Object.values(WmsRole))
+  role?: WmsRole;
 }

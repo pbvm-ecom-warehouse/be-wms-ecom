@@ -3,7 +3,7 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { WmsRole } from '@app/auth';
 import { Types } from 'mongoose';
 
-/** Response cho GET /me, GET /users, GET /users/:id, PATCH /users/:id(/roles), POST /users/:id/lock|unlock. */
+/** Response cho GET /me, GET /users, GET /users/:id, PATCH /users/:id(/role), POST /users/:id/lock|unlock. */
 export class UserResponseDto {
   @Expose()
   @Transform(
@@ -26,8 +26,8 @@ export class UserResponseDto {
   name?: string;
 
   @Expose()
-  @ApiProperty({ enum: WmsRole, isArray: true })
-  roles!: string[];
+  @ApiProperty({ enum: WmsRole })
+  role!: string;
 
   @Expose()
   @ApiProperty({ enum: ['ACTIVE', 'LOCKED'] })
@@ -76,8 +76,8 @@ export class CreateUserResponseDto {
   email?: string;
 
   @Expose()
-  @ApiProperty({ enum: WmsRole, isArray: true })
-  roles!: string[];
+  @ApiProperty({ enum: WmsRole })
+  role!: string;
 
   @Expose()
   @ApiProperty()
