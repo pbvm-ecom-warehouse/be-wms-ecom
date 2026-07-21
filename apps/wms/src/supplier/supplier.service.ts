@@ -1,7 +1,6 @@
 // apps/wms/src/supplier/supplier.service.ts
 import { Injectable } from '@nestjs/common';
 import { AppException } from '@app/common/errors/app.exception';
-import { WmsRole } from '@app/auth';
 import { SupplierRepository } from './supplier.repository';
 import { SupplierStatus } from './schemas/supplier.schema';
 import type { SupplierDocument } from './schemas/supplier.schema';
@@ -58,13 +57,13 @@ export class SupplierService {
   /**
    * Đổi trạng thái NCC.
    * Quy tắc chuyển trạng thái: gỡ BLACKLIST → trạng thái khác chỉ ADMIN làm được.
-   * roles = mảng role hiện tại của actor (lấy từ JWT payload).
+   * role = role hiện tại của actor (lấy từ JWT payload).
    */
   async changeStatus(
     id: string,
     dto: ChangeSupplierStatusDto,
     actorId: string,
-    roles: string[],
+    role: string,
   ): Promise<SupplierDocument> {
     const supplier = await this.repo.findSupplierById(id);
     if (!supplier) throw new AppException('SUPPLIER_NOT_FOUND');
@@ -73,7 +72,7 @@ export class SupplierService {
     if (
       supplier.status === SupplierStatus.BLACKLIST &&
       dto.status !== SupplierStatus.BLACKLIST &&
-      !roles.includes(WmsRole.ADMIN)
+      role !== 'ADMIN'
     ) {
       throw new AppException('SUPPLIER_BLACKLISTED');
     }

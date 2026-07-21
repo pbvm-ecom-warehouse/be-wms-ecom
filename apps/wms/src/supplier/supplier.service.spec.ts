@@ -62,7 +62,7 @@ describe('SupplierService', () => {
           supplierId,
           { status: SupplierStatus.ACTIVE },
           actorId,
-          ['MANAGER'],
+          'MANAGER',
         ),
       ).rejects.toMatchObject({ code: 'SUPPLIER_BLACKLISTED' });
     });
@@ -79,7 +79,7 @@ describe('SupplierService', () => {
             status: SupplierStatus.ACTIVE,
           },
           actorId,
-          ['ADMIN'],
+          'ADMIN',
         ),
       ).resolves.toBeDefined();
     });

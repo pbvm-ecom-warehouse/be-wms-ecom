@@ -187,9 +187,9 @@ export class SupplierController {
     @Param('id') id: string,
     @Body() dto: ChangeSupplierStatusDto,
     @CurrentUser('sub') actorId: string,
-    @CurrentUser('roles') roles: string[],
+    @CurrentUser('role') role: string,
   ): Promise<SupplierResponseDto> {
-    const doc = await this.svc.changeStatus(id, dto, actorId, roles);
+    const doc = await this.svc.changeStatus(id, dto, actorId, role);
     return plainToInstance(SupplierResponseDto, doc.toObject(), TO_OPTS);
   }
 
