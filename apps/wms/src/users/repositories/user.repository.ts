@@ -32,6 +32,12 @@ export interface UpdateUserProfileInput {
 
 const SOFT_DELETE_FILTER = { deletedAt: null } as const;
 
+// Escape regex đặc biệt trước khi nhồi vào $regex — tránh lỗi compile pattern
+// và ReDoS (catastrophic backtracking) từ input free-text của caller.
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
 @Injectable()
 export class UserRepository {
   constructor(@InjectModel(User.name) private readonly model: Model<User>) {}
@@ -99,10 +105,11 @@ export class UserRepository {
     if (query.status) filter['status'] = query.status;
     if (query.warehouseId) filter['warehouseId'] = query.warehouseId;
     if (query.search) {
+      const escapedSearch = escapeRegExp(query.search);
       filter['$or'] = [
-        { username: { $regex: query.search, $options: 'i' } },
-        { name: { $regex: query.search, $options: 'i' } },
-        { email: { $regex: query.search, $options: 'i' } },
+        { username: { $regex: escapedSearch, $options: 'i' } },
+        { name: { $regex: escapedSearch, $options: 'i' } },
+        { email: { $regex: escapedSearch, $options: 'i' } },
       ];
     }
 

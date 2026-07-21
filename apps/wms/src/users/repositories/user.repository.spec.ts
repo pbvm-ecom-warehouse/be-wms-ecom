@@ -39,6 +39,26 @@ describe('UserRepository', () => {
       );
     });
 
+    it('escape regex đặc biệt trong search trước khi đưa vào $regex', async () => {
+      const model = makeModel();
+      model.__chain.exec.mockResolvedValue([]);
+      (model.countDocuments({}).exec as jest.Mock).mockResolvedValue(0);
+      const repo = new UserRepository(model as never);
+
+      await repo.findAll({ page: 1, limit: 20, search: 'a.b+c' });
+
+      expect(model.find).toHaveBeenCalledWith(
+        expect.objectContaining({
+          deletedAt: null,
+          $or: [
+            { username: { $regex: 'a\\.b\\+c', $options: 'i' } },
+            { name: { $regex: 'a\\.b\\+c', $options: 'i' } },
+            { email: { $regex: 'a\\.b\\+c', $options: 'i' } },
+          ],
+        }),
+      );
+    });
+
     it('filter theo role/status/warehouseId khi có truyền', async () => {
       const model = makeModel();
       model.__chain.exec.mockResolvedValue([]);
