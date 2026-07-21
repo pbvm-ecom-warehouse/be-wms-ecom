@@ -158,6 +158,7 @@ export interface StockNearExpiryPayload {
 
 export interface PaymentSuccessPayload {
   orderId: string;
+  customerId?: string;
   customerEmail: string;
   amount: number;
 }

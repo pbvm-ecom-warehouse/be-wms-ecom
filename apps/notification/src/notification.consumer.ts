@@ -1,5 +1,10 @@
 import { Processor, WorkerHost } from '@nestjs/bullmq';
 import { Logger } from '@nestjs/common';
+import { InjectModel } from '@nestjs/mongoose';
+import { Model, Types } from 'mongoose';
+import {
+  UserFcmToken,
+} from '../../ecommerce/src/auth/schemas/user-fcm-token.schema';
 import { ConfigService } from '@nestjs/config';
 import {
   EVENTS,
@@ -41,6 +46,8 @@ export class NotificationConsumer extends WorkerHost {
     private readonly email: EmailService,
     private readonly firebase: FirebaseService,
     private readonly config: ConfigService,
+    @InjectModel(UserFcmToken.name)
+    private readonly fcmTokenModel: Model<UserFcmToken>,
   ) {
     super();
   }
@@ -163,10 +170,53 @@ export class NotificationConsumer extends WorkerHost {
           }),
           idempotencyKey: key,
         });
+
+        if (payload.customerId) {
+          await this.sendPushNotificationToCustomer(
+            payload.customerId,
+            'Thanh toán thành công 🎉',
+            `Đơn hàng ${payload.orderId} của bạn đã được thanh toán thành công với số tiền ${payload.amount.toLocaleString()}đ!`,
+            { orderId: payload.orderId, type: 'PAYMENT_SUCCESS' },
+          );
+        }
         break;
       }
       default:
         this.logger.warn(`Bỏ qua job lạ trên notification-queue: ${job.name}`);
+    }
+  }
+
+  private async sendPushNotificationToCustomer(
+    customerId: string,
+    title: string,
+    body: string,
+    data?: Record<string, string>,
+  ) {
+    if (!this.firebase.isEnabled()) return;
+    try {
+      if (!Types.ObjectId.isValid(customerId)) return;
+      const tokens = await this.fcmTokenModel
+        .find({ customerId: new Types.ObjectId(customerId) })
+        .lean();
+      const tokenList = tokens.map((t) => t.fcmToken);
+      if (tokenList.length === 0) {
+        this.logger.log(`Không tìm thấy FCM Token nào cho customer ${customerId}`);
+        return;
+      }
+
+      const response = await this.firebase.getMessaging().sendEachForMulticast({
+        tokens: tokenList,
+        notification: { title, body },
+        data,
+      });
+      this.logger.log(
+        `Đã gửi FCM Push Notification cho customer ${customerId}: ${response.successCount} thành công, ${response.failureCount} thất bại`,
+      );
+    } catch (err: any) {
+      this.logger.error(
+        `Lỗi khi gửi FCM Push Notification cho customer ${customerId}:`,
+        err,
+      );
     }
   }
 }

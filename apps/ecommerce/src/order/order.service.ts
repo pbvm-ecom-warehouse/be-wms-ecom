@@ -149,6 +149,7 @@ export class OrderService {
     if (customer) {
       const payload: PaymentSuccessPayload = {
         orderId,
+        customerId: order.customerId.toString(),
         customerEmail: customer.email,
         amount,
       };

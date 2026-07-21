@@ -28,6 +28,7 @@ import { EcomRole } from '@app/auth';
 import { UserAddress, UserDocument } from './schemas/user.schema';
 import { UserRefreshTokenRepository } from './repositories/user-refresh-token.repository';
 import { UserRepository } from './repositories/user.repository';
+import { UserFcmTokenRepository } from './repositories/user-fcm-token.repository';
 import { OtpStore, type OtpType } from './otp.store';
 
 type MsDuration = Exclude<JwtSignOptions['expiresIn'], number | undefined>;
@@ -42,6 +43,7 @@ export class AuthService {
   constructor(
     private readonly userRepo: UserRepository,
     private readonly refreshRepo: UserRefreshTokenRepository,
+    private readonly fcmTokenRepo: UserFcmTokenRepository,
     @InjectQueue(QUEUES.NOTIFICATION) private readonly notifyQueue: Queue,
     private readonly jwt: JwtService,
     private readonly firebaseAdmin: FirebaseAdminService,
@@ -429,5 +431,13 @@ export class AuthService {
     );
     if (!user) throw new AppException('UNAUTHENTICATED');
     return user.addresses;
+  }
+
+  async saveFcmToken(userId: string, fcmToken: string, deviceType?: string) {
+    return this.fcmTokenRepo.upsertToken(userId, fcmToken, deviceType);
+  }
+
+  async deleteFcmToken(userId: string, fcmToken: string) {
+    return this.fcmTokenRepo.deleteToken(userId, fcmToken);
   }
 }

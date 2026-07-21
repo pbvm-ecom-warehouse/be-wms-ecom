@@ -17,6 +17,9 @@ import {
   UserRefreshTokenSchema,
 } from './schemas/user-refresh-token.schema';
 
+import { UserFcmTokenRepository } from './repositories/user-fcm-token.repository';
+import { UserFcmToken, UserFcmTokenSchema } from './schemas/user-fcm-token.schema';
+
 /**
  * Module auth Ecommerce. Đăng ký queue NOTIFICATION để phát event
  * customer.verify_requested (Ecom → Notification) khi khách đăng ký.
@@ -30,6 +33,7 @@ import {
     MongooseModule.forFeature([
       { name: User.name, schema: UserSchema },
       { name: UserRefreshToken.name, schema: UserRefreshTokenSchema },
+      { name: UserFcmToken.name, schema: UserFcmTokenSchema },
     ]),
   ],
   controllers: [AuthController],
@@ -38,8 +42,9 @@ import {
     JwtStrategy,
     UserRepository,
     UserRefreshTokenRepository,
+    UserFcmTokenRepository,
     OtpStore,
   ],
-  exports: [AuthService, UserRepository],
+  exports: [AuthService, UserRepository, UserFcmTokenRepository],
 })
 export class AuthModule {}

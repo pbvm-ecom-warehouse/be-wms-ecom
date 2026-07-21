@@ -314,3 +314,21 @@ export class SuccessResponseDto {
   @ApiPropertyOptional({ example: false })
   emailVerified?: boolean;
 }
+
+export class SaveFcmTokenDto {
+  @ApiProperty({ description: 'FCM Token thiết bị di động / trình duyệt lấy từ Firebase Messaging' })
+  @IsString()
+  fcmToken!: string;
+
+  @ApiPropertyOptional({ example: 'mobile', description: 'Loại thiết bị: mobile, web, ios, android' })
+  @IsOptional()
+  @IsString()
+  deviceType?: string;
+}
+
+export class DeleteFcmTokenDto {
+  @ApiProperty({ description: 'FCM Token cần xóa' })
+  @IsString()
+  fcmToken!: string;
+}
+

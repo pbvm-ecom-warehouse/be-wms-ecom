@@ -48,6 +48,8 @@ import {
   LogoutDto,
   RefreshDto,
   RegisterDto,
+  SaveFcmTokenDto,
+  DeleteFcmTokenDto,
   CreateEcomManagerDto,
   ResetPasswordDto,
   SuccessResponseDto,
@@ -464,6 +466,40 @@ export class AuthController {
     const result = await this.auth.createEcomManager(dto);
     return plainToInstance(UserResponseDto, result, {
       excludeExtraneousValues: true,
+    });
+  }
+
+  @Post('fcm-token')
+  @HttpCode(200)
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Lưu hoặc cập nhật FCM Token của thiết bị' })
+  @ApiOkResponse({ type: SuccessResponseDto })
+  async saveFcmToken(
+    @CurrentUser('sub') userId: string,
+    @Body() dto: SaveFcmTokenDto,
+  ) {
+    await this.auth.saveFcmToken(userId, dto.fcmToken, dto.deviceType);
+    return plainToInstance(SuccessResponseDto, {
+      success: true,
+      message: 'Lưu FCM Token thành công',
+    });
+  }
+
+  @Delete('fcm-token')
+  @HttpCode(200)
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Xóa FCM Token khi đăng xuất' })
+  @ApiOkResponse({ type: SuccessResponseDto })
+  async deleteFcmToken(
+    @CurrentUser('sub') userId: string,
+    @Body() dto: DeleteFcmTokenDto,
+  ) {
+    await this.auth.deleteFcmToken(userId, dto.fcmToken);
+    return plainToInstance(SuccessResponseDto, {
+      success: true,
+      message: 'Xóa FCM Token thành công',
     });
   }
 }

@@ -11,6 +11,13 @@ import { NotificationConsumer } from './notification.consumer';
 import { NotificationController } from './notification.controller';
 import { NotificationService } from './notification.service';
 
+import { MongooseModule } from '@nestjs/mongoose';
+import { DatabaseModule } from '@app/database';
+import {
+  UserFcmToken,
+  UserFcmTokenSchema,
+} from '../../ecommerce/src/auth/schemas/user-fcm-token.schema';
+
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true, validate: validateEnv }),
@@ -19,6 +26,10 @@ import { NotificationService } from './notification.service';
       useFactory: (config: ConfigService) => buildPinoOptions(config),
     }),
     CommonModule, // global filter/interceptor/pipe
+    DatabaseModule.forApp('ECOM_DATABASE_URL'),
+    MongooseModule.forFeature([
+      { name: UserFcmToken.name, schema: UserFcmTokenSchema },
+    ]),
     EventsModule, // BullMQ + Redis
     EmailModule, // Resend email service — gửi OTP verify/reset
     FirebaseModule,
