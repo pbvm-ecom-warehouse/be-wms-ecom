@@ -16,9 +16,10 @@ import type { QueryWarehouseItemDto } from './dto/query-warehouse-item.dto';
 import type { UpdateWarehouseItemDto } from './dto/create-warehouse-item.dto';
 
 /**
- * Ví dụ PRODUCER: khi `available` (= onHand - reserved - expired) của 1 SKU đổi
+ * PRODUCER: khi `available` (= onHand - reserved - expired) của 1 SKU đổi
  * do biến động phía WMS, bắn event stock.changed sang Ecommerce (Σ mọi kho).
- * Đây là mẫu để các nghiệp vụ thật (GRN, kiểm kho, chuyển kho, in ly...) tái dùng.
+ * Service production — được gọi thật từ GRN, kiểm kho, chuyển kho, in ly,
+ * scrap-note, goods-return (xem các domain đó để biết nơi gọi).
  */
 @Injectable()
 export class StockService {

@@ -29,9 +29,7 @@ export const EVENTS = {
   STOCK_RESERVE_REQUESTED: 'stock.reserve_requested', // Ecom → WMS
   STOCK_RESERVED: 'stock.reserved', // WMS → Ecom (giữ tồn ok)
   STOCK_RESERVE_FAILED: 'stock.reserve_failed', // WMS → Ecom (không đủ → hủy đơn)
-  STOCK_RELEASE_REQUESTED: 'stock.release_requested', // Ecom → WMS (bù khi hủy)
   // ----- Đơn hàng -----
-  ORDER_PLACED: 'order.placed', // Ecom → WMS (thông báo thuần)
   ORDER_READY_TO_FULFILL: 'order.ready_to_fulfill', // Ecom → WMS (sinh GoodsIssue)
   ORDER_CANCELLED: 'order.cancelled', // Ecom → WMS
   ORDER_RETURNED: 'order.returned', // Ecom → WMS
@@ -84,16 +82,6 @@ export interface StockReserveFailedPayload {
   orderId: string;
   reason: string;
   failedSkus: string[];
-}
-
-export interface StockReleaseRequestedPayload {
-  orderId: string;
-  items: { sku: string; quantity: number }[];
-}
-
-export interface OrderPlacedPayload {
-  orderId: string;
-  code: string;
 }
 
 export interface OrderReadyToFulfillPayload {
@@ -176,8 +164,6 @@ export interface EventPayloadMap {
   [EVENTS.STOCK_RESERVE_REQUESTED]: StockReserveRequestedPayload;
   [EVENTS.STOCK_RESERVED]: StockReservedPayload;
   [EVENTS.STOCK_RESERVE_FAILED]: StockReserveFailedPayload;
-  [EVENTS.STOCK_RELEASE_REQUESTED]: StockReleaseRequestedPayload;
-  [EVENTS.ORDER_PLACED]: OrderPlacedPayload;
   [EVENTS.ORDER_READY_TO_FULFILL]: OrderReadyToFulfillPayload;
   [EVENTS.ORDER_CANCELLED]: OrderCancelledPayload;
   [EVENTS.ORDER_RETURNED]: OrderReturnedPayload;
