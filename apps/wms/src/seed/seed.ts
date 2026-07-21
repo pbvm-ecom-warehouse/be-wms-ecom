@@ -23,6 +23,7 @@ const SEED_USERS: { username: string; role: WmsRole; name: string }[] = [
   { username: 'seed_picker', role: WmsRole.PICKER, name: 'Seed Picker' },
   { username: 'seed_printer', role: WmsRole.PRINTER, name: 'Seed Printer' },
   { username: 'seed_counter', role: WmsRole.COUNTER, name: 'Seed Counter' },
+  { username: 'seed_shipper', role: WmsRole.SHIPPER, name: 'Seed Shipper' },
 ];
 
 /**
@@ -85,9 +86,9 @@ async function seedUsers(
       username: u.username,
       password: SEED_PASSWORD,
       name: u.name,
-      roles: [u.role],
+      role: u.role,
     };
-    await usersService.create(dto, { sub: adminId, roles: [WmsRole.ADMIN] });
+    await usersService.create(dto, { sub: adminId, role: WmsRole.ADMIN });
     logger.log(`Tạo ${u.username} (${u.role}) / ${SEED_PASSWORD}`);
   }
 
