@@ -3,7 +3,7 @@ import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import { EVENTS, QUEUES, type PaymentSuccessPayload } from '@app/events';
 import { AppException } from '@app/common';
-import { OrderRepository } from './order.repository';
+import { OrderRepository, type OrderFilterOptions } from './order.repository';
 import {
   FulfillmentStatus,
   OrderStatus,
@@ -42,15 +42,15 @@ export class OrderService {
     return order;
   }
 
-  async listByCustomer(customerId: string) {
+  async listByCustomer(customerId: string, filter?: OrderFilterOptions) {
     if (!Types.ObjectId.isValid(customerId)) {
       throw new AppException('VALIDATION_FAILED', 'ID khách hàng không hợp lệ');
     }
-    return this.repo.listByCustomer(customerId);
+    return this.repo.listByCustomer(customerId, filter);
   }
 
-  async listAll() {
-    return this.repo.listAll();
+  async listAll(filter?: OrderFilterOptions) {
+    return this.repo.listAll(filter);
   }
 
   /**

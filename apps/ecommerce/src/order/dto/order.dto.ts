@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsOptional, IsString } from 'class-validator';
+import { IsEnum, IsOptional, IsString } from 'class-validator';
 import { Expose, Transform, Type } from 'class-transformer';
 import { Types } from 'mongoose';
 import {
@@ -159,3 +159,30 @@ export class SuccessResponseDto {
   @ApiProperty({ example: 'Thao tác thành công' })
   message!: string;
 }
+
+export class OrderFilterQueryDto {
+  @ApiPropertyOptional({
+    enum: OrderStatus,
+    description: 'Lọc theo trạng thái đơn hàng (PLACED, CONFIRMED, CANCELLED, CLOSED)',
+  })
+  @IsOptional()
+  @IsEnum(OrderStatus)
+  orderStatus?: OrderStatus;
+
+  @ApiPropertyOptional({
+    enum: PaymentStatus,
+    description: 'Lọc theo trạng thái thanh toán (UNPAID, PAID, REFUND_PENDING, REFUNDED)',
+  })
+  @IsOptional()
+  @IsEnum(PaymentStatus)
+  paymentStatus?: PaymentStatus;
+
+  @ApiPropertyOptional({
+    enum: FulfillmentStatus,
+    description: 'Lọc theo trạng thái vận chuyển/sản xuất (NONE, AWAITING_PRINT, READY_TO_PICK, ISSUED, SHIPPED, DELIVERED, RETURNED)',
+  })
+  @IsOptional()
+  @IsEnum(FulfillmentStatus)
+  fulfillmentStatus?: FulfillmentStatus;
+}
+

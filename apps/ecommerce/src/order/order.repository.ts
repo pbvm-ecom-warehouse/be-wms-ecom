@@ -4,6 +4,12 @@ import { Model, Types } from 'mongoose';
 import { Order } from './schemas/order.schema';
 import { PaymentTransaction } from './schemas/payment-transaction.schema';
 
+export interface OrderFilterOptions {
+  orderStatus?: string;
+  paymentStatus?: string;
+  fulfillmentStatus?: string;
+}
+
 @Injectable()
 export class OrderRepository {
   constructor(
@@ -27,9 +33,16 @@ export class OrderRepository {
     return this.orderModel.findOne({ code }).lean();
   }
 
-  async listByCustomer(customerId: string) {
+  async listByCustomer(customerId: string, filter?: OrderFilterOptions) {
+    const query: Record<string, any> = {
+      customerId: new Types.ObjectId(customerId),
+    };
+    if (filter?.orderStatus) query.orderStatus = filter.orderStatus;
+    if (filter?.paymentStatus) query.paymentStatus = filter.paymentStatus;
+    if (filter?.fulfillmentStatus) query.fulfillmentStatus = filter.fulfillmentStatus;
+
     return this.orderModel
-      .find({ customerId: new Types.ObjectId(customerId) })
+      .find(query)
       .sort({ createdAt: -1 })
       .lean();
   }
@@ -68,7 +81,12 @@ export class OrderRepository {
     return `${prefix}-${String(count + 1).padStart(3, '0')}`;
   }
 
-  async listAll() {
-    return this.orderModel.find().sort({ createdAt: -1 }).lean();
+  async listAll(filter?: OrderFilterOptions) {
+    const query: Record<string, any> = {};
+    if (filter?.orderStatus) query.orderStatus = filter.orderStatus;
+    if (filter?.paymentStatus) query.paymentStatus = filter.paymentStatus;
+    if (filter?.fulfillmentStatus) query.fulfillmentStatus = filter.fulfillmentStatus;
+
+    return this.orderModel.find(query).sort({ createdAt: -1 }).lean();
   }
 }

@@ -4,6 +4,7 @@ import {
   Get,
   HttpCode,
   Param,
+  Query,
   Post,
   UseGuards,
 } from '@nestjs/common';
@@ -27,6 +28,7 @@ import { OrderService } from './order.service';
 import { CheckoutDto } from './dto/checkout.dto';
 import {
   CancelOrderDto,
+  OrderFilterQueryDto,
   OrderResponseDto,
   SuccessResponseDto,
 } from './dto/order.dto';
@@ -58,10 +60,16 @@ export class OrderController {
   }
 
   @Get()
-  @ApiOperation({ summary: 'Lấy lịch sử đơn hàng của tôi' })
+  @ApiOperation({
+    summary:
+      'Lấy lịch sử đơn hàng của tôi (hỗ trợ lọc orderStatus, paymentStatus, fulfillmentStatus)',
+  })
   @ApiOkResponse({ type: [OrderResponseDto] })
-  async getMyOrders(@CurrentUser('sub') customerId: string) {
-    const orders = await this.orderService.listByCustomer(customerId);
+  async getMyOrders(
+    @CurrentUser('sub') customerId: string,
+    @Query() query: OrderFilterQueryDto,
+  ) {
+    const orders = await this.orderService.listByCustomer(customerId, query);
     return plainToInstance(OrderResponseDto, orders, {
       excludeExtraneousValues: true,
     });
@@ -145,10 +153,13 @@ export class OrderAdminController {
   constructor(private readonly orderService: OrderService) {}
 
   @Get()
-  @ApiOperation({ summary: '[Admin] Lấy tất cả đơn hàng' })
+  @ApiOperation({
+    summary:
+      '[Admin] Lấy tất cả đơn hàng (hỗ trợ lọc orderStatus, paymentStatus, fulfillmentStatus)',
+  })
   @ApiOkResponse({ type: [OrderResponseDto] })
-  async getAllOrders() {
-    const orders = await this.orderService.listAll();
+  async getAllOrders(@Query() query: OrderFilterQueryDto) {
+    const orders = await this.orderService.listAll(query);
     return plainToInstance(OrderResponseDto, orders, {
       excludeExtraneousValues: true,
     });
