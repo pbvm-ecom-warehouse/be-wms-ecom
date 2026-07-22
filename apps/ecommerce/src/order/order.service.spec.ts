@@ -29,8 +29,8 @@ describe('OrderService.onReturned', () => {
     svc = new OrderService(
       repo as never,
       makeQueue() as never,
-      makePaymentService() as never,
       makeQueue() as never,
+      makePaymentService() as never,
       makeUserRepo() as never,
     );
   });
@@ -85,8 +85,8 @@ describe('OrderService.onPaymentSuccess', () => {
     svc = new OrderService(
       repo as never,
       makeQueue() as never,
-      makePaymentService() as never,
       notifyQueue as never,
+      makePaymentService() as never,
       userRepo as never,
     );
   });
@@ -108,7 +108,12 @@ describe('OrderService.onPaymentSuccess', () => {
     expect(userRepo.findActiveById).toHaveBeenCalledWith(customerId);
     expect(notifyQueue.add).toHaveBeenCalledWith(
       'payment.success',
-      { orderId, customerEmail: 'khach@example.com', amount: 100000 },
+      {
+        orderId,
+        customerId: customerId.toString(),
+        customerEmail: 'khach@example.com',
+        amount: 100000,
+      },
       { removeOnComplete: true },
     );
   });

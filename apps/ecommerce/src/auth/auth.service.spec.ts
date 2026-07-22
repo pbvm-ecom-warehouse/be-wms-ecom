@@ -36,10 +36,12 @@ function makeService(overrides: Partial<Record<string, any>> = {}) {
     verify: jest.fn().mockResolvedValue(true),
     ...overrides.otpStore,
   };
+  const fcmTokenRepo = {};
   const notifyQueue = { add: jest.fn().mockResolvedValue(undefined) };
   const svc = new AuthService(
     userRepo,
     refreshRepo as any,
+    fcmTokenRepo as any,
     notifyQueue as any,
     {} as any, // jwt
     {} as any, // firebaseAdmin
