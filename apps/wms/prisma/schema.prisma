@@ -628,7 +628,7 @@ model User {
   email              String?
   passwordHash       String
   name               String?
-  roles              String[] // ADMIN/MANAGER/RECEIVER/PICKER/PRINTER/COUNTER
+  role               String     // ADMIN/MANAGER/RECEIVER/PICKER/PRINTER/COUNTER/SHIPPER
   status             UserStatus @default(ACTIVE)
   warehouseId        String?    @db.ObjectId // kho mặc định
   mustChangePassword Boolean    @default(false)

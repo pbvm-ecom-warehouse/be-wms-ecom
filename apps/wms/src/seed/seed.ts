@@ -27,7 +27,7 @@ const SEED_USERS: { username: string; role: WmsRole; name: string }[] = [
 ];
 
 /**
- * Seed data cho demo/E2E: admin + 5 role nhân viên. Idempotent — chạy lại
+ * Seed data cho demo/E2E: admin + 6 role nhân viên. Idempotent — chạy lại
  * không tạo trùng (check-then-create, KHÔNG bắt lỗi duplicate-key vì
  * AuthService/UserRepository không map E11000 sang AppException — bắt lỗi
  * đó sẽ để lộ raw Mongo error ra ngoài).

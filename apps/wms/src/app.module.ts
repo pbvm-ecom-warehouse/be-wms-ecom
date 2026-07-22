@@ -54,7 +54,7 @@ import { validateEnv } from './config/env.validation';
     EventsModule, // BullMQ + Redis
     ScheduleModule.forRoot(), // S4-04: cron NearExpiryScanService (06:00 quét lot sắp hết hạn)
     AuthModule, // đăng nhập nhân viên + JWT
-    UsersModule, // CRUD nhân viên cho ADMIN/MANAGER (list/get/create/update/roles/lock/unlock/reset-password/soft-delete)
+    UsersModule, // CRUD nhân viên cho ADMIN/MANAGER (list/get/create/update/role/lock/unlock/reset-password/soft-delete)
     HealthModule, // GET /api/wms/health
     StockModule, // producer mẫu: stock.changed
     WarehouseModule, // CRUD cấu trúc kho: Warehouse/Zone/Rack/Shelf

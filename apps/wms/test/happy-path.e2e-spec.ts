@@ -169,9 +169,9 @@ describe('WMS happy-path (e2e)', () => {
       role: string,
     ): Promise<string> {
       await request(app.getHttpServer())
-        .post('/api/wms/auth/users')
+        .post('/api/wms/users')
         .set('Authorization', `Bearer ${adminToken}`)
-        .send({ username, password: 'E2ePass123!', roles: [role] })
+        .send({ username, password: 'E2ePass123!', role })
         .expect(201);
       const loginRes = await request(app.getHttpServer())
         .post('/api/wms/auth/login')

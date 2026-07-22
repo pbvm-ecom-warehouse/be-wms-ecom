@@ -1,5 +1,6 @@
 // apps/wms/src/supplier/supplier.service.ts
 import { Injectable } from '@nestjs/common';
+import { WmsRole } from '@app/auth';
 import { AppException } from '@app/common/errors/app.exception';
 import { SupplierRepository } from './supplier.repository';
 import { SupplierStatus } from './schemas/supplier.schema';
@@ -63,7 +64,7 @@ export class SupplierService {
     id: string,
     dto: ChangeSupplierStatusDto,
     actorId: string,
-    role: string,
+    role: WmsRole,
   ): Promise<SupplierDocument> {
     const supplier = await this.repo.findSupplierById(id);
     if (!supplier) throw new AppException('SUPPLIER_NOT_FOUND');
@@ -72,7 +73,7 @@ export class SupplierService {
     if (
       supplier.status === SupplierStatus.BLACKLIST &&
       dto.status !== SupplierStatus.BLACKLIST &&
-      role !== 'ADMIN'
+      role !== WmsRole.ADMIN
     ) {
       throw new AppException('SUPPLIER_BLACKLISTED');
     }

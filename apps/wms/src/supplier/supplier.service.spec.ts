@@ -1,6 +1,7 @@
 // apps/wms/src/supplier/supplier.service.spec.ts
 import { SupplierService } from './supplier.service';
 import { SupplierStatus } from './schemas/supplier.schema';
+import { WmsRole } from '@app/auth';
 
 const makeRepo = () => ({
   createSupplier: jest.fn(),
@@ -62,7 +63,7 @@ describe('SupplierService', () => {
           supplierId,
           { status: SupplierStatus.ACTIVE },
           actorId,
-          'MANAGER',
+          WmsRole.MANAGER,
         ),
       ).rejects.toMatchObject({ code: 'SUPPLIER_BLACKLISTED' });
     });
@@ -79,7 +80,7 @@ describe('SupplierService', () => {
             status: SupplierStatus.ACTIVE,
           },
           actorId,
-          'ADMIN',
+          WmsRole.ADMIN,
         ),
       ).resolves.toBeDefined();
     });
