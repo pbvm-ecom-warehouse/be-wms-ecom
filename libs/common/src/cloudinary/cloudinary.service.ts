@@ -39,4 +39,17 @@ export class CloudinaryService {
 
     return { url: response.secure_url, publicId: response.public_id };
   }
+
+  /**
+   * Sinh URL thumbnail bằng Cloudinary transformation (f_auto,q_auto,w_300) từ
+   * publicId của ảnh gốc — không upload file riêng, không xử lý ảnh phía server.
+   */
+  buildThumbnailUrl(publicId: string): string {
+    return cloudinary.url(publicId, {
+      secure: true,
+      width: 300,
+      quality: 'auto',
+      fetch_format: 'auto',
+    });
+  }
 }

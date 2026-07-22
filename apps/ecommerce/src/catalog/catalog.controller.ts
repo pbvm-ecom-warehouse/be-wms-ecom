@@ -54,6 +54,7 @@ import {
 import {
   CreateDesignDto,
   DesignResponseDto,
+  DesignUploadResponseDto,
   UpdateDesignDto,
 } from './dto/design.dto';
 import { SuccessResponseDto } from '../auth/dto/auth.dto';
@@ -242,6 +243,26 @@ export class DesignController {
   async listMyDesigns(@CurrentUser('sub') customerId: string) {
     const designs = await this.svc.listMyDesigns(customerId);
     return plainToInstance(DesignResponseDto, designs, {
+      excludeExtraneousValues: true,
+    });
+  }
+
+  @Post('upload')
+  @UseInterceptors(FileInterceptor('file'))
+  @ApiOperation({
+    summary: 'Upload artwork lên Cloudinary, nhận URL để tạo thiết kế',
+  })
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: { file: { type: 'string', format: 'binary' } },
+    },
+  })
+  @ApiCreatedResponse({ type: DesignUploadResponseDto })
+  async uploadDesignFile(@UploadedFile() file: Express.Multer.File) {
+    const result = await this.svc.uploadDesignFile(file);
+    return plainToInstance(DesignUploadResponseDto, result, {
       excludeExtraneousValues: true,
     });
   }

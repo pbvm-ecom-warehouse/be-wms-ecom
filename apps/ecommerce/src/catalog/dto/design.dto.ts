@@ -49,6 +49,22 @@ export class DesignResponseDto {
   lastUsedAt!: Date | null;
 }
 
+export class DesignUploadResponseDto {
+  @Expose()
+  @ApiProperty({
+    example:
+      'https://res.cloudinary.com/demo/image/upload/v1/ecom/designs/x.png',
+  })
+  file!: string;
+
+  @Expose()
+  @ApiProperty({
+    example:
+      'https://res.cloudinary.com/demo/image/upload/f_auto,q_auto,w_300/ecom/designs/x.png',
+  })
+  thumbnail!: string;
+}
+
 export class UpdateDesignDto {
   @ApiPropertyOptional({ example: 'Logo công ty ABC (Updated)' })
   @IsString()

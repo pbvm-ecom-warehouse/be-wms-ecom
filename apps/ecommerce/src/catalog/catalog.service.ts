@@ -36,9 +36,9 @@ export class CatalogService {
     private readonly cloudinary: CloudinaryService,
   ) {}
 
-  // ── PRODUCT IMAGES ───────────────────────────────────────────────────────
+  // ── UPLOAD ẢNH (dùng chung PRODUCT IMAGES + DESIGN) ─────────────────────
 
-  async uploadProductImage(file: UploadedImageFile): Promise<{ url: string }> {
+  private validateImageFile(file: UploadedImageFile): void {
     if (!file) {
       throw new AppException('VALIDATION_FAILED', 'Thiếu file ảnh');
     }
@@ -51,12 +51,40 @@ export class CatalogService {
     if (file.size > MAX_IMAGE_SIZE_BYTES) {
       throw new AppException('VALIDATION_FAILED', 'File ảnh tối đa 5MB');
     }
+  }
+
+  // ── PRODUCT IMAGES ───────────────────────────────────────────────────────
+
+  async uploadProductImage(file: UploadedImageFile): Promise<{ url: string }> {
+    this.validateImageFile(file);
 
     const { url } = await this.cloudinary.uploadImage(
       file.buffer,
       'ecom/products',
     );
     return { url };
+  }
+
+  // ── DESIGN ARTWORK ───────────────────────────────────────────────────────
+
+  /**
+   * Upload artwork gốc lên Cloudinary + sinh thumbnail bằng transformation URL
+   * (f_auto,q_auto,w_300) — không upload file thumbnail riêng. Chưa gán customerId
+   * ở bước này vì Design chưa tồn tại; owner check thật sự nằm ở createDesign().
+   */
+  async uploadDesignFile(
+    file: UploadedImageFile,
+  ): Promise<{ file: string; thumbnail: string }> {
+    this.validateImageFile(file);
+
+    const { url, publicId } = await this.cloudinary.uploadImage(
+      file.buffer,
+      'ecom/designs',
+    );
+    return {
+      file: url,
+      thumbnail: this.cloudinary.buildThumbnailUrl(publicId),
+    };
   }
 
   // ── CATEGORY ─────────────────────────────────────────────────────────────

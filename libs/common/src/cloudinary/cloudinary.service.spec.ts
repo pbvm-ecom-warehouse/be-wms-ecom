@@ -8,6 +8,7 @@ jest.mock('cloudinary', () => ({
     uploader: {
       upload_stream: jest.fn(),
     },
+    url: jest.fn(),
   },
 }));
 
@@ -90,5 +91,24 @@ describe('CloudinaryService', () => {
     await expect(
       service.uploadImage(Buffer.from('fake'), 'wms/grn'),
     ).rejects.toThrow('Invalid image file');
+  });
+
+  it('buildThumbnailUrl() sinh URL transform f_auto,q_auto,w_300 từ publicId', () => {
+    (cloudinary.url as jest.Mock).mockReturnValue(
+      'https://res.cloudinary.com/demo/image/upload/f_auto,q_auto,w_300/ecom/designs/x.jpg',
+    );
+
+    const service = new CloudinaryService(configWith(okEnv));
+    const thumbnailUrl = service.buildThumbnailUrl('ecom/designs/x');
+
+    expect(cloudinary.url).toHaveBeenCalledWith('ecom/designs/x', {
+      secure: true,
+      width: 300,
+      quality: 'auto',
+      fetch_format: 'auto',
+    });
+    expect(thumbnailUrl).toBe(
+      'https://res.cloudinary.com/demo/image/upload/f_auto,q_auto,w_300/ecom/designs/x.jpg',
+    );
   });
 });

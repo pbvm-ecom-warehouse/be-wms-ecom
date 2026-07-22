@@ -25,6 +25,10 @@ function makeService(
       url: 'https://res.cloudinary.com/demo/image/upload/x.jpg',
       publicId: 'ecom/products/x',
     }),
+    buildThumbnailUrl: jest.fn(
+      (publicId: string) =>
+        `https://res.cloudinary.com/demo/image/upload/f_auto,q_auto,w_300/${publicId}.jpg`,
+    ),
     ...overrides.cloudinary,
   };
   const svc = new CatalogService(repo as any, cacheService as any, cloudinary);
@@ -93,5 +97,49 @@ describe('CatalogService.uploadProductImage', () => {
     ).rejects.toMatchObject({
       code: 'VALIDATION_FAILED',
     });
+  });
+});
+
+describe('CatalogService.uploadDesignFile', () => {
+  it('upload artwork hợp lệ → trả về { file, thumbnail } (thumbnail qua transformation URL)', async () => {
+    const { svc, cloudinary } = makeService({
+      cloudinary: {
+        uploadImage: jest.fn().mockResolvedValue({
+          url: 'https://res.cloudinary.com/demo/image/upload/ecom/designs/x.jpg',
+          publicId: 'ecom/designs/x',
+        }),
+      },
+    });
+
+    const result = await svc.uploadDesignFile(fakeFile());
+
+    expect(cloudinary.uploadImage).toHaveBeenCalledWith(
+      expect.any(Buffer),
+      'ecom/designs',
+    );
+    expect(cloudinary.buildThumbnailUrl).toHaveBeenCalledWith('ecom/designs/x');
+    expect(result).toEqual({
+      file: 'https://res.cloudinary.com/demo/image/upload/ecom/designs/x.jpg',
+      thumbnail:
+        'https://res.cloudinary.com/demo/image/upload/f_auto,q_auto,w_300/ecom/designs/x.jpg',
+    });
+  });
+
+  it('file không phải ảnh → AppException VALIDATION_FAILED, không gọi CloudinaryService', async () => {
+    const { svc, cloudinary } = makeService();
+
+    await expect(
+      svc.uploadDesignFile(fakeFile({ mimetype: 'application/pdf' })),
+    ).rejects.toMatchObject({ code: 'VALIDATION_FAILED' });
+    expect(cloudinary.uploadImage).not.toHaveBeenCalled();
+  });
+
+  it('file > 5MB → AppException VALIDATION_FAILED', async () => {
+    const { svc, cloudinary } = makeService();
+
+    await expect(
+      svc.uploadDesignFile(fakeFile({ size: 5 * 1024 * 1024 + 1 })),
+    ).rejects.toMatchObject({ code: 'VALIDATION_FAILED' });
+    expect(cloudinary.uploadImage).not.toHaveBeenCalled();
   });
 });
