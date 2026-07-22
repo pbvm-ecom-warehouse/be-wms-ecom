@@ -9,10 +9,15 @@ import {
   Post,
   Put,
   Query,
+  UploadedFile,
   UseGuards,
+  UseInterceptors,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import {
   ApiBearerAuth,
+  ApiBody,
+  ApiConsumes,
   ApiCreatedResponse,
   ApiOkResponse,
   ApiOperation,
@@ -44,6 +49,7 @@ import {
   ProductResponseDto,
   ProductVariantResponseDto,
   ProductDetailResponseDto,
+  ImageUploadResponseDto,
 } from './dto/product.dto';
 import {
   CreateDesignDto,
@@ -195,6 +201,28 @@ export class CatalogAdminController {
   async updateVariant(@Param('id') id: string, @Body() dto: UpdateVariantDto) {
     const variant = await this.svc.updateVariant(id, dto);
     return plainToInstance(ProductVariantResponseDto, variant, {
+      excludeExtraneousValues: true,
+    });
+  }
+
+  // ── Product images ───────────────────────────────────────────────────────
+
+  @Post('products/images')
+  @UseInterceptors(FileInterceptor('file'))
+  @ApiOperation({
+    summary: '[Admin] Upload ảnh sản phẩm lên Cloudinary — [ECOM_MANAGER]',
+  })
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: { file: { type: 'string', format: 'binary' } },
+    },
+  })
+  @ApiCreatedResponse({ type: ImageUploadResponseDto })
+  async uploadProductImage(@UploadedFile() file: Express.Multer.File) {
+    const result = await this.svc.uploadProductImage(file);
+    return plainToInstance(ImageUploadResponseDto, result, {
       excludeExtraneousValues: true,
     });
   }

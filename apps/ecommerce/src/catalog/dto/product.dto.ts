@@ -206,3 +206,12 @@ export class ProductResponseDto {
 }
 
 export class ProductDetailResponseDto extends ProductResponseDto {}
+
+export class ImageUploadResponseDto {
+  @Expose()
+  @ApiProperty({
+    example:
+      'https://res.cloudinary.com/demo/image/upload/v1/ecom/products/x.jpg',
+  })
+  url!: string;
+}

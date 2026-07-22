@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { AppException } from '@app/common';
+import { AppException, CloudinaryService } from '@app/common';
 import { CatalogRepository } from './catalog.repository';
 import { CreateCategoryDto, UpdateCategoryDto } from './dto/category.dto';
 import {
@@ -18,12 +18,46 @@ import { CacheService } from '../cache/cache.service';
 
 const DUPLICATE_KEY_CODE = 11000;
 
+// Giới hạn upload ảnh sản phẩm — theo đúng ràng buộc thiết kế IMG-01/IMG-02.
+const ALLOWED_IMAGE_MIMETYPES = ['image/jpeg', 'image/png', 'image/webp'];
+const MAX_IMAGE_SIZE_BYTES = 5 * 1024 * 1024;
+
+export interface UploadedImageFile {
+  buffer: Buffer;
+  mimetype: string;
+  size: number;
+}
+
 @Injectable()
 export class CatalogService {
   constructor(
     private readonly repo: CatalogRepository,
     private readonly cacheService: CacheService,
+    private readonly cloudinary: CloudinaryService,
   ) {}
+
+  // ── PRODUCT IMAGES ───────────────────────────────────────────────────────
+
+  async uploadProductImage(file: UploadedImageFile): Promise<{ url: string }> {
+    if (!file) {
+      throw new AppException('VALIDATION_FAILED', 'Thiếu file ảnh');
+    }
+    if (!ALLOWED_IMAGE_MIMETYPES.includes(file.mimetype)) {
+      throw new AppException(
+        'VALIDATION_FAILED',
+        'Chỉ nhận file ảnh (jpeg/png/webp)',
+      );
+    }
+    if (file.size > MAX_IMAGE_SIZE_BYTES) {
+      throw new AppException('VALIDATION_FAILED', 'File ảnh tối đa 5MB');
+    }
+
+    const { url } = await this.cloudinary.uploadImage(
+      file.buffer,
+      'ecom/products',
+    );
+    return { url };
+  }
 
   // ── CATEGORY ─────────────────────────────────────────────────────────────
 
