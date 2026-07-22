@@ -66,9 +66,6 @@ export class User {
   @Prop({ type: String, enum: ['customer', 'admin'], default: 'customer' })
   type: 'customer' | 'admin';
 
-  @Prop({ type: [String], default: ['customer'] })
-  roles: string[];
-
   @Prop({ type: Date, default: null })
   deletedAt?: Date | null;
 }

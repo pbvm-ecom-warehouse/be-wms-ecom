@@ -292,10 +292,6 @@ export class UserResponseDto {
   type!: string;
 
   @Expose()
-  @ApiProperty({ type: [String], example: [] })
-  roles!: string[];
-
-  @Expose()
   @Type(() => AddressResponseDto)
   @ApiProperty({ type: [AddressResponseDto] })
   addresses!: AddressResponseDto[];
@@ -316,11 +312,17 @@ export class SuccessResponseDto {
 }
 
 export class SaveFcmTokenDto {
-  @ApiProperty({ description: 'FCM Token thiết bị di động / trình duyệt lấy từ Firebase Messaging' })
+  @ApiProperty({
+    description:
+      'FCM Token thiết bị di động / trình duyệt lấy từ Firebase Messaging',
+  })
   @IsString()
   fcmToken!: string;
 
-  @ApiPropertyOptional({ example: 'mobile', description: 'Loại thiết bị: mobile, web, ios, android' })
+  @ApiPropertyOptional({
+    example: 'mobile',
+    description: 'Loại thiết bị: mobile, web, ios, android',
+  })
   @IsOptional()
   @IsString()
   deviceType?: string;
@@ -331,4 +333,3 @@ export class DeleteFcmTokenDto {
   @IsString()
   fcmToken!: string;
 }
-

@@ -10,7 +10,6 @@ export interface CreateUserInput {
   name?: string;
   phone?: string;
   type?: 'customer' | 'admin';
-  roles?: string[];
   emailVerified?: boolean;
 }
 

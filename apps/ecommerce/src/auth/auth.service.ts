@@ -69,7 +69,6 @@ export class AuthService {
       name: dto.name,
       phone: dto.phone,
       type: 'customer',
-      roles: ['customer'],
     });
 
     await this.sendEmailAction(
@@ -93,7 +92,6 @@ export class AuthService {
       name: dto.name,
       phone: dto.phone,
       type: 'admin',
-      roles: [EcomRole.ECOM_MANAGER],
       emailVerified: true,
     });
     return user;
@@ -167,7 +165,6 @@ export class AuthService {
             name: typeof decoded.name === 'string' ? decoded.name : undefined,
             phone: decoded.phone_number ?? undefined,
             type: 'customer',
-            roles: ['customer'],
           });
           await this.notifyQueue.add(
             EVENTS.CUSTOMER_GOOGLE_REGISTERED,
@@ -198,7 +195,7 @@ export class AuthService {
       sub: user._id.toString(),
       type: user.type,
       email: user.email,
-      roles: user.roles,
+      role: user.type === 'admin' ? EcomRole.ECOM_MANAGER : EcomRole.CUSTOMER,
     };
     const accessToken = await this.jwt.signAsync(payload, {
       secret: this.auth.jwtSecret,
