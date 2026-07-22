@@ -4,6 +4,7 @@ import { APP_GUARD } from '@nestjs/core';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { LoggerModule } from 'nestjs-pino';
 import {
+  CloudinaryModule,
   CommonModule,
   buildPinoOptions,
   buildThrottlerOptions,
@@ -38,6 +39,7 @@ import { HealthModule } from './health/health.module';
       useFactory: (config: ConfigService) => buildThrottlerOptions(config),
     }),
     CommonModule, // global filter/interceptor/pipe
+    CloudinaryModule, // upload ảnh dùng chung (product images, design, avatar...)
     DatabaseModule.forApp('ECOM_DATABASE_URL'), // Mongoose → ecom_db
     EventsModule, // BullMQ + Redis
     AuthModule, // đăng ký/đăng nhập khách (customers) + JWT

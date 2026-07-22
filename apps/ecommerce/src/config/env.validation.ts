@@ -29,6 +29,12 @@ const envSchema = z.object({
   FIREBASE_CLIENT_EMAIL: z.string().min(1).optional(),
   FIREBASE_PRIVATE_KEY: z.string().min(1).optional(),
 
+  // Cloudinary (upload ảnh) — BẮT BUỘC, khác Firebase: thiếu là fail-fast lúc boot,
+  // không tắt mềm, vì các nghiệp vụ cần ảnh (product images, design, avatar...) phụ thuộc trực tiếp.
+  CLOUDINARY_CLOUD_NAME: z.string().min(1),
+  CLOUDINARY_API_KEY: z.string().min(1),
+  CLOUDINARY_API_SECRET: z.string().min(1),
+
   // ---- Auth ----
   // Secret RIÊNG của Ecommerce, phải khác WMS_JWT_SECRET (luật #4) và ≥32 ký tự.
   ECOM_JWT_SECRET: z.string().min(32, 'ECOM_JWT_SECRET phải ≥ 32 ký tự'),

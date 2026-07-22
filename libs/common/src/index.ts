@@ -15,3 +15,5 @@ export * from './bootstrap/setup-app';
 export * from './bootstrap/setup-swagger';
 export * from './firebase/firebase-admin.module';
 export * from './firebase/firebase-credential';
+export * from './cloudinary/cloudinary.module';
+export * from './cloudinary/cloudinary.service';

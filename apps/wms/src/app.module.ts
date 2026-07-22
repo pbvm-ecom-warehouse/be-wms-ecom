@@ -5,6 +5,7 @@ import { ScheduleModule } from '@nestjs/schedule';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { LoggerModule } from 'nestjs-pino';
 import {
+  CloudinaryModule,
   CommonModule,
   buildPinoOptions,
   buildThrottlerOptions,
@@ -50,6 +51,7 @@ import { validateEnv } from './config/env.validation';
       useFactory: (config: ConfigService) => buildThrottlerOptions(config),
     }),
     CommonModule, // global filter/interceptor/pipe
+    CloudinaryModule, // upload ảnh dùng chung (GRN, GoodsReturn, ScrapNote, StockCount, avatar...)
     DatabaseModule.forApp('WMS_DATABASE_URL'), // Mongoose → wms_db
     EventsModule, // BullMQ + Redis
     ScheduleModule.forRoot(), // S4-04: cron NearExpiryScanService (06:00 quét lot sắp hết hạn)
