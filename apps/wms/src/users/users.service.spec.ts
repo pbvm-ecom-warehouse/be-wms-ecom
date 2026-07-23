@@ -72,6 +72,60 @@ describe('UsersService', () => {
     });
   });
 
+  describe('create — trùng username/email map thành 409, không lộ raw Mongo error', () => {
+    it('trùng username (keyPattern.username) → throw USER_USERNAME_EXISTS', async () => {
+      userRepo.create.mockRejectedValue({
+        code: 11000,
+        keyPattern: { username: 1 },
+      });
+      await expect(
+        svc.create(
+          { username: 'x', password: 'p', role: 'PICKER' } as never,
+          managerActor,
+        ),
+      ).rejects.toMatchObject({ code: 'USER_USERNAME_EXISTS' });
+    });
+
+    it('trùng email (keyPattern.email) → throw USER_EMAIL_EXISTS', async () => {
+      userRepo.create.mockRejectedValue({
+        code: 11000,
+        keyPattern: { email: 1 },
+      });
+      await expect(
+        svc.create(
+          {
+            username: 'x',
+            password: 'p',
+            email: 'a@b.com',
+            role: 'PICKER',
+          } as never,
+          managerActor,
+        ),
+      ).rejects.toMatchObject({ code: 'USER_EMAIL_EXISTS' });
+    });
+
+    it('lỗi 11000 không nhận diện được keyPattern (fallback) → vẫn map USER_USERNAME_EXISTS, không throw 500 thô', async () => {
+      userRepo.create.mockRejectedValue({ code: 11000, keyPattern: {} });
+      await expect(
+        svc.create(
+          { username: 'x', password: 'p', role: 'PICKER' } as never,
+          managerActor,
+        ),
+      ).rejects.toMatchObject({ code: 'USER_USERNAME_EXISTS' });
+    });
+
+    it('lỗi khác 11000 (không phải duplicate-key) → ném nguyên lỗi, không map sang AppException', async () => {
+      const otherError = new Error('DB down');
+      userRepo.create.mockRejectedValue(otherError);
+      await expect(
+        svc.create(
+          { username: 'x', password: 'p', role: 'PICKER' } as never,
+          managerActor,
+        ),
+      ).rejects.toBe(otherError);
+    });
+  });
+
   describe('update/lock/unlock/resetPassword — chặn MANAGER thao tác target ADMIN', () => {
     const adminTarget = {
       _id: TARGET_ID,

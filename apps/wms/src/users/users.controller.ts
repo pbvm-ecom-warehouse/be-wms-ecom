@@ -13,6 +13,7 @@ import {
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
+  ApiConflictResponse,
   ApiCreatedResponse,
   ApiNoContentResponse,
   ApiOkResponse,
@@ -76,6 +77,10 @@ export class UsersController {
   @Post()
   @ApiOperation({ summary: 'Tạo nhân viên mới — [ADMIN, MANAGER]' })
   @ApiCreatedResponse({ type: CreateUserResponseDto })
+  @ApiConflictResponse({
+    description:
+      'username hoặc email đã tồn tại (error.code: USER_USERNAME_EXISTS | USER_EMAIL_EXISTS)',
+  })
   async create(
     @Body() dto: CreateUserDto,
     @CurrentUser() actor: { sub: string; role: string },

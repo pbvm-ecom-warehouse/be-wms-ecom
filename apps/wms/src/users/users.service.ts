@@ -4,6 +4,7 @@ import { WmsRole } from '@app/auth';
 import * as bcrypt from 'bcryptjs';
 import { Types } from 'mongoose';
 import { UserRefreshTokenRepository } from '../auth/repositories/user-refresh-token.repository';
+import { isMongoDuplicateKeyError } from '../stock/barcode/barcode.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { QueryUsersDto } from './dto/query-users.dto';
@@ -63,18 +64,34 @@ export class UsersService {
   async create(dto: CreateUserDto, actor: Actor): Promise<UserDocument> {
     this.assertManagerCanActOnTarget(actor, dto.role ?? WmsRole.RECEIVER);
     const passwordHash = await bcrypt.hash(dto.password, BCRYPT_ROUNDS);
-    return this.userRepo.create({
-      username: dto.username,
-      email: dto.email,
-      name: dto.name,
-      role: dto.role,
-      passwordHash,
-      mustChangePassword: true,
-      createdBy:
-        actor.sub && Types.ObjectId.isValid(actor.sub)
-          ? this.objectId(actor.sub)
-          : undefined,
-    });
+    try {
+      return await this.userRepo.create({
+        username: dto.username,
+        email: dto.email,
+        name: dto.name,
+        role: dto.role,
+        passwordHash,
+        mustChangePassword: true,
+        createdBy:
+          actor.sub && Types.ObjectId.isValid(actor.sub)
+            ? this.objectId(actor.sub)
+            : undefined,
+      });
+    } catch (err) {
+      // username + email đều unique (email: sparse) — phân biệt bằng keyPattern
+      // để FE hiển thị đúng thông báo trùng field nào (issue #28). Không nhận
+      // diện được keyPattern (edge case hiếm) → mặc định USER_USERNAME_EXISTS
+      // vì username luôn required, khả năng cao hơn email.
+      if (isMongoDuplicateKeyError(err)) {
+        const keyPattern = (err as { keyPattern?: Record<string, unknown> })
+          .keyPattern;
+        if (keyPattern && 'email' in keyPattern) {
+          throw new AppException('USER_EMAIL_EXISTS');
+        }
+        throw new AppException('USER_USERNAME_EXISTS');
+      }
+      throw err;
+    }
   }
 
   async update(

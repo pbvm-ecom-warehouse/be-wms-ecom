@@ -192,6 +192,14 @@ export const ERROR_CATALOG = {
     status: HttpStatus.FORBIDDEN,
     message: 'Không thể tự xóa tài khoản của chính mình',
   },
+  USER_USERNAME_EXISTS: {
+    status: HttpStatus.CONFLICT,
+    message: 'Tên đăng nhập đã được sử dụng',
+  },
+  USER_EMAIL_EXISTS: {
+    status: HttpStatus.CONFLICT,
+    message: 'Email đã được sử dụng',
+  },
 
   // ── WMS — Stock (WarehouseItem) ─────────────────────────────────────────
   STOCK_ITEM_NOT_FOUND: {

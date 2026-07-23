@@ -44,9 +44,11 @@ const SEED_ATTRIBUTE_OPTIONS: {
 
 /**
  * Seed data cho demo/E2E: admin + 6 role nhân viên. Idempotent — chạy lại
- * không tạo trùng (check-then-create, KHÔNG bắt lỗi duplicate-key vì
- * AuthService/UserRepository không map E11000 sang AppException — bắt lỗi
- * đó sẽ để lộ raw Mongo error ra ngoài).
+ * không tạo trùng bằng check-then-create (tìm theo username trước khi gọi
+ * usersService.create()), không dựa vào bắt lỗi duplicate-key (issue #28:
+ * UsersService.create() giờ đã map E11000 → USER_USERNAME_EXISTS/
+ * USER_EMAIL_EXISTS, nhưng seed vẫn ưu tiên check-then-create để tránh
+ * throw/catch không cần thiết mỗi lần chạy lại).
  */
 export async function seed(): Promise<void> {
   const app = await NestFactory.createApplicationContext(AppModule);

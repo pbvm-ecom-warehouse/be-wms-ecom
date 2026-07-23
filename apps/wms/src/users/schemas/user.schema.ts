@@ -21,7 +21,10 @@ export class User {
   @Prop({ unique: true, sparse: true })
   firebaseUid?: string;
 
-  @Prop()
+  // sparse: true — email là optional, nếu unique thường thì 2 user cùng thiếu
+  // email (undefined) sẽ đụng unique index (Mongo coi 2 field vắng mặt là
+  // trùng nhau). sparse bỏ qua document không có field này khỏi index.
+  @Prop({ unique: true, sparse: true })
   email?: string;
 
   // select:false → KHÔNG trả hash ra ngoài theo mặc định; login phải .select('+passwordHash').
