@@ -11,6 +11,8 @@ import {
   ApiBearerAuth,
   ApiOkResponse,
   ApiOperation,
+  ApiParam,
+  ApiQuery,
   ApiTags,
 } from '@nestjs/swagger';
 import { JwtAuthGuard, Roles, RolesGuard, WmsRole } from '@app/auth';
@@ -47,6 +49,16 @@ export class SkuTemplateController {
   @ApiOperation({
     summary:
       'Lấy template SKU (root hoặc category options nếu chưa chọn category) — [ADMIN, MANAGER]',
+  })
+  @ApiParam({
+    name: 'type',
+    enum: [ItemType.CUP_BLANK, ItemType.MATERIAL, ItemType.PACKAGING],
+  })
+  @ApiQuery({
+    name: 'categoryOptionId',
+    required: false,
+    description:
+      'Bỏ trống với CUP_BLANK (trả template ngay) hoặc lần đầu gọi cho MATERIAL/PACKAGING (trả category options để chọn trước)',
   })
   @ApiOkResponse({
     schema: {
