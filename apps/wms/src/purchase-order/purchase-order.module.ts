@@ -17,7 +17,7 @@ import { StockModule } from '../stock/stock.module';
     MongooseModule.forFeature([
       { name: PurchaseOrder.name, schema: PurchaseOrderSchema },
     ]),
-    SupplierModule, // assertSupplierActive + getSupplierItemByItemId
+    SupplierModule, // assertSupplierActive + getSupplierItemByItemAndSupplier
     WarehouseModule, // getWarehouse
     StockModule, // findItemById — validate itemId tồn tại khi tạo PO
   ],
