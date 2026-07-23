@@ -52,6 +52,10 @@ export class GoodsReturnItem {
    */
   @Prop({ type: Types.ObjectId, default: null })
   scrapNoteId!: Types.ObjectId | null;
+
+  /** Ảnh minh chứng tình trạng hàng (đặc biệt DAMAGED) — set lúc inspect, optional. */
+  @Prop({ type: [String], default: [] })
+  images!: string[];
 }
 const GoodsReturnItemSchema = SchemaFactory.createForClass(GoodsReturnItem);
 

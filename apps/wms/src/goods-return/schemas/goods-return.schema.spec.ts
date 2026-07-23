@@ -29,6 +29,21 @@ describe('GoodsReturnSchema', () => {
     expect(GoodsReturnSchema.paths['items']).toBeDefined();
   });
 
+  it('GoodsReturnItem có field images (default [])', () => {
+    const itemPaths = GoodsReturnSchema.path('items') as unknown as {
+      schema: {
+        paths: Record<string, { defaultValue: unknown }>;
+      };
+    };
+    const imagesPath = itemPaths.schema.paths['images'];
+    expect(imagesPath).toBeDefined();
+    const defaultValue =
+      typeof imagesPath.defaultValue === 'function'
+        ? (imagesPath.defaultValue as () => unknown)()
+        : imagesPath.defaultValue;
+    expect(defaultValue).toEqual([]);
+  });
+
   it('có index orderId, warehouseId+status, status', () => {
     const indexes = GoodsReturnSchema.indexes();
     expect(indexes.some(([def]) => def['orderId'] === 1)).toBe(true);

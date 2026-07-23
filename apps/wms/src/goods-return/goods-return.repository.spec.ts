@@ -120,7 +120,9 @@ describe('GoodsReturnRepository', () => {
         warehouseId: null,
         createdBy: null,
         status: GoodsReturnStatus.DRAFT,
-        items: [{ itemId, condition: null, shelfId: null, lotId: null }],
+        items: [
+          { itemId, condition: null, shelfId: null, lotId: null, images: [] },
+        ],
         save,
       };
       model.findOne.mockReturnValue({ exec: jest.fn().mockResolvedValue(doc) });
@@ -131,6 +133,7 @@ describe('GoodsReturnRepository', () => {
           condition: GoodsReturnItemCondition.GOOD,
           shelfId,
           lotId: null,
+          images: [],
         },
       ]);
 
@@ -140,6 +143,34 @@ describe('GoodsReturnRepository', () => {
       expect(doc.items[0].condition).toBe(GoodsReturnItemCondition.GOOD);
       expect(doc.items[0].shelfId).toBe(shelfId);
       expect(save).toHaveBeenCalled();
+    });
+
+    it('lưu images vào đúng dòng khi DAMAGED có ảnh minh chứng', async () => {
+      const save = jest.fn().mockResolvedValue(undefined);
+      const doc = {
+        warehouseId: null,
+        createdBy: null,
+        status: GoodsReturnStatus.DRAFT,
+        items: [
+          { itemId, condition: null, shelfId: null, lotId: null, images: [] },
+        ],
+        save,
+      };
+      model.findOne.mockReturnValue({ exec: jest.fn().mockResolvedValue(doc) });
+
+      await repo.setInspected('gr1', warehouseId, createdBy, [
+        {
+          itemId,
+          condition: GoodsReturnItemCondition.DAMAGED,
+          shelfId,
+          lotId: null,
+          images: ['https://res.cloudinary.com/demo/image/upload/x.jpg'],
+        },
+      ]);
+
+      expect(doc.items[0].images).toEqual([
+        'https://res.cloudinary.com/demo/image/upload/x.jpg',
+      ]);
     });
   });
 

@@ -88,6 +88,26 @@ export class InspectGoodsReturnDto {
   items!: InspectGoodsReturnItemDto[];
 }
 
+/**
+ * Request DTO cho POST :id/inspect dạng multipart/form-data — cần multipart vì
+ * mỗi dòng DAMAGED có thể kèm ảnh minh chứng (field file riêng theo index, xem
+ * controller). `items` gửi dưới dạng JSON string (form field thường), parse +
+ * validate thủ công bằng InspectGoodsReturnDto thay vì để ValidationPipe global
+ * làm (pipe không parse JSON lồng trong multipart form field).
+ */
+export class InspectGoodsReturnFormDto {
+  @ApiProperty({ example: '665f1a2b3c4d5e6f7a8b9c0d' })
+  @IsMongoId()
+  warehouseId!: string;
+
+  @ApiProperty({
+    description: 'JSON string của mảng InspectGoodsReturnItemDto',
+    example: '[{"itemId":"665f...","condition":"DAMAGED","shelfId":"665f..."}]',
+  })
+  @IsString()
+  items!: string;
+}
+
 export class QueryGoodsReturnDto {
   @ApiPropertyOptional({ enum: GoodsReturnStatus })
   @IsOptional()
@@ -160,6 +180,10 @@ export class GoodsReturnItemResponseDto {
   )
   @ApiPropertyOptional()
   scrapNoteId!: string | null;
+
+  @Expose()
+  @ApiProperty({ type: [String] })
+  images!: string[];
 }
 
 export class GoodsReturnResponseDto {

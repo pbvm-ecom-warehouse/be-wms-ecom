@@ -27,6 +27,7 @@ export interface InspectLineInput {
   condition: GoodsReturnItemCondition;
   shelfId: Types.ObjectId;
   lotId: Types.ObjectId | null;
+  images: string[];
 }
 
 @Injectable()
@@ -119,6 +120,7 @@ export class GoodsReturnRepository {
       item.condition = line.condition;
       item.shelfId = line.shelfId;
       item.lotId = line.lotId;
+      item.images = line.images;
     }
     await doc.save();
   }

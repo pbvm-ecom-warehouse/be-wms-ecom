@@ -42,6 +42,24 @@ const makeTxHelper = () => ({
 
 const makeStockQueue = () => ({ add: jest.fn() });
 
+const makeCloudinaryService = () => ({
+  uploadImage: jest.fn().mockResolvedValue({
+    url: 'https://res.cloudinary.com/demo/image/upload/wms/goods-return/x.jpg',
+    publicId: 'wms/goods-return/x',
+  }),
+});
+
+function fakeImageFile(
+  overrides: Partial<{ mimetype: string; size: number; buffer: Buffer }> = {},
+) {
+  return {
+    mimetype: 'image/png',
+    size: 1024,
+    buffer: Buffer.from('fake-image'),
+    ...overrides,
+  };
+}
+
 describe('GoodsReturnService', () => {
   let svc: GoodsReturnService;
   let repo: ReturnType<typeof makeRepo>;
@@ -51,6 +69,7 @@ describe('GoodsReturnService', () => {
   let stockService: ReturnType<typeof makeStockService>;
   let txHelper: ReturnType<typeof makeTxHelper>;
   let stockQueue: ReturnType<typeof makeStockQueue>;
+  let cloudinary: ReturnType<typeof makeCloudinaryService>;
 
   const actorId = new Types.ObjectId().toString();
   const warehouseId = new Types.ObjectId();
@@ -66,6 +85,7 @@ describe('GoodsReturnService', () => {
     stockService = makeStockService();
     txHelper = makeTxHelper();
     stockQueue = makeStockQueue();
+    cloudinary = makeCloudinaryService();
     svc = new GoodsReturnService(
       repo as never,
       stockRepo as never,
@@ -74,6 +94,7 @@ describe('GoodsReturnService', () => {
       scrapNoteService as never,
       txHelper as never,
       stockQueue as never,
+      cloudinary as never,
     );
   });
 
@@ -361,10 +382,178 @@ describe('GoodsReturnService', () => {
             condition: GoodsReturnItemCondition.GOOD,
             shelfId,
             lotId,
+            images: [],
           },
         ],
       );
       expect(result).toBe(updated);
+    });
+
+    it('không có imagesByItemId → images rỗng, không gọi CloudinaryService', async () => {
+      repo.findById
+        .mockResolvedValueOnce({
+          _id: 'gr1',
+          status: GoodsReturnStatus.DRAFT,
+          items: [{ itemId, sku: 'SKU-1', quantity: 2 }],
+        })
+        .mockResolvedValueOnce({ _id: 'gr1' });
+      warehouseRepo.findWarehouseById.mockResolvedValue({ _id: warehouseId });
+      warehouseRepo.findShelfById.mockResolvedValue({ _id: shelfId });
+      stockRepo.findItemById.mockResolvedValue({
+        _id: itemId,
+        sku: 'SKU-1',
+        isPerishable: false,
+      });
+
+      await svc.inspectGoodsReturn(
+        'gr1',
+        {
+          warehouseId: warehouseId.toString(),
+          items: [
+            {
+              itemId: itemId.toString(),
+              condition: GoodsReturnItemCondition.DAMAGED,
+              shelfId: shelfId.toString(),
+            },
+          ],
+        },
+        actorId,
+      );
+
+      expect(cloudinary.uploadImage).not.toHaveBeenCalled();
+      expect(repo.setInspected).toHaveBeenCalledWith(
+        'gr1',
+        warehouseId,
+        new Types.ObjectId(actorId),
+        [expect.objectContaining({ images: [] })],
+      );
+    });
+
+    it('có ảnh minh chứng cho dòng DAMAGED → upload Cloudinary vào wms/goods-return, lưu URL đúng dòng', async () => {
+      repo.findById
+        .mockResolvedValueOnce({
+          _id: 'gr1',
+          status: GoodsReturnStatus.DRAFT,
+          items: [{ itemId, sku: 'SKU-1', quantity: 2 }],
+        })
+        .mockResolvedValueOnce({ _id: 'gr1' });
+      warehouseRepo.findWarehouseById.mockResolvedValue({ _id: warehouseId });
+      warehouseRepo.findShelfById.mockResolvedValue({ _id: shelfId });
+      stockRepo.findItemById.mockResolvedValue({
+        _id: itemId,
+        sku: 'SKU-1',
+        isPerishable: false,
+      });
+
+      const imagesByItemId = new Map([[itemId.toString(), [fakeImageFile()]]]);
+
+      await svc.inspectGoodsReturn(
+        'gr1',
+        {
+          warehouseId: warehouseId.toString(),
+          items: [
+            {
+              itemId: itemId.toString(),
+              condition: GoodsReturnItemCondition.DAMAGED,
+              shelfId: shelfId.toString(),
+            },
+          ],
+        },
+        actorId,
+        imagesByItemId,
+      );
+
+      expect(cloudinary.uploadImage).toHaveBeenCalledWith(
+        expect.any(Buffer),
+        'wms/goods-return',
+      );
+      expect(repo.setInspected).toHaveBeenCalledWith(
+        'gr1',
+        warehouseId,
+        new Types.ObjectId(actorId),
+        [
+          expect.objectContaining({
+            images: [
+              'https://res.cloudinary.com/demo/image/upload/wms/goods-return/x.jpg',
+            ],
+          }),
+        ],
+      );
+    });
+
+    it('ảnh minh chứng sai mimetype → throw VALIDATION_FAILED, không gọi setInspected', async () => {
+      repo.findById.mockResolvedValue({
+        _id: 'gr1',
+        status: GoodsReturnStatus.DRAFT,
+        items: [{ itemId, sku: 'SKU-1', quantity: 2 }],
+      });
+      warehouseRepo.findWarehouseById.mockResolvedValue({ _id: warehouseId });
+      warehouseRepo.findShelfById.mockResolvedValue({ _id: shelfId });
+      stockRepo.findItemById.mockResolvedValue({
+        _id: itemId,
+        sku: 'SKU-1',
+        isPerishable: false,
+      });
+
+      const imagesByItemId = new Map([
+        [itemId.toString(), [fakeImageFile({ mimetype: 'application/pdf' })]],
+      ]);
+
+      await expect(
+        svc.inspectGoodsReturn(
+          'gr1',
+          {
+            warehouseId: warehouseId.toString(),
+            items: [
+              {
+                itemId: itemId.toString(),
+                condition: GoodsReturnItemCondition.DAMAGED,
+                shelfId: shelfId.toString(),
+              },
+            ],
+          },
+          actorId,
+          imagesByItemId,
+        ),
+      ).rejects.toMatchObject({ code: 'VALIDATION_FAILED' });
+      expect(repo.setInspected).not.toHaveBeenCalled();
+    });
+
+    it('ảnh minh chứng > 5MB → throw VALIDATION_FAILED', async () => {
+      repo.findById.mockResolvedValue({
+        _id: 'gr1',
+        status: GoodsReturnStatus.DRAFT,
+        items: [{ itemId, sku: 'SKU-1', quantity: 2 }],
+      });
+      warehouseRepo.findWarehouseById.mockResolvedValue({ _id: warehouseId });
+      warehouseRepo.findShelfById.mockResolvedValue({ _id: shelfId });
+      stockRepo.findItemById.mockResolvedValue({
+        _id: itemId,
+        sku: 'SKU-1',
+        isPerishable: false,
+      });
+
+      const imagesByItemId = new Map([
+        [itemId.toString(), [fakeImageFile({ size: 5 * 1024 * 1024 + 1 })]],
+      ]);
+
+      await expect(
+        svc.inspectGoodsReturn(
+          'gr1',
+          {
+            warehouseId: warehouseId.toString(),
+            items: [
+              {
+                itemId: itemId.toString(),
+                condition: GoodsReturnItemCondition.DAMAGED,
+                shelfId: shelfId.toString(),
+              },
+            ],
+          },
+          actorId,
+          imagesByItemId,
+        ),
+      ).rejects.toMatchObject({ code: 'VALIDATION_FAILED' });
     });
   });
 

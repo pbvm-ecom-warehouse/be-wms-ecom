@@ -1,6 +1,6 @@
 import { InjectQueue } from '@nestjs/bullmq';
 import { Injectable, Logger } from '@nestjs/common';
-import { AppException } from '@app/common';
+import { AppException, CloudinaryService } from '@app/common';
 import { EVENTS, QUEUES, type StockChangedPayload } from '@app/events';
 import { Queue } from 'bullmq';
 import { Types } from 'mongoose';
@@ -29,6 +29,16 @@ interface OrderReturnedItem {
   quantity: number;
 }
 
+// Giới hạn upload ảnh minh chứng hàng trả — theo đúng ràng buộc thiết kế IMG-01/IMG-05.
+const ALLOWED_IMAGE_MIMETYPES = ['image/jpeg', 'image/png', 'image/webp'];
+const MAX_IMAGE_SIZE_BYTES = 5 * 1024 * 1024;
+
+export interface UploadedImageFile {
+  buffer: Buffer;
+  mimetype: string;
+  size: number;
+}
+
 @Injectable()
 export class GoodsReturnService {
   private readonly logger = new Logger(GoodsReturnService.name);
@@ -41,6 +51,7 @@ export class GoodsReturnService {
     private readonly scrapNoteService: ScrapNoteService,
     private readonly stockTransactionHelper: StockTransactionHelper,
     @InjectQueue(QUEUES.STOCK) private readonly stockQueue: Queue,
+    private readonly cloudinary: CloudinaryService,
   ) {}
 
   /**
@@ -123,11 +134,16 @@ export class GoodsReturnService {
    * tồn kho thật — cho phép rà soát/sửa trước khi confirm(). isPerishable +
    * condition=GOOD bắt buộc lotId (nhập lại đúng lô còn hạn); condition=
    * DAMAGED không cần lotId (hàng sẽ bị hủy ngay, không cần biết đúng lô).
+   *
+   * `imagesByItemId` optional — ảnh minh chứng gắn theo đúng dòng (thường dùng
+   * cho condition=DAMAGED nhưng không bắt buộc, xem AC IMG-05). Validate +
+   * upload Cloudinary (folder wms/goods-return) ngay tại đây trước khi ghi.
    */
   async inspectGoodsReturn(
     id: string,
     dto: InspectGoodsReturnDto,
     actorId: string,
+    imagesByItemId?: Map<string, UploadedImageFile[]>,
   ): Promise<GoodsReturnDocument> {
     const goodsReturn = await this.repo.findById(id);
     if (!goodsReturn) throw new AppException('GOODS_RETURN_NOT_FOUND');
@@ -146,6 +162,7 @@ export class GoodsReturnService {
       condition: GoodsReturnItemCondition;
       shelfId: Types.ObjectId;
       lotId: Types.ObjectId | null;
+      images: string[];
     }[] = [];
 
     for (const itemDto of dto.items) {
@@ -167,11 +184,23 @@ export class GoodsReturnService {
         throw new AppException('GOODS_RETURN_ITEM_ISPERISHABLE_NO_LOT');
       }
 
+      const files = imagesByItemId?.get(itemDto.itemId) ?? [];
+      const images: string[] = [];
+      for (const file of files) {
+        this.validateImageFile(file);
+        const { url } = await this.cloudinary.uploadImage(
+          file.buffer,
+          'wms/goods-return',
+        );
+        images.push(url);
+      }
+
       lines.push({
         itemId: new Types.ObjectId(itemDto.itemId),
         condition: itemDto.condition,
         shelfId: new Types.ObjectId(itemDto.shelfId),
         lotId: itemDto.lotId ? new Types.ObjectId(itemDto.lotId) : null,
+        images,
       });
     }
 
@@ -189,6 +218,18 @@ export class GoodsReturnService {
     const updated = await this.repo.findById(id);
     if (!updated) throw new AppException('GOODS_RETURN_NOT_FOUND');
     return updated;
+  }
+
+  private validateImageFile(file: UploadedImageFile): void {
+    if (!ALLOWED_IMAGE_MIMETYPES.includes(file.mimetype)) {
+      throw new AppException(
+        'VALIDATION_FAILED',
+        'Chỉ nhận file ảnh (jpeg/png/webp)',
+      );
+    }
+    if (file.size > MAX_IMAGE_SIZE_BYTES) {
+      throw new AppException('VALIDATION_FAILED', 'File ảnh tối đa 5MB');
+    }
   }
 
   /**
