@@ -13,7 +13,10 @@ export enum BarcodeKind {
  * này — không cần compound với kind. Sổ cái thuần, không soft-delete: gỡ 1 mã
  * (vd sửa altBarcodes) là xóa document, không đánh dấu deletedAt.
  */
-@Schema({ collection: 'barcode_registry', timestamps: { createdAt: true, updatedAt: false } })
+@Schema({
+  collection: 'barcode_registry',
+  timestamps: { createdAt: true, updatedAt: false },
+})
 export class BarcodeRegistryEntry {
   @Prop({ required: true, unique: true })
   code!: string;
@@ -25,7 +28,9 @@ export class BarcodeRegistryEntry {
   kind!: BarcodeKind;
 }
 
-export type BarcodeRegistryEntryDocument = HydratedDocument<BarcodeRegistryEntry>;
-export const BarcodeRegistryEntrySchema = SchemaFactory.createForClass(BarcodeRegistryEntry);
+export type BarcodeRegistryEntryDocument =
+  HydratedDocument<BarcodeRegistryEntry>;
+export const BarcodeRegistryEntrySchema =
+  SchemaFactory.createForClass(BarcodeRegistryEntry);
 
 BarcodeRegistryEntrySchema.index({ itemId: 1 });

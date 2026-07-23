@@ -136,10 +136,11 @@ export const SKU_TEMPLATES: SkuTemplate[] = [
 ];
 
 /** itemType nào cần chọn category trước (MATERIAL/PACKAGING) → key option đại diện category đó. */
-export const CATEGORY_CODE_KEY: Partial<Record<ItemType, AttributeOptionKey>> = {
-  [ItemType.MATERIAL]: AttributeOptionKey.MATERIAL_CATEGORY,
-  [ItemType.PACKAGING]: AttributeOptionKey.PACKAGING_CATEGORY,
-};
+export const CATEGORY_CODE_KEY: Partial<Record<ItemType, AttributeOptionKey>> =
+  {
+    [ItemType.MATERIAL]: AttributeOptionKey.MATERIAL_CATEGORY,
+    [ItemType.PACKAGING]: AttributeOptionKey.PACKAGING_CATEGORY,
+  };
 
 export function findRootTemplates(itemType: ItemType): SkuTemplate[] {
   return SKU_TEMPLATES.filter((t) => t.itemType === itemType);

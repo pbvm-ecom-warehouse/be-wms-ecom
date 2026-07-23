@@ -98,7 +98,7 @@ describe('AttributeOptionService', () => {
       });
       repo.update.mockResolvedValue({ _id: id, name: 'Đỏ' });
 
-      await svc.update(id, { name: 'Đỏ' } as never, actorId);
+      await svc.update(id, { name: 'Đỏ' }, actorId);
 
       expect(repo.update).toHaveBeenCalledWith(
         id,
@@ -111,7 +111,7 @@ describe('AttributeOptionService', () => {
       repo.findById.mockResolvedValue(null);
 
       await expect(
-        svc.update(id, { name: 'x' } as never, actorId),
+        svc.update(id, { name: 'x' }, actorId),
       ).rejects.toMatchObject({ code: 'STOCK_ATTRIBUTE_OPTION_NOT_FOUND' });
     });
   });

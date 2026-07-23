@@ -63,9 +63,8 @@ export class ItemAttributeOption {
 }
 
 export type ItemAttributeOptionDocument = HydratedDocument<ItemAttributeOption>;
-export const ItemAttributeOptionSchema = SchemaFactory.createForClass(
-  ItemAttributeOption,
-);
+export const ItemAttributeOptionSchema =
+  SchemaFactory.createForClass(ItemAttributeOption);
 
 ItemAttributeOptionSchema.index({ key: 1, code: 1 }, { unique: true });
 ItemAttributeOptionSchema.index({ key: 1, isActive: 1 });

@@ -34,7 +34,10 @@ describe('BarcodeService', () => {
       repo.nextSequence.mockResolvedValue(1);
       repo.insertRegistryEntry.mockResolvedValue(undefined);
 
-      const code = await svc.generateAndReservePrimaryBarcode(itemId, fakeSession);
+      const code = await svc.generateAndReservePrimaryBarcode(
+        itemId,
+        fakeSession,
+      );
 
       expect(code).toHaveLength(13);
       expect(code.startsWith('20')).toBe(true);
@@ -62,7 +65,10 @@ describe('BarcodeService', () => {
         .mockRejectedValueOnce({ code: 11000 })
         .mockResolvedValueOnce(undefined);
 
-      const code = await svc.generateAndReservePrimaryBarcode(itemId, fakeSession);
+      const code = await svc.generateAndReservePrimaryBarcode(
+        itemId,
+        fakeSession,
+      );
 
       expect(code).toHaveLength(13);
       expect(repo.nextSequence).toHaveBeenCalledTimes(2);

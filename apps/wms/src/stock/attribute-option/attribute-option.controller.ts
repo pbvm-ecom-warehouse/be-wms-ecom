@@ -1,6 +1,27 @@
-import { Body, Controller, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
-import { ApiBearerAuth, ApiCreatedResponse, ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
-import { CurrentUser, JwtAuthGuard, Roles, RolesGuard, WmsRole } from '@app/auth';
+import {
+  Body,
+  Controller,
+  Get,
+  Param,
+  Patch,
+  Post,
+  Query,
+  UseGuards,
+} from '@nestjs/common';
+import {
+  ApiBearerAuth,
+  ApiCreatedResponse,
+  ApiOkResponse,
+  ApiOperation,
+  ApiTags,
+} from '@nestjs/swagger';
+import {
+  CurrentUser,
+  JwtAuthGuard,
+  Roles,
+  RolesGuard,
+  WmsRole,
+} from '@app/auth';
 import { plainToInstance } from 'class-transformer';
 import { AttributeOptionService } from './attribute-option.service';
 import {
@@ -23,7 +44,9 @@ export class AttributeOptionController {
 
   @Get()
   @Roles(WmsRole.ADMIN, WmsRole.MANAGER)
-  @ApiOperation({ summary: 'Danh sách option thuộc tính theo key — [ADMIN, MANAGER]' })
+  @ApiOperation({
+    summary: 'Danh sách option thuộc tính theo key — [ADMIN, MANAGER]',
+  })
   @ApiOkResponse({ type: [AttributeOptionResponseDto] })
   async list(@Query() query: QueryAttributeOptionDto) {
     const list = await this.svc.list(query.key, query.includeInactive ?? false);
@@ -32,7 +55,9 @@ export class AttributeOptionController {
 
   @Post('code-suggestion')
   @Roles(WmsRole.ADMIN)
-  @ApiOperation({ summary: 'Gợi ý code từ name — ADMIN xác nhận trước khi lưu — [ADMIN]' })
+  @ApiOperation({
+    summary: 'Gợi ý code từ name — ADMIN xác nhận trước khi lưu — [ADMIN]',
+  })
   @ApiOkResponse({ type: CodeSuggestionResponseDto })
   suggestCode(@Body() dto: CodeSuggestionDto) {
     const result = this.svc.suggestCode(dto.key, dto.name);
@@ -53,7 +78,10 @@ export class AttributeOptionController {
 
   @Patch(':id')
   @Roles(WmsRole.ADMIN)
-  @ApiOperation({ summary: 'Cập nhật option (name/isActive/sortOrder, không sửa code) — [ADMIN]' })
+  @ApiOperation({
+    summary:
+      'Cập nhật option (name/isActive/sortOrder, không sửa code) — [ADMIN]',
+  })
   @ApiOkResponse({ type: AttributeOptionResponseDto })
   async update(
     @Param('id') id: string,
@@ -61,6 +89,10 @@ export class AttributeOptionController {
     @CurrentUser('sub') actorId: string,
   ) {
     const doc = await this.svc.update(id, dto, actorId);
-    return plainToInstance(AttributeOptionResponseDto, doc?.toObject(), TO_OPTS);
+    return plainToInstance(
+      AttributeOptionResponseDto,
+      doc?.toObject(),
+      TO_OPTS,
+    );
   }
 }
