@@ -1,7 +1,7 @@
 // apps/wms/src/purchase-order/purchase-order.service.ts
 import { Injectable } from '@nestjs/common';
 import { AppException } from '@app/common';
-import type { ClientSession } from 'mongoose';
+import type { ClientSession, Types } from 'mongoose';
 import {
   PurchaseOrderRepository,
   ResolvedPurchaseOrderItem,
@@ -47,7 +47,11 @@ export class PurchaseOrderService {
       let unitPrice = item.unitPrice;
       if (unitPrice === undefined) {
         // Giá để trống → tra bảng giá NCC; SKU chưa từng khai giá thì từ chối luôn PO
-        let supplierItem: { purchasePrice: number; isActive: boolean };
+        let supplierItem: {
+          purchasePrice: number;
+          isActive: boolean;
+          supplierId: Types.ObjectId;
+        };
         try {
           supplierItem = await this.supplierService.getSupplierItemByItemId(
             item.itemId,
@@ -61,6 +65,11 @@ export class PurchaseOrderService {
         }
         // Báo giá hết hiệu lực (isActive=false) → coi như chưa có giá, không tự điền
         if (!supplierItem.isActive) {
+          throw new AppException('PO_PRICE_MISSING');
+        }
+        // SupplierItem đăng ký cho NCC khác dto.supplierId → giá này không đáng
+        // tin cho NCC đang chọn (issue #29), buộc người dùng tự nhập unitPrice tay.
+        if (supplierItem.supplierId.toString() !== dto.supplierId) {
           throw new AppException('PO_PRICE_MISSING');
         }
         unitPrice = supplierItem.purchasePrice;
