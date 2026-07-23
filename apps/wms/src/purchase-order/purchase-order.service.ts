@@ -49,9 +49,11 @@ export class PurchaseOrderService {
         // Giá để trống → tra bảng giá NCC; SKU chưa từng khai giá thì từ chối luôn PO
         let supplierItem: { purchasePrice: number; isActive: boolean };
         try {
-          supplierItem = await this.supplierService.getSupplierItemByItemId(
-            item.itemId,
-          );
+          supplierItem =
+            await this.supplierService.getSupplierItemByItemAndSupplier(
+              item.itemId,
+              dto.supplierId,
+            );
         } catch (err) {
           // Chỉ dịch lỗi "chưa có báo giá" sang PO_PRICE_MISSING; lỗi khác (vd hạ tầng) giữ nguyên
           if ((err as { code?: string })?.code === 'SUPPLIER_ITEM_NOT_FOUND') {
