@@ -91,13 +91,17 @@ export class SupplierService {
   // ─── SupplierItem ─────────────────────────────────────────────────────────
 
   /**
-   * Tạo nếu SKU chưa có NCC chính, cập nhật nếu đã có.
-   * Ràng buộc: 1 SKU ↔ 1 dòng SupplierItem (unique itemId).
+   * Tạo báo giá mới nếu cặp (SKU, NCC) chưa có, cập nhật nếu đã có.
+   * Ràng buộc: 1 cặp (itemId, supplierId) ↔ 1 dòng SupplierItem (compound unique).
+   * Nhiều NCC khác nhau báo giá cùng 1 SKU → mỗi NCC là 1 bản ghi riêng.
    */
   async upsertSupplierItem(
     dto: CreateSupplierItemDto,
   ): Promise<SupplierItemDocument> {
-    const existing = await this.repo.findSupplierItemByItemId(dto.itemId);
+    const existing = await this.repo.findSupplierItemByItemAndSupplier(
+      dto.itemId,
+      dto.supplierId,
+    );
     if (!existing) {
       return this.repo.createSupplierItem(dto);
     }
@@ -124,8 +128,22 @@ export class SupplierService {
     return this.repo.findSupplierItemsBySupplierId(supplierId);
   }
 
-  async getSupplierItemByItemId(itemId: string): Promise<SupplierItemDocument> {
-    const doc = await this.repo.findSupplierItemByItemId(itemId);
+  /** Mọi báo giá (mọi NCC) của 1 SKU — mảng rỗng nếu chưa ai báo giá (trạng thái hợp lệ). */
+  async listSupplierItemsByItemId(
+    itemId: string,
+  ): Promise<SupplierItemDocument[]> {
+    return this.repo.findSupplierItemsByItemId(itemId);
+  }
+
+  /** Tra đúng báo giá theo cặp (SKU, NCC) — dùng bởi PurchaseOrderService khi auto-fill giá. */
+  async getSupplierItemByItemAndSupplier(
+    itemId: string,
+    supplierId: string,
+  ): Promise<SupplierItemDocument> {
+    const doc = await this.repo.findSupplierItemByItemAndSupplier(
+      itemId,
+      supplierId,
+    );
     if (!doc) throw new AppException('SUPPLIER_ITEM_NOT_FOUND');
     return doc;
   }
