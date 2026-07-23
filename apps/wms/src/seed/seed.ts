@@ -12,6 +12,8 @@ import { WarehouseService } from '../warehouse/warehouse.service';
 import { StockService } from '../stock/stock.service';
 import { SupplierService } from '../supplier/supplier.service';
 import { ItemType } from '../stock/schemas/warehouse-item.schema';
+import { AttributeOptionKey } from '../stock/schemas/attribute-option.schema';
+import { AttributeOptionService } from '../stock/attribute-option/attribute-option.service';
 
 const logger = new Logger('SeedWms');
 
@@ -26,6 +28,20 @@ const SEED_USERS: { username: string; role: WmsRole; name: string }[] = [
   { username: 'seed_shipper', role: WmsRole.SHIPPER, name: 'Seed Shipper' },
 ];
 
+const SEED_ATTRIBUTE_OPTIONS: {
+  key: AttributeOptionKey;
+  name: string;
+  code: string;
+}[] = [
+  { key: AttributeOptionKey.CUP_STYLE, name: 'Trái tim', code: 'HRT' },
+  { key: AttributeOptionKey.MATERIAL, name: 'Nhựa PET', code: 'PET' },
+  { key: AttributeOptionKey.CAPACITY, name: '500ml', code: '500' },
+  { key: AttributeOptionKey.COLOR, name: 'Trong suốt', code: 'CLR' },
+  { key: AttributeOptionKey.MATERIAL_TYPE, name: 'Trà đen', code: 'BLK' },
+  { key: AttributeOptionKey.FLAVOR, name: 'Nguyên bản', code: 'ORG' },
+  { key: AttributeOptionKey.SPEC, name: '500g', code: '500G' },
+];
+
 /**
  * Seed data cho demo/E2E: admin + 6 role nhân viên. Idempotent — chạy lại
  * không tạo trùng (check-then-create, KHÔNG bắt lỗi duplicate-key vì
@@ -36,7 +52,8 @@ export async function seed(): Promise<void> {
   const app = await NestFactory.createApplicationContext(AppModule);
   try {
     const { adminId } = await seedUsers(app);
-    await seedWarehouseAndItems(app, adminId);
+    const optionIds = await seedAttributeOptions(app, adminId);
+    await seedWarehouseAndItems(app, adminId, optionIds);
     logger.log('Seed hoàn tất.');
   } finally {
     await app.close();
@@ -95,6 +112,38 @@ async function seedUsers(
   return { adminId };
 }
 
+/**
+ * Seed option thuộc tính tối thiểu để seedWarehouseAndItems build được SKU
+ * qua template thật (issue #25) — không seed đủ 14 key, chỉ seed đúng những
+ * option 2 item demo (MATERIAL_TEA, CUP_BLANK) cần. Idempotent qua unique
+ * {key, code} — AttributeOptionService.create tự throw STOCK_ATTRIBUTE_CODE_CONFLICT
+ * nếu đã tồn tại, bắt và bỏ qua (không phải lỗi seed, là trạng thái mong đợi
+ * khi seed chạy lại).
+ */
+async function seedAttributeOptions(
+  app: INestApplicationContext,
+  adminId: string,
+): Promise<Record<string, string>> {
+  const optionSvc = app.get(AttributeOptionService);
+  const codeToId: Record<string, string> = {};
+
+  for (const opt of SEED_ATTRIBUTE_OPTIONS) {
+    try {
+      const created = await optionSvc.create(opt, adminId);
+      codeToId[opt.code] = created._id.toString();
+    } catch (err) {
+      if ((err as { code?: string }).code !== 'STOCK_ATTRIBUTE_CODE_CONFLICT') {
+        throw err;
+      }
+      const existing = await optionSvc.list(opt.key, true);
+      const match = existing.find((o) => o.code === opt.code);
+      if (match) codeToId[opt.code] = match._id.toString();
+    }
+  }
+
+  return codeToId;
+}
+
 const SEED_WAREHOUSE_NAME = 'Kho trung tâm (seed)';
 
 /**
@@ -114,6 +163,7 @@ const SEED_WAREHOUSE_NAME = 'Kho trung tâm (seed)';
 async function seedWarehouseAndItems(
   app: INestApplicationContext,
   adminId: string,
+  optionIds: Record<string, string>,
 ): Promise<{
   warehouseId: string;
   stagingShelfId: string;
@@ -171,10 +221,14 @@ async function seedWarehouseAndItems(
 
   const material = await stockService.createWarehouseItem(
     {
-      sku: 'SEED-MAT-001',
-      barcode: 'SEED-MAT-001-BC',
-      name: 'Nguyên liệu seed',
       type: ItemType.MATERIAL,
+      templateId: 'MATERIAL_TEA',
+      attributeOptionIds: [
+        optionIds['BLK'], // MATERIAL_TYPE: Trà đen
+        optionIds['ORG'], // FLAVOR: Nguyên bản
+        optionIds['500G'], // SPEC: 500g
+      ],
+      name: 'Nguyên liệu seed',
       unit: 'kg',
       isPerishable: false,
       minQuantity: 10,
@@ -186,10 +240,15 @@ async function seedWarehouseAndItems(
   );
   const cupBlank = await stockService.createWarehouseItem(
     {
-      sku: 'SEED-CUP-BLANK-001',
-      barcode: 'SEED-CUP-BLANK-001-BC',
-      name: 'Ly nhựa trơn seed',
       type: ItemType.CUP_BLANK,
+      templateId: 'CUP_BLANK',
+      attributeOptionIds: [
+        optionIds['HRT'], // CUP_STYLE
+        optionIds['PET'], // MATERIAL
+        optionIds['500'], // CAPACITY
+        optionIds['CLR'], // COLOR
+      ],
+      name: 'Ly nhựa trơn seed',
       unit: 'cái',
       isPerishable: false,
       minQuantity: 20,
