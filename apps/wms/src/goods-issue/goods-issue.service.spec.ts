@@ -14,12 +14,16 @@ const makeRepo = () => ({
 const makeStockRepo = () => ({
   findItemBySku: jest.fn(),
   findItemById: jest.fn(),
-  findItemByBarcode: jest.fn(),
+  findItemByIdDocument: jest.fn(),
   findInventory: jest.fn(),
   upsertInventory: jest.fn(),
   upsertBalance: jest.fn(),
   insertMovement: jest.fn(),
   findAvailableStockForPick: jest.fn(),
+});
+
+const makeBarcodeService = () => ({
+  findItemIdByCode: jest.fn(),
 });
 
 const makeWarehouseRepo = () => ({
@@ -45,6 +49,7 @@ describe('GoodsIssueService', () => {
   let stockService: ReturnType<typeof makeStockService>;
   let warehouseRepo: ReturnType<typeof makeWarehouseRepo>;
   let txHelper: ReturnType<typeof makeTxHelper>;
+  let barcodeSvc: ReturnType<typeof makeBarcodeService>;
   let queue: ReturnType<typeof makeQueue>;
   let internalQueue: ReturnType<typeof makeQueue>;
 
@@ -59,6 +64,7 @@ describe('GoodsIssueService', () => {
     stockService = makeStockService();
     warehouseRepo = makeWarehouseRepo();
     txHelper = makeTxHelper();
+    barcodeSvc = makeBarcodeService();
     queue = makeQueue();
     internalQueue = makeQueue();
     svc = new GoodsIssueService(
@@ -67,6 +73,7 @@ describe('GoodsIssueService', () => {
       stockService as never,
       warehouseRepo as never,
       txHelper as never,
+      barcodeSvc as never,
       queue as never,
       internalQueue as never,
     );
@@ -199,7 +206,8 @@ describe('GoodsIssueService', () => {
 
     it('throw GOODS_ISSUE_ITEM_NOT_FOUND khi barcode không khớp item nào', async () => {
       repo.findById.mockResolvedValue(baseGi());
-      stockRepo.findItemByBarcode.mockResolvedValue(null);
+      barcodeSvc.findItemIdByCode.mockResolvedValue(null);
+      stockRepo.findItemByIdDocument.mockResolvedValue(null);
       await expect(
         svc.confirmLine(
           giId,
@@ -211,7 +219,8 @@ describe('GoodsIssueService', () => {
 
     it('throw GOODS_ISSUE_SHELF_NOT_FOUND khi shelf code không khớp', async () => {
       repo.findById.mockResolvedValue(baseGi());
-      stockRepo.findItemByBarcode.mockResolvedValue({ _id: itemId });
+      barcodeSvc.findItemIdByCode.mockResolvedValue(itemId);
+      stockRepo.findItemByIdDocument.mockResolvedValue({ _id: itemId });
       warehouseRepo.findShelfByCode.mockResolvedValue(null);
       await expect(
         svc.confirmLine(
@@ -224,7 +233,8 @@ describe('GoodsIssueService', () => {
 
     it('throw GOODS_ISSUE_SHELF_NOT_FOUND khi shelf thuộc kho khác với phiếu', async () => {
       repo.findById.mockResolvedValue(baseGi());
-      stockRepo.findItemByBarcode.mockResolvedValue({ _id: itemId });
+      barcodeSvc.findItemIdByCode.mockResolvedValue(itemId);
+      stockRepo.findItemByIdDocument.mockResolvedValue({ _id: itemId });
       warehouseRepo.findShelfByCode.mockResolvedValue({
         _id: shelfId,
         warehouseId: new Types.ObjectId(),
@@ -240,8 +250,10 @@ describe('GoodsIssueService', () => {
 
     it('throw GOODS_ISSUE_ITEM_MISMATCH khi item không thuộc phiếu', async () => {
       repo.findById.mockResolvedValue(baseGi());
-      stockRepo.findItemByBarcode.mockResolvedValue({
-        _id: new Types.ObjectId(),
+      const mismatchedItemId = new Types.ObjectId();
+      barcodeSvc.findItemIdByCode.mockResolvedValue(mismatchedItemId);
+      stockRepo.findItemByIdDocument.mockResolvedValue({
+        _id: mismatchedItemId,
       });
       warehouseRepo.findShelfByCode.mockResolvedValue({
         _id: shelfId,
@@ -258,7 +270,8 @@ describe('GoodsIssueService', () => {
 
     it('throw GOODS_ISSUE_QTY_EXCEEDS khi quantity > remainingQty', async () => {
       repo.findById.mockResolvedValue(baseGi());
-      stockRepo.findItemByBarcode.mockResolvedValue({ _id: itemId });
+      barcodeSvc.findItemIdByCode.mockResolvedValue(itemId);
+      stockRepo.findItemByIdDocument.mockResolvedValue({ _id: itemId });
       warehouseRepo.findShelfByCode.mockResolvedValue({
         _id: shelfId,
         warehouseId,
@@ -274,7 +287,8 @@ describe('GoodsIssueService', () => {
 
     it('throw STOCK_INSUFFICIENT khi InventoryStock tại shelf/lot không đủ', async () => {
       repo.findById.mockResolvedValue(baseGi());
-      stockRepo.findItemByBarcode.mockResolvedValue({ _id: itemId });
+      barcodeSvc.findItemIdByCode.mockResolvedValue(itemId);
+      stockRepo.findItemByIdDocument.mockResolvedValue({ _id: itemId });
       warehouseRepo.findShelfByCode.mockResolvedValue({
         _id: shelfId,
         warehouseId,
@@ -291,7 +305,8 @@ describe('GoodsIssueService', () => {
 
     it('throw STOCK_INSUFFICIENT khi không có InventoryStock nào tại shelf/lot đó', async () => {
       repo.findById.mockResolvedValue(baseGi());
-      stockRepo.findItemByBarcode.mockResolvedValue({ _id: itemId });
+      barcodeSvc.findItemIdByCode.mockResolvedValue(itemId);
+      stockRepo.findItemByIdDocument.mockResolvedValue({ _id: itemId });
       warehouseRepo.findShelfByCode.mockResolvedValue({
         _id: shelfId,
         warehouseId,
@@ -311,7 +326,8 @@ describe('GoodsIssueService', () => {
         ...baseGi(),
         status: GoodsIssueStatus.PENDING,
       });
-      stockRepo.findItemByBarcode.mockResolvedValue({ _id: itemId });
+      barcodeSvc.findItemIdByCode.mockResolvedValue(itemId);
+      stockRepo.findItemByIdDocument.mockResolvedValue({ _id: itemId });
       warehouseRepo.findShelfByCode.mockResolvedValue({
         _id: shelfId,
         warehouseId,
@@ -367,7 +383,8 @@ describe('GoodsIssueService', () => {
         ...baseGi(),
         status: GoodsIssueStatus.CONFIRMED,
       });
-      stockRepo.findItemByBarcode.mockResolvedValue({ _id: itemId });
+      barcodeSvc.findItemIdByCode.mockResolvedValue(itemId);
+      stockRepo.findItemByIdDocument.mockResolvedValue({ _id: itemId });
       warehouseRepo.findShelfByCode.mockResolvedValue({
         _id: shelfId,
         warehouseId,
@@ -400,7 +417,8 @@ describe('GoodsIssueService', () => {
         ...baseGi(),
         status: GoodsIssueStatus.PENDING,
       });
-      stockRepo.findItemByBarcode.mockResolvedValue({ _id: itemId });
+      barcodeSvc.findItemIdByCode.mockResolvedValue(itemId);
+      stockRepo.findItemByIdDocument.mockResolvedValue({ _id: itemId });
       warehouseRepo.findShelfByCode.mockResolvedValue({
         _id: shelfId,
         warehouseId,

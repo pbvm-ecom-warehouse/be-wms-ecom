@@ -16,7 +16,7 @@ const makeRepo = () => ({
 
 const makeStockRepo = () => ({
   findItemBySku: jest.fn(),
-  findItemByBarcode: jest.fn(),
+  findItemByIdDocument: jest.fn(),
   findBalanceByItemAndWarehouse: jest.fn(),
   upsertBalance: jest.fn(),
   findInventory: jest.fn(),
@@ -32,6 +32,10 @@ const makeWarehouseRepo = () => ({
 
 const makeTxHelper = () => ({
   withStockTransaction: jest.fn((fn: (session: unknown) => unknown) => fn({})),
+});
+
+const makeBarcodeService = () => ({
+  findItemIdByCode: jest.fn(),
 });
 
 const makeStockService = () => ({
@@ -52,6 +56,7 @@ describe('PrintJobService', () => {
   let warehouseRepo: ReturnType<typeof makeWarehouseRepo>;
   let txHelper: ReturnType<typeof makeTxHelper>;
   let stockService: ReturnType<typeof makeStockService>;
+  let barcodeSvc: ReturnType<typeof makeBarcodeService>;
   let stockQueue: ReturnType<typeof makeStockQueue>;
   let shipmentQueue: ReturnType<typeof makeShipmentQueue>;
 
@@ -67,6 +72,7 @@ describe('PrintJobService', () => {
     warehouseRepo = makeWarehouseRepo();
     txHelper = makeTxHelper();
     stockService = makeStockService();
+    barcodeSvc = makeBarcodeService();
     stockQueue = makeStockQueue();
     shipmentQueue = makeShipmentQueue();
     svc = new PrintJobService(
@@ -75,6 +81,7 @@ describe('PrintJobService', () => {
       stockService as never,
       warehouseRepo as never,
       txHelper as never,
+      barcodeSvc as never,
       stockQueue as never,
       shipmentQueue as never,
     );
@@ -352,7 +359,8 @@ describe('PrintJobService', () => {
 
     it('throw PRINT_JOB_ITEM_NOT_FOUND khi barcode không khớp item nào', async () => {
       repo.findById.mockResolvedValue(baseJob());
-      stockRepo.findItemByBarcode.mockResolvedValue(null);
+      barcodeSvc.findItemIdByCode.mockResolvedValue(null);
+      stockRepo.findItemByIdDocument.mockResolvedValue(null);
       await expect(
         svc.consumeItem(
           pjId,
@@ -365,7 +373,8 @@ describe('PrintJobService', () => {
 
     it('throw PRINT_JOB_SHELF_NOT_FOUND khi shelf không khớp', async () => {
       repo.findById.mockResolvedValue(baseJob());
-      stockRepo.findItemByBarcode.mockResolvedValue({ _id: blankItemId });
+      barcodeSvc.findItemIdByCode.mockResolvedValue(blankItemId);
+      stockRepo.findItemByIdDocument.mockResolvedValue({ _id: blankItemId });
       warehouseRepo.findShelfByCode.mockResolvedValue(null);
       await expect(
         svc.consumeItem(
@@ -379,8 +388,10 @@ describe('PrintJobService', () => {
 
     it('throw PRINT_JOB_ITEM_MISMATCH khi item quét được không thuộc job', async () => {
       repo.findById.mockResolvedValue(baseJob());
-      stockRepo.findItemByBarcode.mockResolvedValue({
-        _id: new Types.ObjectId(),
+      const mismatchedItemId = new Types.ObjectId();
+      barcodeSvc.findItemIdByCode.mockResolvedValue(mismatchedItemId);
+      stockRepo.findItemByIdDocument.mockResolvedValue({
+        _id: mismatchedItemId,
       });
       warehouseRepo.findShelfByCode.mockResolvedValue({
         _id: shelfId,
@@ -398,7 +409,8 @@ describe('PrintJobService', () => {
 
     it('throw PRINT_JOB_QTY_EXCEEDS khi quantity > remainingQty', async () => {
       repo.findById.mockResolvedValue(baseJob());
-      stockRepo.findItemByBarcode.mockResolvedValue({ _id: blankItemId });
+      barcodeSvc.findItemIdByCode.mockResolvedValue(blankItemId);
+      stockRepo.findItemByIdDocument.mockResolvedValue({ _id: blankItemId });
       warehouseRepo.findShelfByCode.mockResolvedValue({
         _id: shelfId,
         warehouseId,
@@ -415,7 +427,8 @@ describe('PrintJobService', () => {
 
     it('throw STOCK_INSUFFICIENT khi InventoryStock tại shelf không đủ', async () => {
       repo.findById.mockResolvedValue(baseJob());
-      stockRepo.findItemByBarcode.mockResolvedValue({ _id: blankItemId });
+      barcodeSvc.findItemIdByCode.mockResolvedValue(blankItemId);
+      stockRepo.findItemByIdDocument.mockResolvedValue({ _id: blankItemId });
       warehouseRepo.findShelfByCode.mockResolvedValue({
         _id: shelfId,
         warehouseId,
@@ -433,7 +446,8 @@ describe('PrintJobService', () => {
 
     it('trừ onHand+reserved của CUP_BLANK, ghi movement PRINT_CONSUME âm, KHÔNG bắn stock.changed', async () => {
       repo.findById.mockResolvedValue(baseJob());
-      stockRepo.findItemByBarcode.mockResolvedValue({ _id: blankItemId });
+      barcodeSvc.findItemIdByCode.mockResolvedValue(blankItemId);
+      stockRepo.findItemByIdDocument.mockResolvedValue({ _id: blankItemId });
       warehouseRepo.findShelfByCode.mockResolvedValue({
         _id: shelfId,
         warehouseId,
@@ -486,7 +500,8 @@ describe('PrintJobService', () => {
 
     it('gọi checkAndEmitStockLow(item._id, job.warehouseId) sau khi commit', async () => {
       repo.findById.mockResolvedValue(baseJob());
-      stockRepo.findItemByBarcode.mockResolvedValue({ _id: blankItemId });
+      barcodeSvc.findItemIdByCode.mockResolvedValue(blankItemId);
+      stockRepo.findItemByIdDocument.mockResolvedValue({ _id: blankItemId });
       warehouseRepo.findShelfByCode.mockResolvedValue({
         _id: shelfId,
         warehouseId,

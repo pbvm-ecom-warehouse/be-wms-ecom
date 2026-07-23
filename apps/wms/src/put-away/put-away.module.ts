@@ -13,7 +13,7 @@ import { StockModule } from '../stock/stock.module';
       { name: PutAwayTask.name, schema: PutAwayTaskSchema },
     ]),
     WarehouseModule, // findShelfByCode + findStagingShelf
-    StockModule, // StockRepository (findItemByBarcode/upsertInventory/insertMovement) + StockTransactionHelper
+    StockModule, // StockRepository (upsertInventory/insertMovement) + StockTransactionHelper + BarcodeService
   ],
   providers: [PutAwayRepository, PutAwayService],
   controllers: [PutAwayController],

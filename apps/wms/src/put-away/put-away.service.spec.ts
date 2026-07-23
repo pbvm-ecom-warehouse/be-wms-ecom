@@ -10,9 +10,13 @@ const makeRepo = () => ({
 });
 
 const makeStockRepo = () => ({
-  findItemByBarcode: jest.fn(),
+  findItemByIdDocument: jest.fn(),
   upsertInventory: jest.fn(),
   insertMovement: jest.fn(),
+});
+
+const makeBarcodeService = () => ({
+  findItemIdByCode: jest.fn(),
 });
 
 // findShelfByCode giờ gọi thẳng WarehouseRepository (trả về document hoặc null,
@@ -36,6 +40,7 @@ describe('PutAwayService', () => {
   let warehouseRepo: ReturnType<typeof makeWarehouseRepo>;
   let warehouseService: ReturnType<typeof makeWarehouseService>;
   let txHelper: ReturnType<typeof makeTxHelper>;
+  let barcodeSvc: ReturnType<typeof makeBarcodeService>;
 
   const actorId = new Types.ObjectId().toString();
   const grnId = new Types.ObjectId();
@@ -48,12 +53,14 @@ describe('PutAwayService', () => {
     warehouseRepo = makeWarehouseRepo();
     warehouseService = makeWarehouseService();
     txHelper = makeTxHelper();
+    barcodeSvc = makeBarcodeService();
     svc = new PutAwayService(
       repo as never,
       stockRepo as never,
       warehouseRepo as never,
       warehouseService as never,
       txHelper as never,
+      barcodeSvc as never,
     );
   });
 
@@ -104,7 +111,8 @@ describe('PutAwayService', () => {
 
     it('throw PUTAWAY_ITEM_NOT_FOUND khi barcode không khớp item nào', async () => {
       repo.findTaskById.mockResolvedValue(baseTask());
-      stockRepo.findItemByBarcode.mockResolvedValue(null);
+      barcodeSvc.findItemIdByCode.mockResolvedValue(null);
+      stockRepo.findItemByIdDocument.mockResolvedValue(null);
       await expect(
         svc.confirmLine(
           taskId,
@@ -119,7 +127,8 @@ describe('PutAwayService', () => {
       // (generic, cross-cutting) do gọi qua WarehouseService.findShelfByCode. Đúng
       // spec (dòng 77), phải throw PUTAWAY_SHELF_NOT_FOUND (domain riêng của put-away).
       repo.findTaskById.mockResolvedValue(baseTask());
-      stockRepo.findItemByBarcode.mockResolvedValue({ _id: itemId });
+      barcodeSvc.findItemIdByCode.mockResolvedValue(itemId);
+      stockRepo.findItemByIdDocument.mockResolvedValue({ _id: itemId });
       warehouseRepo.findShelfByCode.mockResolvedValue(null);
       await expect(
         svc.confirmLine(
@@ -139,7 +148,8 @@ describe('PutAwayService', () => {
       // Tái dùng PUTAWAY_SHELF_NOT_FOUND vì với kho của task, shelf này coi như
       // "không tồn tại"/không hợp lệ — không tạo code mới.
       repo.findTaskById.mockResolvedValue(baseTask());
-      stockRepo.findItemByBarcode.mockResolvedValue({ _id: itemId });
+      barcodeSvc.findItemIdByCode.mockResolvedValue(itemId);
+      stockRepo.findItemByIdDocument.mockResolvedValue({ _id: itemId });
       warehouseRepo.findShelfByCode.mockResolvedValue({
         _id: shelfId,
         isStaging: false,
@@ -156,7 +166,8 @@ describe('PutAwayService', () => {
 
     it('throw PUTAWAY_SHELF_IS_STAGING khi quét đúng shelf staging', async () => {
       repo.findTaskById.mockResolvedValue(baseTask());
-      stockRepo.findItemByBarcode.mockResolvedValue({ _id: itemId });
+      barcodeSvc.findItemIdByCode.mockResolvedValue(itemId);
+      stockRepo.findItemByIdDocument.mockResolvedValue({ _id: itemId });
       warehouseRepo.findShelfByCode.mockResolvedValue({
         _id: shelfId,
         isStaging: true,
@@ -187,7 +198,8 @@ describe('PutAwayService', () => {
         items: [{ itemId, lotId: null, quantity: 20, remainingQty: 20 }],
       };
       repo.findTaskById.mockResolvedValue(taskWithNullLotLine);
-      stockRepo.findItemByBarcode.mockResolvedValue({
+      barcodeSvc.findItemIdByCode.mockResolvedValue(itemId);
+      stockRepo.findItemByIdDocument.mockResolvedValue({
         _id: itemId,
         isPerishable: true,
       });
@@ -207,7 +219,8 @@ describe('PutAwayService', () => {
 
     it('throw PUTAWAY_ITEM_MISMATCH khi item không thuộc task (lotId khác)', async () => {
       repo.findTaskById.mockResolvedValue(baseTask());
-      stockRepo.findItemByBarcode.mockResolvedValue({ _id: itemId });
+      barcodeSvc.findItemIdByCode.mockResolvedValue(itemId);
+      stockRepo.findItemByIdDocument.mockResolvedValue({ _id: itemId });
       warehouseRepo.findShelfByCode.mockResolvedValue({
         _id: shelfId,
         isStaging: false,
@@ -229,7 +242,8 @@ describe('PutAwayService', () => {
 
     it('throw PUTAWAY_QTY_EXCEEDS khi quantity > remainingQty', async () => {
       repo.findTaskById.mockResolvedValue(baseTask());
-      stockRepo.findItemByBarcode.mockResolvedValue({ _id: itemId });
+      barcodeSvc.findItemIdByCode.mockResolvedValue(itemId);
+      stockRepo.findItemByIdDocument.mockResolvedValue({ _id: itemId });
       warehouseRepo.findShelfByCode.mockResolvedValue({
         _id: shelfId,
         isStaging: false,
@@ -248,7 +262,8 @@ describe('PutAwayService', () => {
       repo.findTaskById
         .mockResolvedValueOnce(baseTask())
         .mockResolvedValueOnce({ ...baseTask(), status: 'COMPLETED' });
-      stockRepo.findItemByBarcode.mockResolvedValue({ _id: itemId });
+      barcodeSvc.findItemIdByCode.mockResolvedValue(itemId);
+      stockRepo.findItemByIdDocument.mockResolvedValue({ _id: itemId });
       warehouseRepo.findShelfByCode.mockResolvedValue({
         _id: shelfId,
         isStaging: false,

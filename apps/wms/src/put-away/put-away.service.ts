@@ -11,6 +11,7 @@ import { WarehouseRepository } from '../warehouse/warehouse.repository';
 import { WarehouseService } from '../warehouse/warehouse.service';
 import { StockTransactionHelper } from '../stock/helpers/with-stock-transaction.helper';
 import { MovementType } from '../stock/schemas/stock-movement.schema';
+import { BarcodeService } from '../stock/barcode/barcode.service';
 import type { PutAwayTaskDocument } from './schemas/put-away-task.schema';
 
 export interface CreatePutAwayLineFromGrnInput {
@@ -34,6 +35,7 @@ export class PutAwayService {
     private readonly warehouseRepo: WarehouseRepository,
     private readonly warehouseService: WarehouseService,
     private readonly stockTransactionHelper: StockTransactionHelper,
+    private readonly barcodeSvc: BarcodeService,
   ) {}
 
   /** Gọi từ GoodsReceiptNoteService.confirmGoodsReceiptNote, cùng transaction cộng tồn 2 lớp. */
@@ -71,7 +73,9 @@ export class PutAwayService {
     const task = await this.repo.findTaskById(taskId);
     if (!task) throw new AppException('PUTAWAY_TASK_NOT_FOUND');
 
-    const item = await this.stockRepo.findItemByBarcode(dto.itemBarcode);
+    const itemId = await this.barcodeSvc.findItemIdByCode(dto.itemBarcode);
+    if (!itemId) throw new AppException('PUTAWAY_ITEM_NOT_FOUND');
+    const item = await this.stockRepo.findItemByIdDocument(itemId.toString());
     if (!item) throw new AppException('PUTAWAY_ITEM_NOT_FOUND');
 
     // Gọi thẳng WarehouseRepository (không qua WarehouseService.findShelfByCode) vì

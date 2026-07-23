@@ -18,6 +18,7 @@ import { StockService } from '../stock/stock.service';
 import { WarehouseRepository } from '../warehouse/warehouse.repository';
 import { StockTransactionHelper } from '../stock/helpers/with-stock-transaction.helper';
 import { MovementType } from '../stock/schemas/stock-movement.schema';
+import { BarcodeService } from '../stock/barcode/barcode.service';
 
 interface OrderReadyItem {
   sku: string;
@@ -34,6 +35,7 @@ export class GoodsIssueService {
     private readonly stockService: StockService,
     private readonly warehouseRepo: WarehouseRepository,
     private readonly stockTransactionHelper: StockTransactionHelper,
+    private readonly barcodeSvc: BarcodeService,
     @InjectQueue(QUEUES.SHIPMENT) private readonly shipmentQueue: Queue,
     @InjectQueue(QUEUES.SHIPMENT_INTERNAL)
     private readonly shipmentInternalQueue: Queue,
@@ -130,7 +132,9 @@ export class GoodsIssueService {
     const gi = await this.repo.findById(id);
     if (!gi) throw new AppException('GOODS_ISSUE_NOT_FOUND');
 
-    const item = await this.stockRepo.findItemByBarcode(dto.itemBarcode);
+    const itemId = await this.barcodeSvc.findItemIdByCode(dto.itemBarcode);
+    if (!itemId) throw new AppException('GOODS_ISSUE_ITEM_NOT_FOUND');
+    const item = await this.stockRepo.findItemByIdDocument(itemId.toString());
     if (!item) throw new AppException('GOODS_ISSUE_ITEM_NOT_FOUND');
 
     const shelf = await this.warehouseRepo.findShelfByCode(dto.shelfCode);

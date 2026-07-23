@@ -24,6 +24,7 @@ import { ItemType } from '../stock/schemas/warehouse-item.schema';
 import { WarehouseRepository } from '../warehouse/warehouse.repository';
 import { StockTransactionHelper } from '../stock/helpers/with-stock-transaction.helper';
 import { MovementType } from '../stock/schemas/stock-movement.schema';
+import { BarcodeService } from '../stock/barcode/barcode.service';
 
 interface PrintRequestedItem {
   sku: string;
@@ -51,6 +52,7 @@ export class PrintJobService {
     private readonly stockService: StockService,
     private readonly warehouseRepo: WarehouseRepository,
     private readonly stockTransactionHelper: StockTransactionHelper,
+    private readonly barcodeSvc: BarcodeService,
     // reserve CUP_BLANK bắn stock.changed lên QUEUES.STOCK (khớp
     // apps/ecommerce/src/catalog/stock.consumer.ts @Processor(QUEUES.STOCK));
     // print.completed bắn lên QUEUES.SHIPMENT (khớp
@@ -249,7 +251,9 @@ export class PrintJobService {
     const job = await this.repo.findById(id);
     if (!job) throw new AppException('PRINT_JOB_NOT_FOUND');
 
-    const item = await this.stockRepo.findItemByBarcode(dto.itemBarcode);
+    const itemId = await this.barcodeSvc.findItemIdByCode(dto.itemBarcode);
+    if (!itemId) throw new AppException('PRINT_JOB_ITEM_NOT_FOUND');
+    const item = await this.stockRepo.findItemByIdDocument(itemId.toString());
     if (!item) throw new AppException('PRINT_JOB_ITEM_NOT_FOUND');
 
     const shelf = await this.warehouseRepo.findShelfByCode(dto.shelfCode);
