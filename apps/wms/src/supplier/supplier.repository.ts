@@ -2,6 +2,7 @@
 import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
+import { AppException } from '@app/common';
 import {
   Supplier,
   SupplierDocument,
@@ -138,11 +139,25 @@ export class SupplierRepository {
     return this.supplierItemModel.findOne({ _id: id }).exec();
   }
 
-  async findSupplierItemByItemId(
+  /** Mọi báo giá (mọi NCC) đã đăng ký cho 1 SKU — dùng để so sánh giá trước khi đặt PO. */
+  async findSupplierItemsByItemId(
     itemId: string,
+  ): Promise<SupplierItemDocument[]> {
+    return this.supplierItemModel
+      .find({ itemId: new Types.ObjectId(itemId) })
+      .exec();
+  }
+
+  /** Tra đúng 1 báo giá theo cặp (SKU, NCC) — dùng khi upsert và khi PO auto-fill giá. */
+  async findSupplierItemByItemAndSupplier(
+    itemId: string,
+    supplierId: string,
   ): Promise<SupplierItemDocument | null> {
     return this.supplierItemModel
-      .findOne({ itemId: new Types.ObjectId(itemId) })
+      .findOne({
+        itemId: new Types.ObjectId(itemId),
+        supplierId: new Types.ObjectId(supplierId),
+      })
       .exec();
   }
 
@@ -163,8 +178,16 @@ export class SupplierRepository {
     const update: Record<string, unknown> = { ...dto };
     if (dto.supplierId)
       update['supplierId'] = new Types.ObjectId(dto.supplierId);
-    return this.supplierItemModel
-      .findOneAndUpdate({ _id: id }, update, { new: true })
-      .exec();
+    try {
+      return await this.supplierItemModel
+        .findOneAndUpdate({ _id: id }, update, { new: true })
+        .exec();
+    } catch (err) {
+      // Đổi supplierId trùng cặp (itemId, supplierId) đã có báo giá khác → 11000
+      if ((err as { code?: number }).code === 11000) {
+        throw new AppException('SUPPLIER_ITEM_PAIR_CONFLICT');
+      }
+      throw err;
+    }
   }
 }
