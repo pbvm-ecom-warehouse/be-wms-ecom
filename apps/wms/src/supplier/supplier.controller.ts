@@ -69,13 +69,20 @@ export class SupplierController {
 
   @Get('items/by-item/:itemId')
   @Roles(WmsRole.MANAGER, WmsRole.ADMIN)
-  @ApiOperation({ summary: 'Tra giá NCC theo itemId (SKU) — [MANAGER, ADMIN]' })
-  @ApiOkResponse({ type: SupplierItemResponseDto })
-  async getSupplierItemByItemId(
+  @ApiOperation({
+    summary:
+      'Danh sách báo giá của mọi NCC cho 1 SKU — so sánh giá trước khi đặt PO — [MANAGER, ADMIN]',
+  })
+  @ApiOkResponse({ type: [SupplierItemResponseDto] })
+  async listSupplierItemsByItemId(
     @Param('itemId') itemId: string,
-  ): Promise<SupplierItemResponseDto> {
-    const doc = await this.svc.getSupplierItemByItemId(itemId);
-    return plainToInstance(SupplierItemResponseDto, doc.toObject(), TO_OPTS);
+  ): Promise<SupplierItemResponseDto[]> {
+    const docs = await this.svc.listSupplierItemsByItemId(itemId);
+    return plainToInstance(
+      SupplierItemResponseDto,
+      docs.map((d) => d.toObject()),
+      TO_OPTS,
+    );
   }
 
   @Get('items/by-supplier/:supplierId')

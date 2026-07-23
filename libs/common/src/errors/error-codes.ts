@@ -131,11 +131,11 @@ export const ERROR_CATALOG = {
   },
   SUPPLIER_ITEM_NOT_FOUND: {
     status: HttpStatus.NOT_FOUND,
-    message: 'Không tìm thấy thông tin giá của SKU này',
+    message: 'Không tìm thấy báo giá NCC cho SKU này',
   },
-  SUPPLIER_ITEM_SKU_EXISTS: {
+  SUPPLIER_ITEM_PAIR_CONFLICT: {
     status: HttpStatus.CONFLICT,
-    message: 'SKU này đã có NCC chính — cập nhật thay vì tạo mới',
+    message: 'Cặp SKU và NCC này đã có báo giá — cập nhật thay vì tạo mới',
   },
 
   // ── WMS — Purchase Order ────────────────────────────────────────────────────

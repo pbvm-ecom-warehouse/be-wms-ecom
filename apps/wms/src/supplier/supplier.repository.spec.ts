@@ -79,13 +79,36 @@ describe('SupplierRepository', () => {
     });
   });
 
-  describe('findSupplierItemByItemId', () => {
-    it('gọi findOne với itemId ObjectId', async () => {
-      supplierItemModel.exec.mockResolvedValue(null);
-      await repo.findSupplierItemByItemId(itemId);
-      expect(supplierItemModel.findOne).toHaveBeenCalledWith({
+  describe('findSupplierItemsByItemId', () => {
+    it('gọi find với itemId ObjectId, trả về mảng mọi NCC báo giá SKU đó', async () => {
+      const fakeDocs = [{ itemId }, { itemId }];
+      supplierItemModel.exec.mockResolvedValue(fakeDocs);
+      const result = await repo.findSupplierItemsByItemId(itemId);
+      expect(supplierItemModel.find).toHaveBeenCalledWith({
         itemId: expect.any(Types.ObjectId),
       });
+      expect(result).toEqual(fakeDocs);
+    });
+  });
+
+  describe('findSupplierItemByItemAndSupplier', () => {
+    it('gọi findOne với đúng cặp itemId + supplierId ObjectId', async () => {
+      supplierItemModel.exec.mockResolvedValue(null);
+      await repo.findSupplierItemByItemAndSupplier(itemId, supplierId);
+      expect(supplierItemModel.findOne).toHaveBeenCalledWith({
+        itemId: expect.any(Types.ObjectId),
+        supplierId: expect.any(Types.ObjectId),
+      });
+    });
+
+    it('trả về document khi tìm thấy', async () => {
+      const fakeDoc = { itemId, supplierId };
+      supplierItemModel.exec.mockResolvedValue(fakeDoc);
+      const result = await repo.findSupplierItemByItemAndSupplier(
+        itemId,
+        supplierId,
+      );
+      expect(result).toEqual(fakeDoc);
     });
   });
 
