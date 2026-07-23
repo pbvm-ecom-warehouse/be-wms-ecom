@@ -40,7 +40,7 @@ describe('ScrapNoteRepository', () => {
   });
 
   describe('createScrapNote', () => {
-    it('tạo document với status DRAFT, items đúng shape', async () => {
+    it('tạo document với status DRAFT, items đúng shape (images mặc định rỗng)', async () => {
       model.create.mockResolvedValue([{ _id: 'sn1' }]);
       await repo.createScrapNote(warehouseId, 'Ghi chú', createdBy, [
         {
@@ -66,9 +66,34 @@ describe('ScrapNoteRepository', () => {
               lotId: null,
               quantity: 5,
               reason: 'Vỡ',
+              images: [],
             },
           ],
         },
+      ]);
+    });
+
+    it('lưu images vào đúng dòng khi có ảnh minh chứng', async () => {
+      model.create.mockResolvedValue([{ _id: 'sn1' }]);
+      await repo.createScrapNote(warehouseId, undefined, createdBy, [
+        {
+          itemId,
+          sku: 'SKU-1',
+          shelfId,
+          lotId: null,
+          quantity: 5,
+          reason: 'Vỡ',
+          images: ['https://res.cloudinary.com/demo/image/upload/x.jpg'],
+        },
+      ]);
+      expect(model.create).toHaveBeenCalledWith([
+        expect.objectContaining({
+          items: [
+            expect.objectContaining({
+              images: ['https://res.cloudinary.com/demo/image/upload/x.jpg'],
+            }),
+          ],
+        }),
       ]);
     });
   });

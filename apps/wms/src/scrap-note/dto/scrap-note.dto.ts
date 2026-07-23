@@ -64,6 +64,32 @@ export class CreateScrapNoteDto {
   items!: CreateScrapNoteItemDto[];
 }
 
+/**
+ * Request DTO cho POST /scrap-notes dạng multipart/form-data — cần multipart vì
+ * mỗi dòng đề xuất hủy có thể kèm ảnh minh chứng (field file riêng theo index,
+ * xem controller). `items` gửi dưới dạng JSON string (form field thường), parse
+ * + validate thủ công bằng CreateScrapNoteDto thay vì để ValidationPipe global
+ * làm (pipe không parse JSON lồng trong multipart form field).
+ */
+export class CreateScrapNoteFormDto {
+  @ApiProperty({ example: '665f1a2b3c4d5e6f7a8b9c0d' })
+  @IsMongoId()
+  warehouseId!: string;
+
+  @ApiPropertyOptional({ example: 'Kiểm tra định kỳ phát hiện hàng hỏng' })
+  @IsOptional()
+  @IsString()
+  note?: string;
+
+  @ApiProperty({
+    description: 'JSON string của mảng CreateScrapNoteItemDto',
+    example:
+      '[{"itemId":"665f...","shelfId":"665f...","quantity":5,"reason":"Vỡ"}]',
+  })
+  @IsString()
+  items!: string;
+}
+
 export class RejectScrapNoteDto {
   @ApiProperty({ example: 'Số lượng đề xuất không khớp kiểm tra thực tế' })
   @IsString()
@@ -131,6 +157,10 @@ export class ScrapNoteItemResponseDto {
   @Expose()
   @ApiProperty()
   reason!: string;
+
+  @Expose()
+  @ApiProperty({ type: [String] })
+  images!: string[];
 }
 
 export class ScrapNoteResponseDto {

@@ -1,6 +1,6 @@
 import { InjectQueue } from '@nestjs/bullmq';
 import { Injectable } from '@nestjs/common';
-import { AppException } from '@app/common';
+import { AppException, CloudinaryService } from '@app/common';
 import { EVENTS, QUEUES, type StockChangedPayload } from '@app/events';
 import { Queue } from 'bullmq';
 import { Types, type ClientSession } from 'mongoose';
@@ -22,6 +22,16 @@ import { WarehouseRepository } from '../warehouse/warehouse.repository';
 import { StockTransactionHelper } from '../stock/helpers/with-stock-transaction.helper';
 import { MovementType } from '../stock/schemas/stock-movement.schema';
 
+// Giới hạn upload ảnh minh chứng hủy hàng — theo đúng ràng buộc thiết kế IMG-01/IMG-06.
+const ALLOWED_IMAGE_MIMETYPES = ['image/jpeg', 'image/png', 'image/webp'];
+const MAX_IMAGE_SIZE_BYTES = 5 * 1024 * 1024;
+
+export interface UploadedImageFile {
+  buffer: Buffer;
+  mimetype: string;
+  size: number;
+}
+
 @Injectable()
 export class ScrapNoteService {
   constructor(
@@ -31,6 +41,7 @@ export class ScrapNoteService {
     private readonly warehouseRepo: WarehouseRepository,
     private readonly stockTransactionHelper: StockTransactionHelper,
     @InjectQueue(QUEUES.STOCK) private readonly stockQueue: Queue,
+    private readonly cloudinary: CloudinaryService,
   ) {}
 
   /**
@@ -38,10 +49,16 @@ export class ScrapNoteService {
    * Validate từng dòng: item tồn tại, isPerishable thì bắt buộc lotId, tồn
    * tại đúng vị trí (shelf+lot) phải đủ số lượng đề xuất. Không đụng tồn
    * kho thật ở bước này — chỉ MANAGER approve mới trừ.
+   *
+   * `imagesByIndex` optional — ảnh minh chứng gắn theo đúng dòng (vị trí trong
+   * `dto.items`), đính lúc tạo phiếu (không auto-generate, xem AC IMG-06).
+   * Validate + upload Cloudinary (folder wms/scrap-note) ngay tại đây trước
+   * khi ghi.
    */
   async createScrapNote(
     dto: CreateScrapNoteDto,
     actorId: string,
+    imagesByIndex?: Map<number, UploadedImageFile[]>,
   ): Promise<ScrapNoteDocument> {
     const warehouseId = new Types.ObjectId(dto.warehouseId);
     const warehouse = await this.warehouseRepo.findWarehouseById(
@@ -56,9 +73,10 @@ export class ScrapNoteService {
       lotId: Types.ObjectId | null;
       quantity: number;
       reason: string;
+      images: string[];
     }[] = [];
 
-    for (const itemDto of dto.items) {
+    for (const [index, itemDto] of dto.items.entries()) {
       const item = await this.stockRepo.findItemById(itemDto.itemId);
       if (!item) throw new AppException('STOCK_ITEM_NOT_FOUND');
       if (item.isPerishable && !itemDto.lotId) {
@@ -82,6 +100,17 @@ export class ScrapNoteService {
         throw new AppException('SCRAP_NOTE_QTY_EXCEEDS');
       }
 
+      const files = imagesByIndex?.get(index) ?? [];
+      const images: string[] = [];
+      for (const file of files) {
+        this.validateImageFile(file);
+        const { url } = await this.cloudinary.uploadImage(
+          file.buffer,
+          'wms/scrap-note',
+        );
+        images.push(url);
+      }
+
       lines.push({
         itemId,
         sku: item.sku,
@@ -89,6 +118,7 @@ export class ScrapNoteService {
         lotId,
         quantity: itemDto.quantity,
         reason: itemDto.reason,
+        images,
       });
     }
 
@@ -98,6 +128,18 @@ export class ScrapNoteService {
       new Types.ObjectId(actorId),
       lines,
     );
+  }
+
+  private validateImageFile(file: UploadedImageFile): void {
+    if (!ALLOWED_IMAGE_MIMETYPES.includes(file.mimetype)) {
+      throw new AppException(
+        'VALIDATION_FAILED',
+        'Chỉ nhận file ảnh (jpeg/png/webp)',
+      );
+    }
+    if (file.size > MAX_IMAGE_SIZE_BYTES) {
+      throw new AppException('VALIDATION_FAILED', 'File ảnh tối đa 5MB');
+    }
   }
 
   /**

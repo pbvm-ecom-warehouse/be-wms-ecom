@@ -57,4 +57,19 @@ describe('ScrapNoteSchema', () => {
     ).schema.paths;
     expect(itemPaths['skipAvailableSync'].defaultValue).toBe(false);
   });
+
+  it('ScrapNoteItem có field images (default [])', () => {
+    const itemPaths = (
+      ScrapNoteSchema.path('items') as unknown as {
+        schema: { paths: Record<string, { defaultValue: unknown }> };
+      }
+    ).schema.paths;
+    const imagesPath = itemPaths['images'];
+    expect(imagesPath).toBeDefined();
+    const defaultValue =
+      typeof imagesPath.defaultValue === 'function'
+        ? (imagesPath.defaultValue as () => unknown)()
+        : imagesPath.defaultValue;
+    expect(defaultValue).toEqual([]);
+  });
 });

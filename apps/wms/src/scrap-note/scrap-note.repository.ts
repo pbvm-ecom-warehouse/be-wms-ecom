@@ -14,6 +14,7 @@ export interface CreateScrapNoteLineInput {
   lotId: Types.ObjectId | null;
   quantity: number;
   reason: string;
+  images?: string[];
   skipAvailableSync?: boolean;
 }
 
@@ -54,6 +55,7 @@ export class ScrapNoteRepository {
           lotId: l.lotId,
           quantity: l.quantity,
           reason: l.reason,
+          images: l.images ?? [],
         })),
       },
     ]);

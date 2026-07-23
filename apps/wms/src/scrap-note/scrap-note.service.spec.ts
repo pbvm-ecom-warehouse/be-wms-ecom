@@ -32,6 +32,24 @@ const makeStockQueue = () => ({ add: jest.fn() });
 
 const makeStockService = () => ({ checkAndEmitStockLow: jest.fn() });
 
+const makeCloudinaryService = () => ({
+  uploadImage: jest.fn().mockResolvedValue({
+    url: 'https://res.cloudinary.com/demo/image/upload/wms/scrap-note/x.jpg',
+    publicId: 'wms/scrap-note/x',
+  }),
+});
+
+function fakeImageFile(
+  overrides: Partial<{ mimetype: string; size: number; buffer: Buffer }> = {},
+) {
+  return {
+    mimetype: 'image/png',
+    size: 1024,
+    buffer: Buffer.from('fake-image'),
+    ...overrides,
+  };
+}
+
 describe('ScrapNoteService', () => {
   let svc: ScrapNoteService;
   let repo: ReturnType<typeof makeRepo>;
@@ -40,6 +58,7 @@ describe('ScrapNoteService', () => {
   let warehouseRepo: ReturnType<typeof makeWarehouseRepo>;
   let txHelper: ReturnType<typeof makeTxHelper>;
   let stockQueue: ReturnType<typeof makeStockQueue>;
+  let cloudinary: ReturnType<typeof makeCloudinaryService>;
 
   const actorId = new Types.ObjectId().toString();
   const warehouseId = new Types.ObjectId();
@@ -54,6 +73,7 @@ describe('ScrapNoteService', () => {
     warehouseRepo = makeWarehouseRepo();
     txHelper = makeTxHelper();
     stockQueue = makeStockQueue();
+    cloudinary = makeCloudinaryService();
     svc = new ScrapNoteService(
       repo as never,
       stockRepo as never,
@@ -61,6 +81,7 @@ describe('ScrapNoteService', () => {
       warehouseRepo as never,
       txHelper as never,
       stockQueue as never,
+      cloudinary as never,
     );
   });
 
@@ -156,9 +177,160 @@ describe('ScrapNoteService', () => {
             lotId,
             quantity: 5,
             reason: 'Hết hạn',
+            images: [],
           },
         ],
       );
+    });
+
+    it('không có imagesByIndex → images rỗng, không gọi CloudinaryService', async () => {
+      warehouseRepo.findWarehouseById.mockResolvedValue({ _id: warehouseId });
+      warehouseRepo.findShelfById.mockResolvedValue({ _id: shelfId });
+      stockRepo.findItemById.mockResolvedValue({
+        _id: itemId,
+        sku: 'SKU-1',
+        isPerishable: false,
+      });
+      stockRepo.findInventory.mockResolvedValue({ quantity: 100 });
+      repo.createScrapNote.mockResolvedValue({ _id: 'sn1' });
+
+      await svc.createScrapNote(
+        {
+          warehouseId: warehouseId.toString(),
+          items: [
+            {
+              itemId: itemId.toString(),
+              shelfId: shelfId.toString(),
+              quantity: 5,
+              reason: 'Vỡ',
+            },
+          ],
+        },
+        actorId,
+      );
+
+      expect(cloudinary.uploadImage).not.toHaveBeenCalled();
+      expect(repo.createScrapNote).toHaveBeenCalledWith(
+        warehouseId,
+        undefined,
+        expect.anything(),
+        [expect.objectContaining({ images: [] })],
+      );
+    });
+
+    it('có ảnh minh chứng cho dòng hủy → upload Cloudinary vào wms/scrap-note, lưu URL đúng dòng', async () => {
+      warehouseRepo.findWarehouseById.mockResolvedValue({ _id: warehouseId });
+      warehouseRepo.findShelfById.mockResolvedValue({ _id: shelfId });
+      stockRepo.findItemById.mockResolvedValue({
+        _id: itemId,
+        sku: 'SKU-1',
+        isPerishable: false,
+      });
+      stockRepo.findInventory.mockResolvedValue({ quantity: 100 });
+      repo.createScrapNote.mockResolvedValue({ _id: 'sn1' });
+
+      const imagesByIndex = new Map([[0, [fakeImageFile()]]]);
+
+      await svc.createScrapNote(
+        {
+          warehouseId: warehouseId.toString(),
+          items: [
+            {
+              itemId: itemId.toString(),
+              shelfId: shelfId.toString(),
+              quantity: 5,
+              reason: 'Vỡ',
+            },
+          ],
+        },
+        actorId,
+        imagesByIndex,
+      );
+
+      expect(cloudinary.uploadImage).toHaveBeenCalledWith(
+        expect.any(Buffer),
+        'wms/scrap-note',
+      );
+      expect(repo.createScrapNote).toHaveBeenCalledWith(
+        warehouseId,
+        undefined,
+        expect.anything(),
+        [
+          expect.objectContaining({
+            images: [
+              'https://res.cloudinary.com/demo/image/upload/wms/scrap-note/x.jpg',
+            ],
+          }),
+        ],
+      );
+    });
+
+    it('ảnh minh chứng sai mimetype → throw VALIDATION_FAILED, không tạo phiếu', async () => {
+      warehouseRepo.findWarehouseById.mockResolvedValue({ _id: warehouseId });
+      warehouseRepo.findShelfById.mockResolvedValue({ _id: shelfId });
+      stockRepo.findItemById.mockResolvedValue({
+        _id: itemId,
+        sku: 'SKU-1',
+        isPerishable: false,
+      });
+      stockRepo.findInventory.mockResolvedValue({ quantity: 100 });
+
+      const imagesByIndex = new Map([
+        [0, [fakeImageFile({ mimetype: 'application/pdf' })]],
+      ]);
+
+      await expect(
+        svc.createScrapNote(
+          {
+            warehouseId: warehouseId.toString(),
+            items: [
+              {
+                itemId: itemId.toString(),
+                shelfId: shelfId.toString(),
+                quantity: 5,
+                reason: 'Vỡ',
+              },
+            ],
+          },
+          actorId,
+          imagesByIndex,
+        ),
+      ).rejects.toThrow();
+      expect(repo.createScrapNote).not.toHaveBeenCalled();
+    });
+
+    it('ảnh minh chứng vượt quá 5MB → throw VALIDATION_FAILED, không tạo phiếu', async () => {
+      warehouseRepo.findWarehouseById.mockResolvedValue({ _id: warehouseId });
+      warehouseRepo.findShelfById.mockResolvedValue({ _id: shelfId });
+      stockRepo.findItemById.mockResolvedValue({
+        _id: itemId,
+        sku: 'SKU-1',
+        isPerishable: false,
+      });
+      stockRepo.findInventory.mockResolvedValue({ quantity: 100 });
+
+      const imagesByIndex = new Map([
+        [0, [fakeImageFile({ size: 6 * 1024 * 1024 })]],
+      ]);
+
+      await expect(
+        svc.createScrapNote(
+          {
+            warehouseId: warehouseId.toString(),
+            items: [
+              {
+                itemId: itemId.toString(),
+                shelfId: shelfId.toString(),
+                quantity: 5,
+                reason: 'Vỡ',
+              },
+            ],
+          },
+          actorId,
+          imagesByIndex,
+        ),
+      ).rejects.toThrow();
+      expect(repo.createScrapNote).not.toHaveBeenCalled();
     });
 
     it('item isPerishable thiếu lotId → throw SCRAP_NOTE_ITEM_ISPERISHABLE_NO_LOT', async () => {

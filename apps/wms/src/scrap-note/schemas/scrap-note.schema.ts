@@ -39,6 +39,10 @@ export class ScrapNoteItem {
   @Prop({ required: true })
   reason!: string;
 
+  /** Ảnh minh chứng hàng hủy — đính lúc tạo phiếu, optional. */
+  @Prop({ type: [String], default: [] })
+  images!: string[];
+
   /**
    * true khi ScrapNote này được GoodsReturnService tạo tự động cho dòng
    * DAMAGED (UC-09) — hàng đó vừa được nhập TẠM vào InventoryStock/onHand
