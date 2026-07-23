@@ -23,6 +23,10 @@ export class UserResponseDto {
 
   @Expose()
   @ApiPropertyOptional()
+  phone?: string;
+
+  @Expose()
+  @ApiPropertyOptional()
   name?: string;
 
   @Expose()

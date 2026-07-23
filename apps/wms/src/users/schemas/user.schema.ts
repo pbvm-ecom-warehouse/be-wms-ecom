@@ -27,6 +27,10 @@ export class User {
   @Prop({ unique: true, sparse: true })
   email?: string;
 
+  // sparse: true — lý do giống email ở trên (số điện thoại optional).
+  @Prop({ unique: true, sparse: true })
+  phone?: string;
+
   // select:false → KHÔNG trả hash ra ngoài theo mặc định; login phải .select('+passwordHash').
   @Prop({ required: true, select: false })
   passwordHash: string;

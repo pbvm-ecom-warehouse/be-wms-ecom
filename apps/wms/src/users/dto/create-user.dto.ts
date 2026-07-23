@@ -2,6 +2,7 @@ import {
   IsEmail,
   IsIn,
   IsOptional,
+  IsPhoneNumber,
   IsString,
   MinLength,
 } from 'class-validator';
@@ -23,6 +24,11 @@ export class CreateUserDto {
   @IsOptional()
   @IsEmail()
   email?: string;
+
+  @ApiPropertyOptional({ example: '+84901234567' })
+  @IsOptional()
+  @IsPhoneNumber()
+  phone?: string;
 
   @ApiPropertyOptional({ example: 'Nguyễn Văn A' })
   @IsOptional()

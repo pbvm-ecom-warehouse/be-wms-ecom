@@ -68,6 +68,7 @@ export class UsersService {
       return await this.userRepo.create({
         username: dto.username,
         email: dto.email,
+        phone: dto.phone,
         name: dto.name,
         role: dto.role,
         passwordHash,
@@ -78,15 +79,18 @@ export class UsersService {
             : undefined,
       });
     } catch (err) {
-      // username + email đều unique (email: sparse) — phân biệt bằng keyPattern
-      // để FE hiển thị đúng thông báo trùng field nào (issue #28). Không nhận
-      // diện được keyPattern (edge case hiếm) → mặc định USER_USERNAME_EXISTS
-      // vì username luôn required, khả năng cao hơn email.
+      // username + email + phone đều unique (email/phone: sparse) — phân biệt
+      // bằng keyPattern để FE hiển thị đúng thông báo trùng field nào (issue #28).
+      // Không nhận diện được keyPattern (edge case hiếm) → mặc định
+      // USER_USERNAME_EXISTS vì username luôn required, khả năng cao hơn.
       if (isMongoDuplicateKeyError(err)) {
         const keyPattern = (err as { keyPattern?: Record<string, unknown> })
           .keyPattern;
         if (keyPattern && 'email' in keyPattern) {
           throw new AppException('USER_EMAIL_EXISTS');
+        }
+        if (keyPattern && 'phone' in keyPattern) {
+          throw new AppException('USER_PHONE_EXISTS');
         }
         throw new AppException('USER_USERNAME_EXISTS');
       }

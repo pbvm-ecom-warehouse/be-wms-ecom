@@ -200,6 +200,10 @@ export const ERROR_CATALOG = {
     status: HttpStatus.CONFLICT,
     message: 'Email đã được sử dụng',
   },
+  USER_PHONE_EXISTS: {
+    status: HttpStatus.CONFLICT,
+    message: 'Số điện thoại đã được sử dụng',
+  },
 
   // ── WMS — Stock (WarehouseItem) ─────────────────────────────────────────
   STOCK_ITEM_NOT_FOUND: {

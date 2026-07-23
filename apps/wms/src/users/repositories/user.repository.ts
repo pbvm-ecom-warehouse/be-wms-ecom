@@ -9,6 +9,7 @@ export interface CreateUserInput {
   firebaseUid?: string;
   passwordHash: string;
   email?: string;
+  phone?: string;
   name?: string;
   role?: WmsRole;
   mustChangePassword?: boolean;
@@ -27,6 +28,7 @@ export interface FindAllUsersQuery {
 export interface UpdateUserProfileInput {
   name?: string;
   email?: string;
+  phone?: string;
   warehouseId?: string;
 }
 

@@ -104,6 +104,24 @@ describe('UsersService', () => {
       ).rejects.toMatchObject({ code: 'USER_EMAIL_EXISTS' });
     });
 
+    it('trùng phone (keyPattern.phone) → throw USER_PHONE_EXISTS', async () => {
+      userRepo.create.mockRejectedValue({
+        code: 11000,
+        keyPattern: { phone: 1 },
+      });
+      await expect(
+        svc.create(
+          {
+            username: 'x',
+            password: 'p',
+            phone: '+84901234567',
+            role: 'PICKER',
+          } as never,
+          managerActor,
+        ),
+      ).rejects.toMatchObject({ code: 'USER_PHONE_EXISTS' });
+    });
+
     it('lỗi 11000 không nhận diện được keyPattern (fallback) → vẫn map USER_USERNAME_EXISTS, không throw 500 thô', async () => {
       userRepo.create.mockRejectedValue({ code: 11000, keyPattern: {} });
       await expect(
