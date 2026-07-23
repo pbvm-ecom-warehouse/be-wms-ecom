@@ -22,6 +22,7 @@ describe('GoodsReceiptNote schema', () => {
     expect(paths['createdBy']).toBeDefined();
     expect(paths['confirmedBy']).toBeDefined();
     expect(paths['approvedBy']).toBeDefined();
+    expect(paths['images']).toBeDefined();
   });
 
   it('field grnNumber có unique index', () => {

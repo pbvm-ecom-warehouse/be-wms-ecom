@@ -179,6 +179,10 @@ export class GoodsReceiptNoteResponseDto {
   items!: GoodsReceiptNoteItemResponseDto[];
 
   @Expose()
+  @ApiProperty({ type: [String] })
+  images!: string[];
+
+  @Expose()
   @ApiProperty()
   createdAt!: Date;
 

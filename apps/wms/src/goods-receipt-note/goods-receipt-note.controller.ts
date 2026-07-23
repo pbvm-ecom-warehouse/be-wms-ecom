@@ -6,10 +6,15 @@ import {
   Param,
   Post,
   Query,
+  UploadedFile,
   UseGuards,
+  UseInterceptors,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import {
   ApiBearerAuth,
+  ApiBody,
+  ApiConsumes,
   ApiCreatedResponse,
   ApiOkResponse,
   ApiOperation,
@@ -85,6 +90,33 @@ export class GoodsReceiptNoteController {
     @CurrentUser('sub') actorId: string,
   ): Promise<GoodsReceiptNoteResponseDto> {
     const doc = await this.svc.approveGoodsReceiptNote(id, actorId);
+    return plainToInstance(
+      GoodsReceiptNoteResponseDto,
+      doc.toObject(),
+      TO_OPTS,
+    );
+  }
+
+  @Post(':id/images')
+  @Roles(WmsRole.RECEIVER, WmsRole.ADMIN)
+  @UseInterceptors(FileInterceptor('file'))
+  @ApiOperation({
+    summary:
+      'Upload ảnh minh chứng nhập kho lên Cloudinary — [RECEIVER, ADMIN]',
+  })
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: { file: { type: 'string', format: 'binary' } },
+    },
+  })
+  @ApiCreatedResponse({ type: GoodsReceiptNoteResponseDto })
+  async uploadGrnImage(
+    @Param('id') id: string,
+    @UploadedFile() file: Express.Multer.File,
+  ): Promise<GoodsReceiptNoteResponseDto> {
+    const doc = await this.svc.uploadGrnImage(id, file);
     return plainToInstance(
       GoodsReceiptNoteResponseDto,
       doc.toObject(),

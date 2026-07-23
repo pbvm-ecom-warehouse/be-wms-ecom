@@ -114,4 +114,14 @@ export class GoodsReceiptNoteRepository {
       )
       .exec();
   }
+
+  /** Thêm 1 URL ảnh minh chứng vào GRN (cấp phiếu) — không giới hạn ở đây, service kiểm tra status. */
+  async pushImage(
+    id: string,
+    url: string,
+  ): Promise<GoodsReceiptNoteDocument | null> {
+    return this.model
+      .findOneAndUpdate({ _id: id }, { $push: { images: url } }, { new: true })
+      .exec();
+  }
 }

@@ -72,6 +72,10 @@ export class GoodsReceiptNote {
 
   @Prop({ type: Types.ObjectId })
   approvedBy?: Types.ObjectId;
+
+  /** Ảnh minh chứng nhập kho (kiện hàng/hàng lỗi lúc nhận) — cấp phiếu, không phải từng dòng. */
+  @Prop({ type: [String], default: [] })
+  images!: string[];
 }
 
 export type GoodsReceiptNoteDocument = HydratedDocument<GoodsReceiptNote>;

@@ -10,7 +10,26 @@ const makeRepo = () => ({
   countByGrnNumberPrefix: jest.fn(),
   updateStatusConfirmed: jest.fn(),
   updateStatusApproved: jest.fn(),
+  pushImage: jest.fn(),
 });
+
+const makeCloudinaryService = () => ({
+  uploadImage: jest.fn().mockResolvedValue({
+    url: 'https://res.cloudinary.com/demo/image/upload/wms/grn/x.jpg',
+    publicId: 'wms/grn/x',
+  }),
+});
+
+function fakeImageFile(
+  overrides: Partial<{ mimetype: string; size: number; buffer: Buffer }> = {},
+) {
+  return {
+    mimetype: 'image/png',
+    size: 1024,
+    buffer: Buffer.from('fake-image'),
+    ...overrides,
+  };
+}
 
 const makePurchaseOrderService = () => ({
   getPurchaseOrder: jest.fn(),
@@ -52,6 +71,7 @@ describe('GoodsReceiptNoteService', () => {
   let stockService: ReturnType<typeof makeStockService>;
   let txHelper: ReturnType<typeof makeStockTransactionHelper>;
   let putAwayService: ReturnType<typeof makePutAwayService>;
+  let cloudinary: ReturnType<typeof makeCloudinaryService>;
 
   const actorId = new Types.ObjectId().toString();
   const purchaseOrderId = new Types.ObjectId().toString();
@@ -67,6 +87,7 @@ describe('GoodsReceiptNoteService', () => {
     stockService = makeStockService();
     txHelper = makeStockTransactionHelper();
     putAwayService = makePutAwayService();
+    cloudinary = makeCloudinaryService();
     svc = new GoodsReceiptNoteService(
       repo as never,
       poService as never,
@@ -75,6 +96,7 @@ describe('GoodsReceiptNoteService', () => {
       stockService as never,
       txHelper as never,
       putAwayService as never,
+      cloudinary as never,
     );
     repo.countByGrnNumberPrefix.mockResolvedValue(0);
   });
@@ -567,6 +589,100 @@ describe('GoodsReceiptNoteService', () => {
       const result = await svc.approveGoodsReceiptNote(grnId, actorId);
       expect(repo.updateStatusApproved).toHaveBeenCalledWith(grnId, actorId);
       expect(result).toEqual({ status: GoodsReceiptNoteStatus.APPROVED });
+    });
+  });
+
+  describe('uploadGrnImage', () => {
+    const grnId = 'grn1';
+
+    it('throw GRN_NOT_FOUND khi GRN không tồn tại', async () => {
+      repo.findGoodsReceiptNoteById.mockResolvedValue(null);
+      await expect(
+        svc.uploadGrnImage(grnId, fakeImageFile()),
+      ).rejects.toMatchObject({ code: 'GRN_NOT_FOUND' });
+      expect(cloudinary.uploadImage).not.toHaveBeenCalled();
+    });
+
+    it('throw GRN_INVALID_STATUS_TRANSITION khi GRN đã APPROVED', async () => {
+      repo.findGoodsReceiptNoteById.mockResolvedValue({
+        status: GoodsReceiptNoteStatus.APPROVED,
+      });
+      await expect(
+        svc.uploadGrnImage(grnId, fakeImageFile()),
+      ).rejects.toMatchObject({ code: 'GRN_INVALID_STATUS_TRANSITION' });
+      expect(cloudinary.uploadImage).not.toHaveBeenCalled();
+    });
+
+    it('file không phải ảnh → AppException VALIDATION_FAILED, không gọi CloudinaryService', async () => {
+      repo.findGoodsReceiptNoteById.mockResolvedValue({
+        status: GoodsReceiptNoteStatus.DRAFT,
+      });
+      await expect(
+        svc.uploadGrnImage(
+          grnId,
+          fakeImageFile({ mimetype: 'application/pdf' }),
+        ),
+      ).rejects.toMatchObject({ code: 'VALIDATION_FAILED' });
+      expect(cloudinary.uploadImage).not.toHaveBeenCalled();
+    });
+
+    it('file > 5MB → AppException VALIDATION_FAILED', async () => {
+      repo.findGoodsReceiptNoteById.mockResolvedValue({
+        status: GoodsReceiptNoteStatus.DRAFT,
+      });
+      await expect(
+        svc.uploadGrnImage(grnId, fakeImageFile({ size: 5 * 1024 * 1024 + 1 })),
+      ).rejects.toMatchObject({ code: 'VALIDATION_FAILED' });
+      expect(cloudinary.uploadImage).not.toHaveBeenCalled();
+    });
+
+    it('upload ảnh hợp lệ khi GRN đang DRAFT → push URL vào images', async () => {
+      repo.findGoodsReceiptNoteById.mockResolvedValue({
+        status: GoodsReceiptNoteStatus.DRAFT,
+      });
+      repo.pushImage.mockResolvedValue({
+        status: GoodsReceiptNoteStatus.DRAFT,
+        images: ['https://res.cloudinary.com/demo/image/upload/wms/grn/x.jpg'],
+      });
+
+      const result = await svc.uploadGrnImage(grnId, fakeImageFile());
+
+      expect(cloudinary.uploadImage).toHaveBeenCalledWith(
+        expect.any(Buffer),
+        'wms/grn',
+      );
+      expect(repo.pushImage).toHaveBeenCalledWith(
+        grnId,
+        'https://res.cloudinary.com/demo/image/upload/wms/grn/x.jpg',
+      );
+      expect(result.images).toEqual([
+        'https://res.cloudinary.com/demo/image/upload/wms/grn/x.jpg',
+      ]);
+    });
+
+    it('upload ảnh hợp lệ khi GRN đang CONFIRMED → vẫn cho phép', async () => {
+      repo.findGoodsReceiptNoteById.mockResolvedValue({
+        status: GoodsReceiptNoteStatus.CONFIRMED,
+      });
+      repo.pushImage.mockResolvedValue({
+        status: GoodsReceiptNoteStatus.CONFIRMED,
+        images: ['https://res.cloudinary.com/demo/image/upload/wms/grn/x.jpg'],
+      });
+
+      await svc.uploadGrnImage(grnId, fakeImageFile());
+
+      expect(cloudinary.uploadImage).toHaveBeenCalled();
+    });
+
+    it('throw GRN_NOT_FOUND nếu repo.pushImage trả về null (bị xóa giữa chừng)', async () => {
+      repo.findGoodsReceiptNoteById.mockResolvedValue({
+        status: GoodsReceiptNoteStatus.DRAFT,
+      });
+      repo.pushImage.mockResolvedValue(null);
+
+      await expect(
+        svc.uploadGrnImage(grnId, fakeImageFile()),
+      ).rejects.toMatchObject({ code: 'GRN_NOT_FOUND' });
     });
   });
 

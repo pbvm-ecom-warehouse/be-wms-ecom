@@ -1,7 +1,7 @@
 // apps/wms/src/goods-receipt-note/goods-receipt-note.service.ts
 import { Injectable } from '@nestjs/common';
 import { Types } from 'mongoose';
-import { AppException } from '@app/common';
+import { AppException, CloudinaryService } from '@app/common';
 import {
   GoodsReceiptNoteRepository,
   ResolvedGoodsReceiptNoteItem,
@@ -28,6 +28,16 @@ const NON_RECEIVABLE_STATUSES = new Set([
   PurchaseOrderStatus.COMPLETED,
 ]);
 
+// Giới hạn upload ảnh minh chứng GRN — theo đúng ràng buộc thiết kế IMG-01/IMG-04.
+const ALLOWED_IMAGE_MIMETYPES = ['image/jpeg', 'image/png', 'image/webp'];
+const MAX_IMAGE_SIZE_BYTES = 5 * 1024 * 1024;
+
+export interface UploadedImageFile {
+  buffer: Buffer;
+  mimetype: string;
+  size: number;
+}
+
 @Injectable()
 export class GoodsReceiptNoteService {
   constructor(
@@ -38,6 +48,7 @@ export class GoodsReceiptNoteService {
     private readonly stockService: StockService,
     private readonly stockTransactionHelper: StockTransactionHelper,
     private readonly putAwayService: PutAwayService,
+    private readonly cloudinary: CloudinaryService,
   ) {}
 
   async createGoodsReceiptNote(
@@ -282,6 +293,44 @@ export class GoodsReceiptNoteService {
     const approved = await this.repo.updateStatusApproved(id, actorId);
     if (!approved) throw new AppException('GRN_NOT_FOUND');
     return approved;
+  }
+
+  /**
+   * Thêm 1 ảnh minh chứng vào GRN (kiện hàng/hàng lỗi lúc nhận). Chỉ cho phép khi
+   * GRN chưa APPROVED — tránh sửa chứng từ đã duyệt (đúng tinh thần "chứng từ giao
+   * dịch hủy bằng status", xem AC IMG-04).
+   */
+  async uploadGrnImage(
+    id: string,
+    file: UploadedImageFile,
+  ): Promise<GoodsReceiptNoteDocument> {
+    const grn = await this.repo.findGoodsReceiptNoteById(id);
+    if (!grn) throw new AppException('GRN_NOT_FOUND');
+    if (grn.status === GoodsReceiptNoteStatus.APPROVED) {
+      throw new AppException('GRN_INVALID_STATUS_TRANSITION');
+    }
+
+    this.validateImageFile(file);
+    const { url } = await this.cloudinary.uploadImage(file.buffer, 'wms/grn');
+
+    const updated = await this.repo.pushImage(id, url);
+    if (!updated) throw new AppException('GRN_NOT_FOUND');
+    return updated;
+  }
+
+  private validateImageFile(file: UploadedImageFile): void {
+    if (!file) {
+      throw new AppException('VALIDATION_FAILED', 'Thiếu file ảnh');
+    }
+    if (!ALLOWED_IMAGE_MIMETYPES.includes(file.mimetype)) {
+      throw new AppException(
+        'VALIDATION_FAILED',
+        'Chỉ nhận file ảnh (jpeg/png/webp)',
+      );
+    }
+    if (file.size > MAX_IMAGE_SIZE_BYTES) {
+      throw new AppException('VALIDATION_FAILED', 'File ảnh tối đa 5MB');
+    }
   }
 
   async listGoodsReceiptNotes(
