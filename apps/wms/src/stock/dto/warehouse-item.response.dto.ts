@@ -113,6 +113,10 @@ export class WarehouseItemResponseDto {
   isActive!: boolean;
 
   @Expose()
+  @ApiProperty({ type: [String] })
+  images!: string[];
+
+  @Expose()
   @ApiProperty()
   createdAt!: Date;
 

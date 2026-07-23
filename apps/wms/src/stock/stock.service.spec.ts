@@ -31,6 +31,10 @@ const makeTransactionHelper = () => ({
   withStockTransaction: jest.fn((fn: (session: unknown) => unknown) => fn({})),
 });
 
+const makeCloudinaryService = () => ({
+  uploadImage: jest.fn(),
+});
+
 describe('StockService', () => {
   let svc: StockService;
   let repo: ReturnType<typeof makeRepo>;
@@ -39,6 +43,7 @@ describe('StockService', () => {
   let skuTemplateSvc: ReturnType<typeof makeSkuTemplateService>;
   let barcodeSvc: ReturnType<typeof makeBarcodeService>;
   let txHelper: ReturnType<typeof makeTransactionHelper>;
+  let cloudinary: ReturnType<typeof makeCloudinaryService>;
 
   beforeEach(() => {
     repo = makeRepo();
@@ -47,6 +52,7 @@ describe('StockService', () => {
     skuTemplateSvc = makeSkuTemplateService();
     barcodeSvc = makeBarcodeService();
     txHelper = makeTransactionHelper();
+    cloudinary = makeCloudinaryService();
     svc = new StockService(
       repo as never,
       queue as never,
@@ -54,6 +60,7 @@ describe('StockService', () => {
       skuTemplateSvc as never,
       barcodeSvc as never,
       txHelper as never,
+      cloudinary as never,
     );
   });
 

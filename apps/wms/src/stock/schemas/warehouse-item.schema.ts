@@ -106,6 +106,10 @@ export class WarehouseItem {
   @Prop({ default: true })
   isActive!: boolean;
 
+  /** Ảnh mặt hàng — URL Cloudinary, optional, nhiều ảnh. */
+  @Prop({ type: [String], default: [] })
+  images!: string[];
+
   /** Chỉ có ý nghĩa khi type=CUP_PRINTED — trỏ về WarehouseItem CUP_BLANK gốc dùng làm nguyên liệu in (UC-04). */
   @Prop({ type: Types.ObjectId })
   blankItemId?: Types.ObjectId;

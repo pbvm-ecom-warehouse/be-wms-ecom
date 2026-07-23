@@ -10,10 +10,15 @@ import {
   Patch,
   Post,
   Query,
+  UploadedFiles,
   UseGuards,
+  UseInterceptors,
 } from '@nestjs/common';
+import { FilesInterceptor } from '@nestjs/platform-express';
 import {
   ApiBearerAuth,
+  ApiBody,
+  ApiConsumes,
   ApiCreatedResponse,
   ApiNoContentResponse,
   ApiOkResponse,
@@ -28,7 +33,7 @@ import {
   WmsRole,
 } from '@app/auth';
 import { plainToInstance } from 'class-transformer';
-import { StockService } from './stock.service';
+import { StockService, type UploadedImageFile } from './stock.service';
 import {
   CreateWarehouseItemDto,
   UpdateWarehouseItemDto,
@@ -47,16 +52,48 @@ export class StockController {
 
   @Post()
   @Roles(WmsRole.ADMIN, WmsRole.MANAGER)
+  @UseInterceptors(FilesInterceptor('images'))
   @ApiOperation({
     summary:
       'Tạo mặt hàng kho mới (CUP_BLANK/MATERIAL/PACKAGING) — BE tự sinh sku/barcode từ template — [ADMIN, MANAGER]',
+  })
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    description: 'Ảnh mặt hàng (optional): field `images`, có thể nhiều file.',
+    schema: {
+      type: 'object',
+      properties: {
+        type: { type: 'string', enum: ['CUP_BLANK', 'MATERIAL', 'PACKAGING'] },
+        templateId: { type: 'string' },
+        attributeOptionIds: { type: 'array', items: { type: 'string' } },
+        name: { type: 'string' },
+        unit: { type: 'string' },
+        altUnits: { type: 'array', items: { type: 'object' } },
+        isPerishable: { type: 'boolean' },
+        nearExpiryDays: { type: 'number' },
+        minQuantity: { type: 'number' },
+        depth: { type: 'number' },
+        width: { type: 'number' },
+        height: { type: 'number' },
+        images: {
+          type: 'array',
+          items: { type: 'string', format: 'binary' },
+        },
+      },
+    },
   })
   @ApiCreatedResponse({ type: WarehouseItemResponseDto })
   async create(
     @Body() dto: CreateWarehouseItemDto,
     @CurrentUser('sub') actorId: string,
+    @UploadedFiles() files?: Express.Multer.File[],
   ): Promise<WarehouseItemResponseDto> {
-    const doc = await this.svc.createWarehouseItem(dto, actorId);
+    const imageFiles: UploadedImageFile[] = (files ?? []).map((file) => ({
+      buffer: file.buffer,
+      mimetype: file.mimetype,
+      size: file.size,
+    }));
+    const doc = await this.svc.createWarehouseItem(dto, actorId, imageFiles);
     return plainToInstance(WarehouseItemResponseDto, doc.toObject(), TO_OPTS);
   }
 

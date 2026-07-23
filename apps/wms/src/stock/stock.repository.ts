@@ -64,6 +64,7 @@ export type CreateWarehouseItemData = {
   width?: number;
   height?: number;
   blankItemId?: Types.ObjectId;
+  images?: string[];
 };
 
 export type QueryWarehouseItemInput = {

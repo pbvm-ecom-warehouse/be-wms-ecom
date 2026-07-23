@@ -6,7 +6,7 @@ import {
   type StockChangedPayload,
   type StockLowPayload,
 } from '@app/events';
-import { AppException } from '@app/common';
+import { AppException, CloudinaryService } from '@app/common';
 import { Queue } from 'bullmq';
 import { Types } from 'mongoose';
 import { StockRepository } from './stock.repository';
@@ -24,6 +24,16 @@ import {
   isMongoDuplicateKeyError,
 } from './barcode/barcode.service';
 import { StockTransactionHelper } from './helpers/with-stock-transaction.helper';
+
+// Giới hạn upload ảnh mặt hàng — nhất quán với StockCountService (IMG-01/IMG-07).
+const ALLOWED_IMAGE_MIMETYPES = ['image/jpeg', 'image/png', 'image/webp'];
+const MAX_IMAGE_SIZE_BYTES = 5 * 1024 * 1024;
+
+export interface UploadedImageFile {
+  buffer: Buffer;
+  mimetype: string;
+  size: number;
+}
 
 /**
  * PRODUCER: khi `available` (= onHand - reserved - expired) của 1 SKU đổi
@@ -43,6 +53,7 @@ export class StockService {
     private readonly skuTemplateSvc: SkuTemplateService,
     private readonly barcodeSvc: BarcodeService,
     private readonly txHelper: StockTransactionHelper,
+    private readonly cloudinary: CloudinaryService,
   ) {}
 
   /** Phát event báo Ecommerce cộng/trừ availableQty theo delta (đã gộp mọi kho).
@@ -131,6 +142,7 @@ export class StockService {
   async createWarehouseItem(
     dto: CreateWarehouseItemDto,
     actorId: string,
+    imageFiles?: UploadedImageFile[],
   ): Promise<WarehouseItemDocument> {
     // dto.type theo type CreateWarehouseItemDto không thể là CUP_PRINTED (đã
     // giới hạn @IsIn ở DTO) — check runtime này là phòng hờ, vì class-validator
@@ -146,6 +158,18 @@ export class StockService {
         dto.type,
         dto.attributeOptionIds,
       );
+
+    // Upload ảnh TRƯỚC transaction — Cloudinary không tham gia Mongo session,
+    // nhất quán với StockCountService.countItem (upload rồi mới ghi DB).
+    const images: string[] = [];
+    for (const file of imageFiles ?? []) {
+      this.validateImageFile(file);
+      const { url } = await this.cloudinary.uploadImage(
+        file.buffer,
+        'wms/warehouse-item',
+      );
+      images.push(url);
+    }
 
     try {
       return await this.txHelper.withStockTransaction(async (session) => {
@@ -170,6 +194,7 @@ export class StockService {
           depth: dto.depth,
           width: dto.width,
           height: dto.height,
+          images,
         };
 
         return this.stockRepo.createItem(
@@ -183,6 +208,18 @@ export class StockService {
         throw new AppException('STOCK_ITEM_SKU_CONFLICT');
       }
       throw err;
+    }
+  }
+
+  private validateImageFile(file: UploadedImageFile): void {
+    if (!ALLOWED_IMAGE_MIMETYPES.includes(file.mimetype)) {
+      throw new AppException(
+        'VALIDATION_FAILED',
+        'Chỉ nhận file ảnh (jpeg/png/webp)',
+      );
+    }
+    if (file.size > MAX_IMAGE_SIZE_BYTES) {
+      throw new AppException('VALIDATION_FAILED', 'File ảnh tối đa 5MB');
     }
   }
 

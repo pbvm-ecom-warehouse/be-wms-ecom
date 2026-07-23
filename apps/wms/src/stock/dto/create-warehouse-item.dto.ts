@@ -4,7 +4,7 @@ import {
   OmitType,
   PartialType,
 } from '@nestjs/swagger';
-import { Type } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 import {
   ArrayMinSize,
   IsArray,
@@ -20,6 +20,25 @@ import {
   ValidateNested,
 } from 'class-validator';
 import { ItemType } from '../schemas/warehouse-item.schema';
+
+/** Multipart form gửi mảng/object dạng JSON string — parse trước khi validate.
+ * Giữ nguyên giá trị nếu đã là mảng (request JSON thường không qua multipart). */
+function parseJsonArrayIfString({ value }: { value: unknown }): unknown {
+  if (typeof value !== 'string') return value;
+  try {
+    return JSON.parse(value);
+  } catch {
+    return value;
+  }
+}
+
+/** Multipart form gửi boolean dạng string "true"/"false" — Boolean("false") vẫn
+ * truthy nên không dùng @Type(() => Boolean) được, phải so chuỗi thủ công. */
+function parseBooleanIfString({ value }: { value: unknown }): unknown {
+  if (value === 'true') return true;
+  if (value === 'false') return false;
+  return value;
+}
 
 export class AltUnitDto {
   @ApiProperty({ example: 'thùng' })
@@ -58,6 +77,7 @@ export class CreateWarehouseItemDto {
   templateId!: string;
 
   @ApiProperty({ type: [String], example: ['66a1...', '66a2...'] })
+  @Transform(parseJsonArrayIfString)
   @IsArray()
   @ArrayMinSize(1)
   @IsMongoId({ each: true })
@@ -75,6 +95,7 @@ export class CreateWarehouseItemDto {
 
   @ApiPropertyOptional({ type: [AltUnitDto] })
   @IsOptional()
+  @Transform(parseJsonArrayIfString)
   @IsArray()
   @ValidateNested({ each: true })
   @Type(() => AltUnitDto)
@@ -82,11 +103,13 @@ export class CreateWarehouseItemDto {
 
   @ApiPropertyOptional({ example: false })
   @IsOptional()
+  @Transform(parseBooleanIfString)
   @IsBoolean()
   isPerishable?: boolean;
 
   @ApiPropertyOptional({ example: 7 })
   @IsOptional()
+  @Type(() => Number)
   @IsInt()
   @Min(0)
   nearExpiryDays?: number;
@@ -97,6 +120,7 @@ export class CreateWarehouseItemDto {
       'Ngưỡng tối thiểu — available dưới ngưỡng này thì phát cảnh báo stock.low',
   })
   @IsOptional()
+  @Type(() => Number)
   @IsInt()
   @Min(0)
   minQuantity?: number;
@@ -106,6 +130,7 @@ export class CreateWarehouseItemDto {
     description: 'Chiều sâu 1 đơn vị cơ sở (cm)',
   })
   @IsOptional()
+  @Type(() => Number)
   @IsNumber()
   @Min(0)
   depth?: number;
@@ -115,6 +140,7 @@ export class CreateWarehouseItemDto {
     description: 'Chiều rộng 1 đơn vị cơ sở (cm)',
   })
   @IsOptional()
+  @Type(() => Number)
   @IsNumber()
   @Min(0)
   width?: number;
@@ -124,6 +150,7 @@ export class CreateWarehouseItemDto {
     description: 'Chiều cao 1 đơn vị cơ sở (cm)',
   })
   @IsOptional()
+  @Type(() => Number)
   @IsNumber()
   @Min(0)
   height?: number;
