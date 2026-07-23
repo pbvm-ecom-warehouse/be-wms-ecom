@@ -34,14 +34,26 @@ type InsertMovementData = {
 };
 
 export type CreateWarehouseItemData = {
+  /** Cho phép caller cấp sẵn _id — StockService.createWarehouseItem (Task 12) cần
+   * biết itemId TRƯỚC khi document tồn tại, để BarcodeService ghi registry entry
+   * trỏ đúng item trong cùng transaction (xem stock.service.ts). Optional vì
+   * print-job's internal creation path (print-job.service.ts) không cần cấp trước. */
+  _id?: Types.ObjectId;
   sku: string;
   barcode?: string;
   altBarcodes?: string[];
   name: string;
   type: ItemType;
+  category?: string;
   unit: string;
   altUnits?: { unit: string; factor: number }[];
-  attributes?: { name: string; value: string; code: string }[];
+  attributes?: {
+    key: string;
+    optionId: Types.ObjectId;
+    name: string;
+    value: string;
+    code: string;
+  }[];
   isPerishable?: boolean;
   nearExpiryDays?: number;
   minQuantity?: number;
@@ -303,18 +315,25 @@ export class StockRepository {
   }
 
   /** Tra WarehouseItem theo sku — dùng khi tạo mới để chặn trùng sku (kể cả đã soft-delete). */
-  findItemBySku(sku: string) {
-    return this.itemModel.findOne({ sku }).lean().exec();
+  findItemBySku(sku: string, session?: ClientSession) {
+    const query = this.itemModel.findOne({ sku }).lean();
+    if (session) query.session(session);
+    return query.exec();
   }
 
-  /** Tạo mới WarehouseItem (master data). isActive mặc định true. */
+  /** Tạo mới WarehouseItem (master data). isActive mặc định true. session bắt buộc
+   * truyền khi tạo trong luồng sinh SKU/barcode (issue #25 — "Create item + registry
+   * trong cùng Mongo transaction"); optional để không phá vỡ print-job's internal
+   * creation path (chưa cần transaction, xem print-job.service.ts). */
   async createItem(
     data: CreateWarehouseItemData,
     createdBy: Types.ObjectId,
+    session?: ClientSession,
   ): Promise<WarehouseItemDocument> {
-    const [doc] = await this.itemModel.create([
-      { ...data, createdBy, isActive: true },
-    ]);
+    const [doc] = await this.itemModel.create(
+      [{ ...data, createdBy, isActive: true }],
+      { session },
+    );
     return doc;
   }
 

@@ -20,9 +20,16 @@ class AltUnit {
 }
 const AltUnitSchema = SchemaFactory.createForClass(AltUnit);
 
-/** Sub-document: thuộc tính thêm (màu, kích thước…) */
+/** Sub-document: thuộc tính thêm (màu, kích thước…) — snapshot từ ItemAttributeOption tại thời điểm tạo item. */
 @Schema({ _id: false })
 class ItemAttribute {
+  /** Nhóm thuộc tính (vd 'COLOR') — khớp AttributeOptionKey, giữ dạng string ở đây để schema WarehouseItem không phụ thuộc trực tiếp enum của attribute-option module. */
+  @Prop({ required: true })
+  key!: string;
+
+  @Prop({ type: Types.ObjectId, required: true })
+  optionId!: Types.ObjectId;
+
   @Prop({ required: true })
   name!: string;
 
@@ -56,6 +63,10 @@ export class WarehouseItem {
 
   @Prop({ enum: ItemType, required: true })
   type!: ItemType;
+
+  /** Nhóm con trong itemType (vd 'SYRUP' cho MATERIAL) — null cho CUP_BLANK (không phân nhóm). Khớp SkuTemplate.category. */
+  @Prop()
+  category?: string;
 
   /** Đơn vị cơ sở (vd "cái", "kg") */
   @Prop({ required: true })

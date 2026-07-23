@@ -325,10 +325,22 @@ describe('StockRepository', () => {
       const result = await repo.findItemBySku('SKU-X');
       expect(result).toBeNull();
     });
+
+    it('gọi .session() khi có truyền session — để thấy được write chưa commit trong cùng transaction', async () => {
+      const session = {} as never;
+      const sessionMock = jest.fn().mockReturnThis();
+      (warehouseItemModel as unknown as { session: jest.Mock }).session =
+        sessionMock;
+      warehouseItemModel.exec.mockResolvedValueOnce({ sku: 'SKU-1' });
+
+      await repo.findItemBySku('SKU-1', session);
+
+      expect(sessionMock).toHaveBeenCalledWith(session);
+    });
   });
 
   describe('createItem', () => {
-    it('gọi create với data + createdBy, isActive mặc định true', async () => {
+    it('gọi create với data + createdBy, isActive mặc định true (không session)', async () => {
       const createdBy = new Types.ObjectId();
       const data = {
         sku: 'SKU-1',
@@ -339,10 +351,31 @@ describe('StockRepository', () => {
       const mockDoc = { _id: new Types.ObjectId(), ...data };
       warehouseItemModel.create.mockResolvedValueOnce([mockDoc]);
       const result = await repo.createItem(data, createdBy);
-      expect(warehouseItemModel.create).toHaveBeenCalledWith([
-        { ...data, createdBy, isActive: true },
-      ]);
+      expect(warehouseItemModel.create).toHaveBeenCalledWith(
+        [{ ...data, createdBy, isActive: true }],
+        { session: undefined },
+      );
       expect(result).toBe(mockDoc);
+    });
+
+    it('truyền session vào Model.create khi có session — issue #25: item + registry entry trong cùng transaction', async () => {
+      const createdBy = new Types.ObjectId();
+      const session = {} as never;
+      const data = {
+        sku: 'SKU-1',
+        name: 'Test',
+        type: 'CUP_BLANK' as const,
+        unit: 'cái',
+      };
+      const mockDoc = { _id: new Types.ObjectId(), ...data };
+      warehouseItemModel.create.mockResolvedValueOnce([mockDoc]);
+
+      await repo.createItem(data, createdBy, session);
+
+      expect(warehouseItemModel.create).toHaveBeenCalledWith(
+        [expect.objectContaining({ sku: 'SKU-1' })],
+        { session },
+      );
     });
   });
 
