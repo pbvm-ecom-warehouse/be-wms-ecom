@@ -2,8 +2,9 @@ import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { HydratedDocument, SchemaTypes, Types } from 'mongoose';
 
 /**
- * Danh mục giá: 1 SKU ↔ 1 NCC chính (unique itemId).
- * Không soft-delete — toggle isActive khi hết hiệu lực báo giá.
+ * Danh mục giá: mỗi cặp (SKU, NCC) là 1 báo giá độc lập — 1 SKU có thể mua
+ * được từ nhiều NCC khác nhau, cần lưu song song để so sánh giá trước khi
+ * đặt PO (issue #30). Không soft-delete — toggle isActive khi hết hiệu lực.
  * updatedAt tự update qua timestamps.
  */
 @Schema({
@@ -11,8 +12,9 @@ import { HydratedDocument, SchemaTypes, Types } from 'mongoose';
   timestamps: { createdAt: false, updatedAt: true },
 })
 export class SupplierItem {
-  /** WarehouseItem._id — unique: 1 SKU chỉ có 1 NCC chính */
-  @Prop({ type: SchemaTypes.ObjectId, required: true, unique: true })
+  /** WarehouseItem._id — không unique riêng lẻ: 1 SKU có thể có nhiều NCC báo giá
+   * song song (xem compound index bên dưới, ràng buộc theo cặp itemId+supplierId). */
+  @Prop({ type: SchemaTypes.ObjectId, required: true })
   itemId!: Types.ObjectId;
 
   @Prop({ type: SchemaTypes.ObjectId, required: true })
@@ -41,3 +43,7 @@ export class SupplierItem {
 
 export type SupplierItemDocument = HydratedDocument<SupplierItem>;
 export const SupplierItemSchema = SchemaFactory.createForClass(SupplierItem);
+
+// 1 cặp (SKU, NCC) chỉ có đúng 1 báo giá — nhiều NCC có thể cùng báo giá 1 SKU,
+// nhưng không được trùng 2 báo giá cho cùng 1 cặp.
+SupplierItemSchema.index({ itemId: 1, supplierId: 1 }, { unique: true });

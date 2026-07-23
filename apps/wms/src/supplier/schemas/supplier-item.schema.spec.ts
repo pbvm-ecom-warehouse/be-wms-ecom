@@ -11,10 +11,23 @@ describe('SupplierItem schema', () => {
     expect(paths['isActive']).toBeDefined();
   });
 
-  it('itemId có unique index (1 SKU ↔ 1 NCC chính)', () => {
+  it('itemId KHÔNG unique riêng lẻ (1 SKU có thể có nhiều NCC báo giá)', () => {
     const itemIdPath = SupplierItemSchema.path('itemId') as {
       options?: { unique?: boolean };
     };
-    expect(itemIdPath.options?.unique).toBe(true);
+    expect(itemIdPath.options?.unique).toBeFalsy();
+  });
+
+  it('có compound unique index {itemId, supplierId} — 1 cặp SKU+NCC chỉ 1 báo giá', () => {
+    const indexes = SupplierItemSchema.indexes();
+    const compoundIndex = indexes.find(
+      ([fields]) =>
+        fields['itemId'] === 1 &&
+        fields['supplierId'] === 1 &&
+        Object.keys(fields).length === 2,
+    );
+    expect(compoundIndex).toBeDefined();
+    const [, options] = compoundIndex!;
+    expect(options.unique).toBe(true);
   });
 });
