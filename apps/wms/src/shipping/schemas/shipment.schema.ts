@@ -25,6 +25,10 @@ export class ShipmentStatusHistoryEntry {
 
   @Prop()
   note?: string;
+
+  /** Ảnh bằng chứng giao hàng (POD) — chỉ có ý nghĩa ở dòng status=DELIVERED, optional. */
+  @Prop({ type: [String], default: [] })
+  images!: string[];
 }
 const ShipmentStatusHistoryEntrySchema = SchemaFactory.createForClass(
   ShipmentStatusHistoryEntry,

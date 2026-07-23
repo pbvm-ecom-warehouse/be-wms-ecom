@@ -40,6 +40,27 @@ export class UpdateShipmentStatusDto {
   failReason?: string;
 }
 
+/**
+ * Request DTO cho PATCH :id/status dạng multipart/form-data — cần multipart vì
+ * chuyển sang DELIVERED có thể kèm ảnh POD (field `images`, xem controller).
+ * Multipart form field luôn là string nên giữ nguyên shape JSON gốc.
+ */
+export class UpdateShipmentStatusFormDto {
+  @ApiProperty({ enum: ShipmentStatus })
+  @IsEnum(ShipmentStatus)
+  status!: ShipmentStatus;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  note?: string;
+
+  @ApiPropertyOptional({ description: 'Bắt buộc có ý nghĩa khi status=FAILED' })
+  @IsOptional()
+  @IsString()
+  failReason?: string;
+}
+
 export class QueryShipmentDto {
   @ApiPropertyOptional({ enum: ShipmentStatus })
   @IsOptional()
@@ -89,6 +110,10 @@ class ShipmentStatusHistoryResponseDto {
   @Expose()
   @ApiPropertyOptional()
   note?: string;
+
+  @Expose()
+  @ApiProperty({ type: [String] })
+  images!: string[];
 }
 
 export class ShipmentResponseDto {

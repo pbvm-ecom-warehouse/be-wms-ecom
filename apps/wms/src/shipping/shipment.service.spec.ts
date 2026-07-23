@@ -19,11 +19,30 @@ const makeCarrierService = () => ({
 
 const makeQueue = () => ({ add: jest.fn() });
 
+const makeCloudinaryService = () => ({
+  uploadImage: jest.fn().mockResolvedValue({
+    url: 'https://res.cloudinary.com/demo/image/upload/wms/shipment-pod/x.jpg',
+    publicId: 'wms/shipment-pod/x',
+  }),
+});
+
+function fakeImageFile(
+  overrides: Partial<{ mimetype: string; size: number; buffer: Buffer }> = {},
+) {
+  return {
+    mimetype: 'image/png',
+    size: 1024,
+    buffer: Buffer.from('fake-image'),
+    ...overrides,
+  };
+}
+
 describe('ShipmentService', () => {
   let svc: ShipmentService;
   let repo: ReturnType<typeof makeRepo>;
   let carrierService: ReturnType<typeof makeCarrierService>;
   let queue: ReturnType<typeof makeQueue>;
+  let cloudinary: ReturnType<typeof makeCloudinaryService>;
   const actorId = new Types.ObjectId().toString();
   const shipmentId = 'ship1';
   const carrierId = new Types.ObjectId().toString();
@@ -33,10 +52,12 @@ describe('ShipmentService', () => {
     repo = makeRepo();
     carrierService = makeCarrierService();
     queue = makeQueue();
+    cloudinary = makeCloudinaryService();
     svc = new ShipmentService(
       repo as never,
       carrierService as never,
       queue as never,
+      cloudinary as never,
     );
   });
 
@@ -217,12 +238,102 @@ describe('ShipmentService', () => {
         expect.objectContaining({
           shipmentStatus: ShipmentStatus.DELIVERED,
           extra: expect.objectContaining({ deliveredAt: expect.any(Date) }),
+          historyEntry: expect.objectContaining({ images: [] }),
         }),
       );
       expect(queue.add).toHaveBeenCalledWith(
         EVENTS.SHIPMENT_DELIVERED,
         { orderId, shipmentId },
         expect.anything(),
+      );
+    });
+
+    it('DELIVERED không có ảnh POD → images rỗng, không gọi CloudinaryService', async () => {
+      repo.findById.mockResolvedValue(baseShipment(ShipmentStatus.IN_TRANSIT));
+      repo.pushStatus.mockResolvedValue({
+        _id: shipmentId,
+        shipmentStatus: ShipmentStatus.DELIVERED,
+      });
+      await svc.updateStatus(shipmentId, ShipmentStatus.DELIVERED, actorId, {});
+      expect(cloudinary.uploadImage).not.toHaveBeenCalled();
+    });
+
+    it('DELIVERED kèm ảnh POD → upload Cloudinary vào wms/shipment-pod, lưu URL vào historyEntry', async () => {
+      repo.findById.mockResolvedValue(baseShipment(ShipmentStatus.IN_TRANSIT));
+      repo.pushStatus.mockResolvedValue({
+        _id: shipmentId,
+        shipmentStatus: ShipmentStatus.DELIVERED,
+      });
+
+      await svc.updateStatus(
+        shipmentId,
+        ShipmentStatus.DELIVERED,
+        actorId,
+        {},
+        [fakeImageFile()],
+      );
+
+      expect(cloudinary.uploadImage).toHaveBeenCalledWith(
+        expect.any(Buffer),
+        'wms/shipment-pod',
+      );
+      expect(repo.pushStatus).toHaveBeenCalledWith(
+        shipmentId,
+        ShipmentStatus.IN_TRANSIT,
+        expect.objectContaining({
+          historyEntry: expect.objectContaining({
+            images: [
+              'https://res.cloudinary.com/demo/image/upload/wms/shipment-pod/x.jpg',
+            ],
+          }),
+        }),
+      );
+    });
+
+    it('ảnh POD sai mimetype → throw VALIDATION_FAILED, không gọi pushStatus', async () => {
+      repo.findById.mockResolvedValue(baseShipment(ShipmentStatus.IN_TRANSIT));
+
+      await expect(
+        svc.updateStatus(shipmentId, ShipmentStatus.DELIVERED, actorId, {}, [
+          fakeImageFile({ mimetype: 'application/pdf' }),
+        ]),
+      ).rejects.toMatchObject({ code: 'VALIDATION_FAILED' });
+      expect(repo.pushStatus).not.toHaveBeenCalled();
+    });
+
+    it('ảnh POD vượt quá 5MB → throw VALIDATION_FAILED, không gọi pushStatus', async () => {
+      repo.findById.mockResolvedValue(baseShipment(ShipmentStatus.IN_TRANSIT));
+
+      await expect(
+        svc.updateStatus(shipmentId, ShipmentStatus.DELIVERED, actorId, {}, [
+          fakeImageFile({ size: 6 * 1024 * 1024 }),
+        ]),
+      ).rejects.toMatchObject({ code: 'VALIDATION_FAILED' });
+      expect(repo.pushStatus).not.toHaveBeenCalled();
+    });
+
+    it('gửi ảnh kèm status khác DELIVERED (vd IN_TRANSIT) → bỏ qua âm thầm, không gọi CloudinaryService', async () => {
+      repo.findById.mockResolvedValue(baseShipment(ShipmentStatus.PICKED_UP));
+      repo.pushStatus.mockResolvedValue({
+        _id: shipmentId,
+        shipmentStatus: ShipmentStatus.IN_TRANSIT,
+      });
+
+      await svc.updateStatus(
+        shipmentId,
+        ShipmentStatus.IN_TRANSIT,
+        actorId,
+        {},
+        [fakeImageFile()],
+      );
+
+      expect(cloudinary.uploadImage).not.toHaveBeenCalled();
+      expect(repo.pushStatus).toHaveBeenCalledWith(
+        shipmentId,
+        ShipmentStatus.PICKED_UP,
+        expect.objectContaining({
+          historyEntry: expect.objectContaining({ images: [] }),
+        }),
       );
     });
 

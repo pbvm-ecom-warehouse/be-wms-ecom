@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
-import { AppException } from '@app/common';
+import { AppException, CloudinaryService } from '@app/common';
 import { EVENTS, QUEUES, type ShipmentEventPayload } from '@app/events';
 import { Types } from 'mongoose';
 import {
@@ -12,6 +12,16 @@ import {
 import { ShipmentDocument, ShipmentStatus } from './schemas/shipment.schema';
 import { CarrierService } from './carrier.service';
 import { CarrierStatus } from './schemas/carrier.schema';
+
+// Giới hạn upload ảnh POD — theo đúng ràng buộc thiết kế IMG-01/IMG-09.
+const ALLOWED_IMAGE_MIMETYPES = ['image/jpeg', 'image/png', 'image/webp'];
+const MAX_IMAGE_SIZE_BYTES = 5 * 1024 * 1024;
+
+export interface UploadedImageFile {
+  buffer: Buffer;
+  mimetype: string;
+  size: number;
+}
 
 /** Bảng transition hợp lệ — key: from, value: các to được phép. */
 const VALID_TRANSITIONS: Record<ShipmentStatus, ShipmentStatus[]> = {
@@ -41,6 +51,7 @@ export class ShipmentService {
     private readonly repo: ShipmentRepository,
     private readonly carrierService: CarrierService,
     @InjectQueue(QUEUES.SHIPMENT) private readonly shipmentQueue: Queue,
+    private readonly cloudinary: CloudinaryService,
   ) {}
 
   async createFromGoodsIssue(input: {
@@ -91,11 +102,18 @@ export class ShipmentService {
     return updated;
   }
 
+  /**
+   * `imageFiles` optional — ảnh POD (proof-of-delivery), chỉ có ý nghĩa khi
+   * `toStatus === DELIVERED` (xem AC IMG-09). Nếu SHIPPER gửi kèm ảnh cho
+   * status khác thì bị bỏ qua âm thầm — không có statusHistory DELIVERED nào
+   * để gắn vào, và không đáng để throw lỗi cho 1 field thừa vô hại.
+   */
   async updateStatus(
     id: string,
     toStatus: ShipmentStatus,
     actorId: string,
     options: UpdateStatusOptions,
+    imageFiles?: UploadedImageFile[],
   ): Promise<ShipmentDocument> {
     const shipment = await this.repo.findById(id);
     if (!shipment) throw new AppException('SHIPMENT_NOT_FOUND');
@@ -132,6 +150,18 @@ export class ShipmentService {
       if (options.failReason) extra['failReason'] = options.failReason;
     }
 
+    const images: string[] = [];
+    if (toStatus === ShipmentStatus.DELIVERED) {
+      for (const file of imageFiles ?? []) {
+        this.validateImageFile(file);
+        const { url } = await this.cloudinary.uploadImage(
+          file.buffer,
+          'wms/shipment-pod',
+        );
+        images.push(url);
+      }
+    }
+
     const updated = await this.repo.pushStatus(id, fromStatus, {
       shipmentStatus: toStatus,
       historyEntry: {
@@ -139,6 +169,7 @@ export class ShipmentService {
         at: now,
         by: new Types.ObjectId(actorId),
         note: options.note,
+        images,
       },
       extra,
     });
@@ -174,6 +205,18 @@ export class ShipmentService {
     }
 
     return updated;
+  }
+
+  private validateImageFile(file: UploadedImageFile): void {
+    if (!ALLOWED_IMAGE_MIMETYPES.includes(file.mimetype)) {
+      throw new AppException(
+        'VALIDATION_FAILED',
+        'Chỉ nhận file ảnh (jpeg/png/webp)',
+      );
+    }
+    if (file.size > MAX_IMAGE_SIZE_BYTES) {
+      throw new AppException('VALIDATION_FAILED', 'File ảnh tối đa 5MB');
+    }
   }
 
   async getById(id: string): Promise<ShipmentDocument> {

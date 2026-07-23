@@ -86,6 +86,7 @@ export class ShipmentRepository {
         at: Date;
         by?: Types.ObjectId;
         note?: string;
+        images: string[];
       };
       extra?: Record<string, unknown>;
     },
