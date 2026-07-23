@@ -138,6 +138,7 @@ describe('StockCountRepository', () => {
         lotId,
         45,
         'Hao hụt',
+        [],
       );
 
       expect(model.findOneAndUpdate).toHaveBeenCalledWith(
@@ -149,6 +150,7 @@ describe('StockCountRepository', () => {
           $set: {
             'items.$.actualQty': 45,
             'items.$.reason': 'Hao hụt',
+            'items.$.images': [],
           },
         },
         { new: true },
@@ -158,6 +160,46 @@ describe('StockCountRepository', () => {
       expect(doc.items[1].delta).toBeNull();
       expect(doc.save).toHaveBeenCalled();
       expect(result).toBe(doc);
+    });
+
+    it('lưu images vào đúng dòng khi có ảnh minh chứng', async () => {
+      const doc = {
+        _id: 'sc1',
+        items: [
+          {
+            itemId,
+            shelfId,
+            lotId,
+            systemQty: 50,
+            actualQty: 45,
+            delta: null,
+            reason: null,
+            images: [],
+          },
+        ],
+        save: jest.fn().mockResolvedValue(undefined),
+      };
+      model.findOneAndUpdate.mockReturnValue({
+        exec: jest.fn().mockResolvedValue(doc),
+      });
+
+      await repo.countItem('sc1', itemId, shelfId, lotId, 45, 'Hao hụt', [
+        'https://res.cloudinary.com/demo/image/upload/x.jpg',
+      ]);
+
+      expect(model.findOneAndUpdate).toHaveBeenCalledWith(
+        expect.anything(),
+        {
+          $set: {
+            'items.$.actualQty': 45,
+            'items.$.reason': 'Hao hụt',
+            'items.$.images': [
+              'https://res.cloudinary.com/demo/image/upload/x.jpg',
+            ],
+          },
+        },
+        { new: true },
+      );
     });
 
     it('cùng itemId nhưng khác shelfId (1 SKU nằm nhiều kệ) — chỉ update đúng dòng theo shelfId', async () => {
@@ -200,6 +242,7 @@ describe('StockCountRepository', () => {
         lotId,
         45,
         'Hao hụt',
+        [],
       );
 
       expect(model.findOneAndUpdate).toHaveBeenCalledWith(
@@ -211,6 +254,7 @@ describe('StockCountRepository', () => {
           $set: {
             'items.$.actualQty': 45,
             'items.$.reason': 'Hao hụt',
+            'items.$.images': [],
           },
         },
         { new: true },
@@ -237,6 +281,7 @@ describe('StockCountRepository', () => {
         lotId,
         45,
         null,
+        [],
       );
       expect(result).toBeNull();
     });

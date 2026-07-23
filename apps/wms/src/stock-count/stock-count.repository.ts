@@ -95,6 +95,7 @@ export class StockCountRepository {
     lotId: Types.ObjectId | null,
     actualQty: number,
     reason: string | null,
+    images: string[],
   ): Promise<StockCountDocument | null> {
     return this.model
       .findOneAndUpdate(
@@ -106,6 +107,7 @@ export class StockCountRepository {
           $set: {
             'items.$.actualQty': actualQty,
             'items.$.reason': reason,
+            'items.$.images': images,
           },
         },
         { new: true },

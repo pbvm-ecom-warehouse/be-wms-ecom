@@ -34,6 +34,24 @@ const makeStockQueue = () => ({ add: jest.fn() });
 
 const makeStockService = () => ({ checkAndEmitStockLow: jest.fn() });
 
+const makeCloudinaryService = () => ({
+  uploadImage: jest.fn().mockResolvedValue({
+    url: 'https://res.cloudinary.com/demo/image/upload/wms/stock-count/x.jpg',
+    publicId: 'wms/stock-count/x',
+  }),
+});
+
+function fakeImageFile(
+  overrides: Partial<{ mimetype: string; size: number; buffer: Buffer }> = {},
+) {
+  return {
+    mimetype: 'image/png',
+    size: 1024,
+    buffer: Buffer.from('fake-image'),
+    ...overrides,
+  };
+}
+
 describe('StockCountService', () => {
   let svc: StockCountService;
   let repo: ReturnType<typeof makeRepo>;
@@ -42,6 +60,7 @@ describe('StockCountService', () => {
   let txHelper: ReturnType<typeof makeTxHelper>;
   let stockQueue: ReturnType<typeof makeStockQueue>;
   let stockService: ReturnType<typeof makeStockService>;
+  let cloudinary: ReturnType<typeof makeCloudinaryService>;
 
   const actorId = new Types.ObjectId().toString();
   const warehouseId = new Types.ObjectId();
@@ -56,6 +75,7 @@ describe('StockCountService', () => {
     txHelper = makeTxHelper();
     stockQueue = makeStockQueue();
     stockService = makeStockService();
+    cloudinary = makeCloudinaryService();
     svc = new StockCountService(
       repo as never,
       stockRepo as never,
@@ -63,6 +83,7 @@ describe('StockCountService', () => {
       warehouseRepo as never,
       txHelper as never,
       stockQueue as never,
+      cloudinary as never,
     );
   });
 
@@ -249,8 +270,105 @@ describe('StockCountService', () => {
         null,
         45,
         'Hao hụt',
+        [],
       );
       expect(repo.markCompletedIfAllCounted).toHaveBeenCalledWith('sc1');
+    });
+
+    it('không có imageFiles → images rỗng, không gọi CloudinaryService', async () => {
+      repo.findById.mockResolvedValue({
+        _id: 'sc1',
+        status: StockCountStatus.DRAFT,
+        items: [{ itemId, sku: 'SKU-1', shelfId, lotId: null, systemQty: 50 }],
+      });
+      repo.countItem.mockResolvedValue({ _id: 'sc1' });
+
+      await svc.countItem(
+        'sc1',
+        itemId.toString(),
+        { shelfId: shelfId.toString(), actualQty: 45, reason: 'Hao hụt' },
+        actorId,
+      );
+
+      expect(cloudinary.uploadImage).not.toHaveBeenCalled();
+      expect(repo.countItem).toHaveBeenCalledWith(
+        'sc1',
+        itemId,
+        shelfId,
+        null,
+        45,
+        'Hao hụt',
+        [],
+      );
+    });
+
+    it('có ảnh minh chứng lệch tồn → upload Cloudinary vào wms/stock-count, lưu URL', async () => {
+      repo.findById.mockResolvedValue({
+        _id: 'sc1',
+        status: StockCountStatus.DRAFT,
+        items: [{ itemId, sku: 'SKU-1', shelfId, lotId: null, systemQty: 50 }],
+      });
+      repo.countItem.mockResolvedValue({ _id: 'sc1' });
+
+      await svc.countItem(
+        'sc1',
+        itemId.toString(),
+        { shelfId: shelfId.toString(), actualQty: 45, reason: 'Hao hụt' },
+        actorId,
+        [fakeImageFile()],
+      );
+
+      expect(cloudinary.uploadImage).toHaveBeenCalledWith(
+        expect.any(Buffer),
+        'wms/stock-count',
+      );
+      expect(repo.countItem).toHaveBeenCalledWith(
+        'sc1',
+        itemId,
+        shelfId,
+        null,
+        45,
+        'Hao hụt',
+        ['https://res.cloudinary.com/demo/image/upload/wms/stock-count/x.jpg'],
+      );
+    });
+
+    it('ảnh minh chứng sai mimetype → throw VALIDATION_FAILED, không gọi countItem', async () => {
+      repo.findById.mockResolvedValue({
+        _id: 'sc1',
+        status: StockCountStatus.DRAFT,
+        items: [{ itemId, sku: 'SKU-1', shelfId, lotId: null, systemQty: 50 }],
+      });
+
+      await expect(
+        svc.countItem(
+          'sc1',
+          itemId.toString(),
+          { shelfId: shelfId.toString(), actualQty: 45 },
+          actorId,
+          [fakeImageFile({ mimetype: 'application/pdf' })],
+        ),
+      ).rejects.toThrow();
+      expect(repo.countItem).not.toHaveBeenCalled();
+    });
+
+    it('ảnh minh chứng vượt quá 5MB → throw VALIDATION_FAILED, không gọi countItem', async () => {
+      repo.findById.mockResolvedValue({
+        _id: 'sc1',
+        status: StockCountStatus.DRAFT,
+        items: [{ itemId, sku: 'SKU-1', shelfId, lotId: null, systemQty: 50 }],
+      });
+
+      await expect(
+        svc.countItem(
+          'sc1',
+          itemId.toString(),
+          { shelfId: shelfId.toString(), actualQty: 45 },
+          actorId,
+          [fakeImageFile({ size: 6 * 1024 * 1024 })],
+        ),
+      ).rejects.toThrow();
+      expect(repo.countItem).not.toHaveBeenCalled();
     });
 
     it('phiếu đã APPROVED → throw, không gọi countItem', async () => {
@@ -312,6 +430,7 @@ describe('StockCountService', () => {
         null,
         48,
         'Hao hụt',
+        [],
       );
       expect(repo.markCompletedIfAllCounted).toHaveBeenCalledWith('sc1');
     });

@@ -54,4 +54,19 @@ describe('StockCountSchema', () => {
   it('export StockCount class dùng được với SchemaFactory (smoke test)', () => {
     expect(StockCount).toBeDefined();
   });
+
+  it('StockCountItem có field images (default [])', () => {
+    const itemPaths = (
+      StockCountSchema.path('items') as unknown as {
+        schema: { paths: Record<string, { defaultValue: unknown }> };
+      }
+    ).schema.paths;
+    const imagesPath = itemPaths['images'];
+    expect(imagesPath).toBeDefined();
+    const defaultValue =
+      typeof imagesPath.defaultValue === 'function'
+        ? (imagesPath.defaultValue as () => unknown)()
+        : imagesPath.defaultValue;
+    expect(defaultValue).toEqual([]);
+  });
 });

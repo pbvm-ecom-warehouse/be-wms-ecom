@@ -56,6 +56,37 @@ export class CountStockCountItemDto {
   reason?: string;
 }
 
+/**
+ * Request DTO cho POST :id/items/:itemId/count dạng multipart/form-data — cần
+ * multipart vì dòng lệch tồn (delta !== 0) có thể kèm ảnh minh chứng (field
+ * `images`, xem controller). Multipart form field luôn là string nên
+ * `actualQty` cần @Type(() => Number) để coerce trước khi validate.
+ */
+export class CountStockCountItemFormDto {
+  @ApiProperty({ example: '665f1a2b3c4d5e6f7a8b9c1a' })
+  @IsMongoId()
+  shelfId!: string;
+
+  @ApiPropertyOptional({ example: '665f1a2b3c4d5e6f7a8b9c1b' })
+  @IsOptional()
+  @IsMongoId()
+  lotId?: string;
+
+  @ApiProperty({ example: 45, description: 'Số lượng đếm được thực tế' })
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  actualQty!: number;
+
+  @ApiPropertyOptional({
+    example: 'Hao hụt do rơi vỡ',
+    description: 'Lý do lệch — hư hỏng/mất mát/nhập nhầm...',
+  })
+  @IsOptional()
+  @IsString()
+  reason?: string;
+}
+
 export class ApproveStockCountDto {
   @ApiPropertyOptional({ example: 'Duyệt điều chỉnh theo kiểm kê quý 3' })
   @IsOptional()
@@ -131,6 +162,10 @@ export class StockCountItemResponseDto {
   @Expose()
   @ApiPropertyOptional()
   reason!: string | null;
+
+  @Expose()
+  @ApiProperty({ type: [String] })
+  images!: string[];
 }
 
 export class StockCountResponseDto {

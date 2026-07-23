@@ -43,6 +43,10 @@ export class StockCountItem {
   /** Lý do lệch (hư hỏng/mất mát/nhập nhầm...) — COUNTER ghi khi nhập, tuỳ chọn */
   @Prop({ type: String, default: null })
   reason!: string | null;
+
+  /** Ảnh minh chứng lệch tồn — đính cùng lúc nhập actualQty/reason, optional. */
+  @Prop({ type: [String], default: [] })
+  images!: string[];
 }
 const StockCountItemSchema = SchemaFactory.createForClass(StockCountItem);
 

@@ -5,10 +5,15 @@ import {
   Param,
   Post,
   Query,
+  UploadedFiles,
   UseGuards,
+  UseInterceptors,
 } from '@nestjs/common';
+import { FilesInterceptor } from '@nestjs/platform-express';
 import {
   ApiBearerAuth,
+  ApiBody,
+  ApiConsumes,
   ApiOkResponse,
   ApiOperation,
   ApiTags,
@@ -22,10 +27,13 @@ import {
 } from '@app/auth';
 import { plainToInstance } from 'class-transformer';
 import { Types } from 'mongoose';
-import { StockCountService } from './stock-count.service';
+import {
+  StockCountService,
+  type UploadedImageFile,
+} from './stock-count.service';
 import {
   ApproveStockCountDto,
-  CountStockCountItemDto,
+  CountStockCountItemFormDto,
   CreateStockCountDto,
   QueryStockCountDto,
   StockCountResponseDto,
@@ -100,17 +108,43 @@ export class StockCountController {
 
   @Post(':id/items/:itemId/count')
   @Roles(WmsRole.COUNTER, WmsRole.ADMIN)
+  @UseInterceptors(FilesInterceptor('images'))
   @ApiOperation({
     summary: 'Nhập số đếm thực cho 1 dòng — [COUNTER, ADMIN]',
+  })
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    description:
+      'Ảnh minh chứng lệch tồn (optional, khuyến khích khi delta !== 0): ' +
+      'field `images`, có thể nhiều file.',
+    schema: {
+      type: 'object',
+      properties: {
+        shelfId: { type: 'string' },
+        lotId: { type: 'string' },
+        actualQty: { type: 'number' },
+        reason: { type: 'string' },
+        images: {
+          type: 'array',
+          items: { type: 'string', format: 'binary' },
+        },
+      },
+    },
   })
   @ApiOkResponse({ type: StockCountResponseDto })
   async countItem(
     @Param('id') id: string,
     @Param('itemId') itemId: string,
-    @Body() dto: CountStockCountItemDto,
+    @Body() dto: CountStockCountItemFormDto,
     @CurrentUser('sub') actorId: string,
+    @UploadedFiles() files?: Express.Multer.File[],
   ): Promise<StockCountResponseDto> {
-    const doc = await this.svc.countItem(id, itemId, dto, actorId);
+    const imageFiles: UploadedImageFile[] = (files ?? []).map((file) => ({
+      buffer: file.buffer,
+      mimetype: file.mimetype,
+      size: file.size,
+    }));
+    const doc = await this.svc.countItem(id, itemId, dto, actorId, imageFiles);
     return plainToInstance(StockCountResponseDto, doc.toObject(), TO_OPTS);
   }
 

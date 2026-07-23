@@ -1,6 +1,6 @@
 import { InjectQueue } from '@nestjs/bullmq';
 import { Injectable, Logger } from '@nestjs/common';
-import { AppException } from '@app/common';
+import { AppException, CloudinaryService } from '@app/common';
 import { EVENTS, QUEUES, type StockChangedPayload } from '@app/events';
 import { Queue } from 'bullmq';
 import { Types } from 'mongoose';
@@ -23,6 +23,16 @@ import { WarehouseRepository } from '../warehouse/warehouse.repository';
 import { StockTransactionHelper } from '../stock/helpers/with-stock-transaction.helper';
 import { MovementType } from '../stock/schemas/stock-movement.schema';
 
+// Giới hạn upload ảnh minh chứng lệch tồn — theo đúng ràng buộc thiết kế IMG-01/IMG-07.
+const ALLOWED_IMAGE_MIMETYPES = ['image/jpeg', 'image/png', 'image/webp'];
+const MAX_IMAGE_SIZE_BYTES = 5 * 1024 * 1024;
+
+export interface UploadedImageFile {
+  buffer: Buffer;
+  mimetype: string;
+  size: number;
+}
+
 @Injectable()
 export class StockCountService {
   private readonly logger = new Logger(StockCountService.name);
@@ -34,6 +44,7 @@ export class StockCountService {
     private readonly warehouseRepo: WarehouseRepository,
     private readonly stockTransactionHelper: StockTransactionHelper,
     @InjectQueue(QUEUES.STOCK) private readonly stockQueue: Queue,
+    private readonly cloudinary: CloudinaryService,
   ) {}
 
   /**
@@ -127,12 +138,17 @@ export class StockCountService {
    * COUNTER nhập số đếm thực cho 1 dòng (item+shelf+lot). Không đổi tồn thật
    * ngay — chỉ ghi nhận actualQty/delta trên chính StockCount, chờ MANAGER
    * approve mới áp dụng ADJUST.
+   *
+   * `images` optional — ảnh minh chứng lệch tồn (khuyến khích khi delta !== 0
+   * nhưng không bắt buộc ở tầng validate, xem AC IMG-07). Validate + upload
+   * Cloudinary (folder wms/stock-count) ngay tại đây trước khi ghi.
    */
   async countItem(
     id: string,
     itemId: string,
     dto: CountStockCountItemDto,
     actorId: string,
+    imageFiles?: UploadedImageFile[],
   ): Promise<StockCountDocument> {
     const stockCount = await this.repo.findById(id);
     if (!stockCount) throw new AppException('STOCK_COUNT_NOT_FOUND');
@@ -156,6 +172,16 @@ export class StockCountService {
       await this.repo.setCountedByIfDraft(id, new Types.ObjectId(actorId));
     }
 
+    const images: string[] = [];
+    for (const file of imageFiles ?? []) {
+      this.validateImageFile(file);
+      const { url } = await this.cloudinary.uploadImage(
+        file.buffer,
+        'wms/stock-count',
+      );
+      images.push(url);
+    }
+
     await this.repo.countItem(
       id,
       itemObjId,
@@ -163,12 +189,25 @@ export class StockCountService {
       lotObjId,
       dto.actualQty,
       dto.reason ?? null,
+      images,
     );
     await this.repo.markCompletedIfAllCounted(id);
 
     const updated = await this.repo.findById(id);
     if (!updated) throw new AppException('STOCK_COUNT_NOT_FOUND');
     return updated;
+  }
+
+  private validateImageFile(file: UploadedImageFile): void {
+    if (!ALLOWED_IMAGE_MIMETYPES.includes(file.mimetype)) {
+      throw new AppException(
+        'VALIDATION_FAILED',
+        'Chỉ nhận file ảnh (jpeg/png/webp)',
+      );
+    }
+    if (file.size > MAX_IMAGE_SIZE_BYTES) {
+      throw new AppException('VALIDATION_FAILED', 'File ảnh tối đa 5MB');
+    }
   }
 
   /**
