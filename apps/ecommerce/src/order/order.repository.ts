@@ -39,12 +39,10 @@ export class OrderRepository {
     };
     if (filter?.orderStatus) query.orderStatus = filter.orderStatus;
     if (filter?.paymentStatus) query.paymentStatus = filter.paymentStatus;
-    if (filter?.fulfillmentStatus) query.fulfillmentStatus = filter.fulfillmentStatus;
+    if (filter?.fulfillmentStatus)
+      query.fulfillmentStatus = filter.fulfillmentStatus;
 
-    return this.orderModel
-      .find(query)
-      .sort({ createdAt: -1 })
-      .lean();
+    return this.orderModel.find(query).sort({ createdAt: -1 }).lean();
   }
 
   /** Cập nhật bất kỳ trục trạng thái nào — state machine guard nằm ở Service */
@@ -85,7 +83,8 @@ export class OrderRepository {
     const query: Record<string, any> = {};
     if (filter?.orderStatus) query.orderStatus = filter.orderStatus;
     if (filter?.paymentStatus) query.paymentStatus = filter.paymentStatus;
-    if (filter?.fulfillmentStatus) query.fulfillmentStatus = filter.fulfillmentStatus;
+    if (filter?.fulfillmentStatus)
+      query.fulfillmentStatus = filter.fulfillmentStatus;
 
     return this.orderModel.find(query).sort({ createdAt: -1 }).lean();
   }

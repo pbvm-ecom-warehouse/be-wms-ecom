@@ -3,19 +3,28 @@ import { IsOptional, IsString } from 'class-validator';
 import { Expose, Type } from 'class-transformer';
 
 export class RevenueTimelineQueryDto {
-  @ApiPropertyOptional({ example: '2026-07-01', description: 'Ngày bắt đầu (YYYY-MM-DD)' })
+  @ApiPropertyOptional({
+    example: '2026-07-01',
+    description: 'Ngày bắt đầu (YYYY-MM-DD)',
+  })
   @IsOptional()
   @IsString()
   fromDate?: string;
 
-  @ApiPropertyOptional({ example: '2026-07-31', description: 'Ngày kết thúc (YYYY-MM-DD)' })
+  @ApiPropertyOptional({
+    example: '2026-07-31',
+    description: 'Ngày kết thúc (YYYY-MM-DD)',
+  })
   @IsOptional()
   @IsString()
   toDate?: string;
 }
 
 export class TopSellingQueryDto {
-  @ApiPropertyOptional({ example: 10, description: 'Số lượng sản phẩm lấy (mặc định 10)' })
+  @ApiPropertyOptional({
+    example: 10,
+    description: 'Số lượng sản phẩm lấy (mặc định 10)',
+  })
   @IsOptional()
   @Type(() => Number)
   limit?: number;
@@ -33,7 +42,10 @@ export class StatusBreakdownDto {
 
 export class OverviewAnalyticsResponseDto {
   @Expose()
-  @ApiProperty({ example: 154800000, description: 'Tổng doanh thu tích lũy từ đơn PAID (VNĐ)' })
+  @ApiProperty({
+    example: 154800000,
+    description: 'Tổng doanh thu tích lũy từ đơn PAID (VNĐ)',
+  })
   totalRevenue!: number;
 
   @Expose()
@@ -53,21 +65,33 @@ export class OverviewAnalyticsResponseDto {
   totalVariants!: number;
 
   @Expose()
-  @ApiProperty({ example: 3, description: 'Số lượng biến thể hết hàng (availableQty <= 0)' })
+  @ApiProperty({
+    example: 3,
+    description: 'Số lượng biến thể hết hàng (availableQty <= 0)',
+  })
   outOfStockVariants!: number;
 
   @Expose()
-  @ApiProperty({ type: [StatusBreakdownDto], description: 'Phân tích đơn hàng theo orderStatus' })
+  @ApiProperty({
+    type: [StatusBreakdownDto],
+    description: 'Phân tích đơn hàng theo orderStatus',
+  })
   @Type(() => StatusBreakdownDto)
   ordersByOrderStatus!: StatusBreakdownDto[];
 
   @Expose()
-  @ApiProperty({ type: [StatusBreakdownDto], description: 'Phân tích đơn hàng theo paymentStatus' })
+  @ApiProperty({
+    type: [StatusBreakdownDto],
+    description: 'Phân tích đơn hàng theo paymentStatus',
+  })
   @Type(() => StatusBreakdownDto)
   ordersByPaymentStatus!: StatusBreakdownDto[];
 
   @Expose()
-  @ApiProperty({ type: [StatusBreakdownDto], description: 'Phân tích đơn hàng theo fulfillmentStatus' })
+  @ApiProperty({
+    type: [StatusBreakdownDto],
+    description: 'Phân tích đơn hàng theo fulfillmentStatus',
+  })
   @Type(() => StatusBreakdownDto)
   ordersByFulfillmentStatus!: StatusBreakdownDto[];
 }
@@ -100,6 +124,9 @@ export class DailyRevenueItemResponseDto {
   revenue!: number;
 
   @Expose()
-  @ApiProperty({ example: 8, description: 'Số lượng đơn hàng thanh toán trong ngày' })
+  @ApiProperty({
+    example: 8,
+    description: 'Số lượng đơn hàng thanh toán trong ngày',
+  })
   orderCount!: number;
 }

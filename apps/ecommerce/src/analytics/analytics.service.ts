@@ -31,7 +31,10 @@ export class AnalyticsService {
         { $group: { _id: null, total: { $sum: '$total' } } },
       ]),
       this.orderModel.countDocuments(),
-      this.userModel.countDocuments({ status: UserStatus.ACTIVE, type: 'customer' }),
+      this.userModel.countDocuments({
+        status: UserStatus.ACTIVE,
+        type: 'customer',
+      }),
       this.productModel.countDocuments({ isActive: true }),
       this.variantModel.countDocuments({ isActive: true }),
       this.variantModel.countDocuments({

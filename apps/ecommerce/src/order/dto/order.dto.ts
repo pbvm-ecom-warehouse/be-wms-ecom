@@ -163,7 +163,8 @@ export class SuccessResponseDto {
 export class OrderFilterQueryDto {
   @ApiPropertyOptional({
     enum: OrderStatus,
-    description: 'Lọc theo trạng thái đơn hàng (PLACED, CONFIRMED, CANCELLED, CLOSED)',
+    description:
+      'Lọc theo trạng thái đơn hàng (PLACED, CONFIRMED, CANCELLED, CLOSED)',
   })
   @IsOptional()
   @IsEnum(OrderStatus)
@@ -171,7 +172,8 @@ export class OrderFilterQueryDto {
 
   @ApiPropertyOptional({
     enum: PaymentStatus,
-    description: 'Lọc theo trạng thái thanh toán (UNPAID, PAID, REFUND_PENDING, REFUNDED)',
+    description:
+      'Lọc theo trạng thái thanh toán (UNPAID, PAID, REFUND_PENDING, REFUNDED)',
   })
   @IsOptional()
   @IsEnum(PaymentStatus)
@@ -179,10 +181,10 @@ export class OrderFilterQueryDto {
 
   @ApiPropertyOptional({
     enum: FulfillmentStatus,
-    description: 'Lọc theo trạng thái vận chuyển/sản xuất (NONE, AWAITING_PRINT, READY_TO_PICK, ISSUED, SHIPPED, DELIVERED, RETURNED)',
+    description:
+      'Lọc theo trạng thái vận chuyển/sản xuất (NONE, AWAITING_PRINT, READY_TO_PICK, ISSUED, SHIPPED, DELIVERED, RETURNED)',
   })
   @IsOptional()
   @IsEnum(FulfillmentStatus)
   fulfillmentStatus?: FulfillmentStatus;
 }
-

@@ -2,9 +2,7 @@ import { Processor, WorkerHost } from '@nestjs/bullmq';
 import { Logger } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
-import {
-  UserFcmToken,
-} from '../../ecommerce/src/auth/schemas/user-fcm-token.schema';
+import { UserFcmToken } from '../../ecommerce/src/auth/schemas/user-fcm-token.schema';
 import { ConfigService } from '@nestjs/config';
 import {
   EVENTS,
@@ -200,7 +198,9 @@ export class NotificationConsumer extends WorkerHost {
         .lean();
       const tokenList = tokens.map((t) => t.fcmToken);
       if (tokenList.length === 0) {
-        this.logger.log(`Không tìm thấy FCM Token nào cho customer ${customerId}`);
+        this.logger.log(
+          `Không tìm thấy FCM Token nào cho customer ${customerId}`,
+        );
         return;
       }
 

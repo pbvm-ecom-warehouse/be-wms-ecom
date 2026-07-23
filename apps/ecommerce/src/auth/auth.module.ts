@@ -18,7 +18,10 @@ import {
 } from './schemas/user-refresh-token.schema';
 
 import { UserFcmTokenRepository } from './repositories/user-fcm-token.repository';
-import { UserFcmToken, UserFcmTokenSchema } from './schemas/user-fcm-token.schema';
+import {
+  UserFcmToken,
+  UserFcmTokenSchema,
+} from './schemas/user-fcm-token.schema';
 
 /**
  * Module auth Ecommerce. Đăng ký queue NOTIFICATION để phát event
