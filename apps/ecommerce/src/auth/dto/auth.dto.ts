@@ -292,6 +292,10 @@ export class UserResponseDto {
   type!: string;
 
   @Expose()
+  @ApiPropertyOptional()
+  avatarUrl?: string;
+
+  @Expose()
   @Type(() => AddressResponseDto)
   @ApiProperty({ type: [AddressResponseDto] })
   addresses!: AddressResponseDto[];

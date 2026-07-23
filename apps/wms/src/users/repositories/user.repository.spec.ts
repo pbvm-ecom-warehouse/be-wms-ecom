@@ -103,6 +103,21 @@ describe('UserRepository', () => {
     });
   });
 
+  describe('updateAvatar', () => {
+    it('set avatarUrl, bỏ qua user đã soft-delete', async () => {
+      const model = makeModel();
+      const repo = new UserRepository(model as never);
+
+      await repo.updateAvatar('u1', 'https://res.cloudinary.com/demo/x.jpg');
+
+      expect(model.findOneAndUpdate).toHaveBeenCalledWith(
+        { _id: 'u1', deletedAt: null },
+        { $set: { avatarUrl: 'https://res.cloudinary.com/demo/x.jpg' } },
+        { new: true },
+      );
+    });
+  });
+
   describe('softDelete', () => {
     it('trả true khi modifiedCount > 0', async () => {
       const model = makeModel();

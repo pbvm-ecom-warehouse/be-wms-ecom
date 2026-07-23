@@ -68,6 +68,7 @@ describe('Ecommerce auth single role', () => {
         {} as any,
         jwt as any,
         {} as any,
+        {} as any,
         {
           jwtSecret: 'ecom-secret',
           jwtExpiresIn: '30d',

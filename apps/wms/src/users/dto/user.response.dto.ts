@@ -49,6 +49,10 @@ export class UserResponseDto {
   warehouseId?: string;
 
   @Expose()
+  @ApiPropertyOptional()
+  avatarUrl?: string;
+
+  @Expose()
   @ApiProperty()
   createdAt!: Date;
 

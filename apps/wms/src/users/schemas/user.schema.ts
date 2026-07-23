@@ -46,6 +46,10 @@ export class User {
   @Prop({ default: false })
   mustChangePassword: boolean;
 
+  /** Ảnh đại diện — user tự upload qua POST auth/me/avatar, optional. */
+  @Prop()
+  avatarUrl?: string;
+
   // ---- audit (master) ----
   @Prop({ type: SchemaTypes.ObjectId })
   createdBy?: Types.ObjectId;

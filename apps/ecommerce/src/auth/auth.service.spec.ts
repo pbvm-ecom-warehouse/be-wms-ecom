@@ -18,6 +18,7 @@ jest.mock('@app/common', () => ({
 }));
 
 import { AppException } from '@app/common';
+import { Types } from 'mongoose';
 import { AuthService } from './auth.service';
 
 function makeService(overrides: Partial<Record<string, any>> = {}) {
@@ -26,6 +27,7 @@ function makeService(overrides: Partial<Record<string, any>> = {}) {
     findActiveByEmail: jest.fn().mockResolvedValue(user),
     markEmailVerified: jest.fn().mockResolvedValue(user),
     updatePassword: jest.fn().mockResolvedValue(user),
+    updateAvatar: jest.fn().mockResolvedValue(user),
     ...overrides.userRepo,
   };
   const refreshRepo = {
@@ -38,6 +40,13 @@ function makeService(overrides: Partial<Record<string, any>> = {}) {
   };
   const fcmTokenRepo = {};
   const notifyQueue = { add: jest.fn().mockResolvedValue(undefined) };
+  const cloudinary = {
+    uploadImage: jest.fn().mockResolvedValue({
+      url: 'https://res.cloudinary.com/demo/image/upload/ecom/avatars/x.jpg',
+      publicId: 'ecom/avatars/x',
+    }),
+    ...overrides.cloudinary,
+  };
   const svc = new AuthService(
     userRepo,
     refreshRepo as any,
@@ -45,10 +54,22 @@ function makeService(overrides: Partial<Record<string, any>> = {}) {
     notifyQueue as any,
     {} as any, // jwt
     {} as any, // firebaseAdmin
+    cloudinary,
     { jwtSecret: 's', jwtExpiresIn: '30d', refreshExpiresIn: '60d' },
     otpStore,
   );
-  return { svc, userRepo, refreshRepo, otpStore };
+  return { svc, userRepo, refreshRepo, otpStore, cloudinary };
+}
+
+function fakeImageFile(
+  overrides: Partial<{ mimetype: string; size: number; buffer: Buffer }> = {},
+) {
+  return {
+    mimetype: 'image/png',
+    size: 1024,
+    buffer: Buffer.from('fake-image'),
+    ...overrides,
+  };
 }
 
 describe('AuthService OTP', () => {
@@ -87,6 +108,54 @@ describe('AuthService OTP', () => {
     });
     await expect(
       svc.resetPassword('x@y.com', '123456', 'NewP@ssw0rd123!'),
+    ).rejects.toBeInstanceOf(AppException);
+  });
+});
+
+describe('AuthService uploadAvatar', () => {
+  const customerId = new Types.ObjectId().toString();
+
+  it('upload thành công → Cloudinary folder ecom/avatars, lưu avatarUrl', async () => {
+    const { svc, userRepo, cloudinary } = makeService();
+
+    const result = await svc.uploadAvatar(customerId, fakeImageFile());
+
+    expect(cloudinary.uploadImage).toHaveBeenCalledWith(
+      expect.any(Buffer),
+      'ecom/avatars',
+    );
+    expect(userRepo.updateAvatar).toHaveBeenCalledWith(
+      expect.anything(),
+      'https://res.cloudinary.com/demo/image/upload/ecom/avatars/x.jpg',
+    );
+    expect(result).toBeDefined();
+  });
+
+  it('sai mimetype → throw VALIDATION_FAILED, không gọi Cloudinary', async () => {
+    const { svc, cloudinary } = makeService();
+
+    await expect(
+      svc.uploadAvatar('c1', fakeImageFile({ mimetype: 'application/pdf' })),
+    ).rejects.toBeInstanceOf(AppException);
+    expect(cloudinary.uploadImage).not.toHaveBeenCalled();
+  });
+
+  it('vượt quá 5MB → throw VALIDATION_FAILED, không gọi Cloudinary', async () => {
+    const { svc, cloudinary } = makeService();
+
+    await expect(
+      svc.uploadAvatar('c1', fakeImageFile({ size: 6 * 1024 * 1024 })),
+    ).rejects.toBeInstanceOf(AppException);
+    expect(cloudinary.uploadImage).not.toHaveBeenCalled();
+  });
+
+  it('user không tồn tại (updateAvatar trả null) → throw UNAUTHENTICATED', async () => {
+    const { svc } = makeService({
+      userRepo: { updateAvatar: jest.fn().mockResolvedValue(null) },
+    });
+
+    await expect(
+      svc.uploadAvatar(customerId, fakeImageFile()),
     ).rejects.toBeInstanceOf(AppException);
   });
 });

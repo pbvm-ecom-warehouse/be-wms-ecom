@@ -66,6 +66,10 @@ export class User {
   @Prop({ type: String, enum: ['customer', 'admin'], default: 'customer' })
   type: 'customer' | 'admin';
 
+  /** Ảnh đại diện — khách tự upload qua POST auth/me/avatar, optional. */
+  @Prop()
+  avatarUrl?: string;
+
   @Prop({ type: Date, default: null })
   deletedAt?: Date | null;
 }

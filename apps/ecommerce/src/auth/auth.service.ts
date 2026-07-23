@@ -11,6 +11,7 @@ import {
   generateOpaqueToken,
   hashToken,
   FirebaseAdminService,
+  CloudinaryService,
 } from '@app/common';
 import { EVENTS, QUEUES, type CustomerEmailActionPayload } from '@app/events';
 import * as bcrypt from 'bcryptjs';
@@ -38,6 +39,16 @@ const INVALID_BCRYPT_HASH = '$2a$12$invalidinvalidinvalidinvalidin';
 const NEUTRAL_RESET_MESSAGE =
   'Neu email ton tai, chung toi da gui huong dan dat lai mat khau';
 
+// Giới hạn upload avatar — theo đúng ràng buộc thiết kế IMG-01/IMG-08.
+const ALLOWED_IMAGE_MIMETYPES = ['image/jpeg', 'image/png', 'image/webp'];
+const MAX_IMAGE_SIZE_BYTES = 5 * 1024 * 1024;
+
+export interface UploadedImageFile {
+  buffer: Buffer;
+  mimetype: string;
+  size: number;
+}
+
 @Injectable()
 export class AuthService {
   constructor(
@@ -47,6 +58,7 @@ export class AuthService {
     @InjectQueue(QUEUES.NOTIFICATION) private readonly notifyQueue: Queue,
     private readonly jwt: JwtService,
     private readonly firebaseAdmin: FirebaseAdminService,
+    private readonly cloudinary: CloudinaryService,
     @Inject(authConfig.KEY)
     private readonly auth: ConfigType<typeof authConfig>,
     private readonly otpStore: OtpStore,
@@ -233,6 +245,34 @@ export class AuthService {
 
   async me(customerId: string) {
     const user = await this.userRepo.findActiveById(customerId);
+    if (!user) throw new AppException('UNAUTHENTICATED');
+    return user;
+  }
+
+  /**
+   * Khách hàng tự upload avatar cho chính mình — theo JWT hiện có, không cần
+   * role đặc biệt. Validate + upload Cloudinary (folder ecom/avatars) rồi lưu
+   * URL vào chính User document.
+   */
+  async uploadAvatar(customerId: string, file: UploadedImageFile) {
+    if (!ALLOWED_IMAGE_MIMETYPES.includes(file.mimetype)) {
+      throw new AppException(
+        'VALIDATION_FAILED',
+        'Chỉ nhận file ảnh (jpeg/png/webp)',
+      );
+    }
+    if (file.size > MAX_IMAGE_SIZE_BYTES) {
+      throw new AppException('VALIDATION_FAILED', 'File ảnh tối đa 5MB');
+    }
+
+    const { url } = await this.cloudinary.uploadImage(
+      file.buffer,
+      'ecom/avatars',
+    );
+    const user = await this.userRepo.updateAvatar(
+      this.objectId(customerId),
+      url,
+    );
     if (!user) throw new AppException('UNAUTHENTICATED');
     return user;
   }

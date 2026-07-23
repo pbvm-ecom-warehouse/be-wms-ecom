@@ -188,6 +188,16 @@ export class UserRepository {
       .exec();
   }
 
+  updateAvatar(id: string | Types.ObjectId, avatarUrl: string) {
+    return this.model
+      .findOneAndUpdate(
+        { _id: id, ...SOFT_DELETE_FILTER },
+        { $set: { avatarUrl } },
+        { new: true },
+      )
+      .exec();
+  }
+
   async softDelete(
     id: string | Types.ObjectId,
     updatedBy: Types.ObjectId,

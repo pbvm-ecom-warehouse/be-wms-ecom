@@ -77,6 +77,16 @@ export class UserRepository {
       .exec();
   }
 
+  updateAvatar(id: string | Types.ObjectId, avatarUrl: string) {
+    return this.model
+      .findOneAndUpdate(
+        { _id: id, deletedAt: null, status: UserStatus.ACTIVE },
+        { $set: { avatarUrl } },
+        { new: true },
+      )
+      .exec();
+  }
+
   replaceAddresses(id: string | Types.ObjectId, addresses: UserAddress[]) {
     return this.model
       .findOneAndUpdate(

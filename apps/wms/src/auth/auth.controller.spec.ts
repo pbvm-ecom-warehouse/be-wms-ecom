@@ -12,6 +12,7 @@ const mockAuthService = {
   me: jest.fn(),
   bootstrapAdmin: jest.fn(),
   changePassword: jest.fn(),
+  uploadAvatar: jest.fn(),
 };
 
 const mockAppConfig = { env: 'development' };
@@ -174,6 +175,45 @@ describe('AuthController', () => {
         (result as unknown as Record<string, unknown>)['passwordHash'],
       ).toBeUndefined();
       expect(result.id).toBe('uid');
+    });
+  });
+
+  describe('uploadAvatar', () => {
+    const fakeFile = {
+      buffer: Buffer.from('fake-image'),
+      mimetype: 'image/png',
+      size: 1024,
+    } as Express.Multer.File;
+
+    it('trả UserResponseDto với avatarUrl mới', async () => {
+      mockAuthService.uploadAvatar.mockResolvedValue({
+        _id: { toString: () => 'uid' },
+        username: 'admin',
+        role: 'ADMIN',
+        status: 'ACTIVE',
+        mustChangePassword: false,
+        avatarUrl:
+          'https://res.cloudinary.com/demo/image/upload/wms/avatars/x.jpg',
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
+
+      const result = await controller.uploadAvatar('uid', fakeFile);
+
+      expect(mockAuthService.uploadAvatar).toHaveBeenCalledWith('uid', {
+        buffer: fakeFile.buffer,
+        mimetype: fakeFile.mimetype,
+        size: fakeFile.size,
+      });
+      expect(result).toBeInstanceOf(UserResponseDto);
+      expect(result.avatarUrl).toBe(
+        'https://res.cloudinary.com/demo/image/upload/wms/avatars/x.jpg',
+      );
+    });
+
+    it('không có file → throw, không gọi service', async () => {
+      await expect(controller.uploadAvatar('uid', undefined)).rejects.toThrow();
+      expect(mockAuthService.uploadAvatar).not.toHaveBeenCalled();
     });
   });
 });

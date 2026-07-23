@@ -10,13 +10,17 @@ import {
   Post,
   Req,
   Res,
+  UploadedFile,
   UseGuards,
+  UseInterceptors,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import {
   ApiBearerAuth,
   ApiBody,
   ApiParam,
   ApiConflictResponse,
+  ApiConsumes,
   ApiCreatedResponse,
   ApiOkResponse,
   ApiOperation,
@@ -251,6 +255,35 @@ export class AuthController {
   @ApiOkResponse({ type: UserResponseDto })
   async me(@CurrentUser('sub') userId: string) {
     const result = await this.auth.me(userId);
+    return plainToInstance(UserResponseDto, result, {
+      excludeExtraneousValues: true,
+    });
+  }
+
+  @Post('me/avatar')
+  @HttpCode(200)
+  @UseGuards(JwtAuthGuard)
+  @UseInterceptors(FileInterceptor('file'))
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Khach hang tu upload avatar cho chinh minh' })
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: { file: { type: 'string', format: 'binary' } },
+    },
+  })
+  @ApiOkResponse({ type: UserResponseDto })
+  async uploadAvatar(
+    @CurrentUser('sub') userId: string,
+    @UploadedFile() file?: Express.Multer.File,
+  ) {
+    if (!file) throw new AppException('VALIDATION_FAILED', 'Thiếu file ảnh');
+    const result = await this.auth.uploadAvatar(userId, {
+      buffer: file.buffer,
+      mimetype: file.mimetype,
+      size: file.size,
+    });
     return plainToInstance(UserResponseDto, result, {
       excludeExtraneousValues: true,
     });

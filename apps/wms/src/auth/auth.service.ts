@@ -9,6 +9,7 @@ import {
   generateOpaqueToken,
   hashToken,
   FirebaseAdminService,
+  CloudinaryService,
 } from '@app/common';
 import * as bcrypt from 'bcryptjs';
 import { Types } from 'mongoose';
@@ -25,6 +26,16 @@ type MsDuration = Exclude<JwtSignOptions['expiresIn'], number | undefined>;
 const BCRYPT_ROUNDS = 12;
 const INVALID_BCRYPT_HASH = '$2a$12$invalidinvalidinvalidinvalidin';
 
+// Giới hạn upload avatar — theo đúng ràng buộc thiết kế IMG-01/IMG-08.
+const ALLOWED_IMAGE_MIMETYPES = ['image/jpeg', 'image/png', 'image/webp'];
+const MAX_IMAGE_SIZE_BYTES = 5 * 1024 * 1024;
+
+export interface UploadedImageFile {
+  buffer: Buffer;
+  mimetype: string;
+  size: number;
+}
+
 @Injectable()
 export class AuthService {
   constructor(
@@ -33,6 +44,7 @@ export class AuthService {
     private readonly refreshRepo: UserRefreshTokenRepository,
     private readonly jwt: JwtService,
     private readonly firebaseAdmin: FirebaseAdminService,
+    private readonly cloudinary: CloudinaryService,
     @Inject(authConfig.KEY)
     private readonly auth: ConfigType<typeof authConfig>,
   ) {}
@@ -160,6 +172,31 @@ export class AuthService {
       { ...dto, role: WmsRole.ADMIN },
       { sub: '', role: WmsRole.ADMIN },
     );
+  }
+
+  /**
+   * Nhân viên tự upload avatar cho chính mình — theo JWT hiện có, không cần
+   * role đặc biệt. Validate + upload Cloudinary (folder wms/avatars) rồi lưu
+   * URL vào chính User document.
+   */
+  async uploadAvatar(userId: string, file: UploadedImageFile) {
+    if (!ALLOWED_IMAGE_MIMETYPES.includes(file.mimetype)) {
+      throw new AppException(
+        'VALIDATION_FAILED',
+        'Chỉ nhận file ảnh (jpeg/png/webp)',
+      );
+    }
+    if (file.size > MAX_IMAGE_SIZE_BYTES) {
+      throw new AppException('VALIDATION_FAILED', 'File ảnh tối đa 5MB');
+    }
+
+    const { url } = await this.cloudinary.uploadImage(
+      file.buffer,
+      'wms/avatars',
+    );
+    const user = await this.userRepo.updateAvatar(this.objectId(userId), url);
+    if (!user) throw new AppException('UNAUTHENTICATED');
+    return user;
   }
 
   async changePassword(userId: string, dto: ChangePasswordDto) {
