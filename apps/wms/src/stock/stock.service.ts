@@ -12,8 +12,18 @@ import { Types } from 'mongoose';
 import { StockRepository } from './stock.repository';
 import type { CreateWarehouseItemData } from './stock.repository';
 import type { WarehouseItemDocument } from './schemas/warehouse-item.schema';
+import { ItemType } from './schemas/warehouse-item.schema';
 import type { QueryWarehouseItemDto } from './dto/query-warehouse-item.dto';
-import type { UpdateWarehouseItemDto } from './dto/create-warehouse-item.dto';
+import type {
+  CreateWarehouseItemDto,
+  UpdateWarehouseItemDto,
+} from './dto/create-warehouse-item.dto';
+import { SkuTemplateService } from './sku/sku-template.service';
+import {
+  BarcodeService,
+  isMongoDuplicateKeyError,
+} from './barcode/barcode.service';
+import { StockTransactionHelper } from './helpers/with-stock-transaction.helper';
 
 /**
  * PRODUCER: khi `available` (= onHand - reserved - expired) của 1 SKU đổi
@@ -30,6 +40,9 @@ export class StockService {
     @InjectQueue(QUEUES.STOCK) private readonly stockQueue: Queue,
     @InjectQueue(QUEUES.NOTIFICATION)
     private readonly notificationQueue: Queue,
+    private readonly skuTemplateSvc: SkuTemplateService,
+    private readonly barcodeSvc: BarcodeService,
+    private readonly txHelper: StockTransactionHelper,
   ) {}
 
   /** Phát event báo Ecommerce cộng/trừ availableQty theo delta (đã gộp mọi kho).
@@ -102,16 +115,75 @@ export class StockService {
     );
   }
 
-  /** Tạo WarehouseItem mới. Chặn trùng sku kể cả với bản ghi đã soft-delete. */
+  /**
+   * Tạo WarehouseItem CUP_BLANK/MATERIAL/PACKAGING — sku/barcode/attributes
+   * hoàn toàn do BE tự resolve, KHÔNG tin bất kỳ giá trị nào từ client ngoài
+   * templateId + attributeOptionIds (issue #25). CUP_PRINTED bị chặn ở đây —
+   * chỉ tạo được qua PrintJobService.resolveOutputItem (đường nội bộ, xem
+   * print-job.service.ts, không đổi trong scope issue này).
+   *
+   * Create item + đặt barcode registry trong CÙNG 1 Mongo transaction — nếu
+   * 1 trong 2 fail thì rollback cả 2 (issue #25: "Create item + registry trong
+   * cùng Mongo transaction"). Lỗi 11000 trên unique index sku bị bắt và map
+   * sang STOCK_ITEM_SKU_CONFLICT (409) thay vì để lộ raw MongoServerError
+   * (checklist: "không trả 500 khi race").
+   */
   async createWarehouseItem(
-    data: CreateWarehouseItemData,
+    dto: CreateWarehouseItemDto,
     actorId: string,
   ): Promise<WarehouseItemDocument> {
-    const existing = await this.stockRepo.findItemBySku(data.sku);
-    if (existing) {
-      throw new AppException('STOCK_ITEM_SKU_CONFLICT');
+    // dto.type theo type CreateWarehouseItemDto không thể là CUP_PRINTED (đã
+    // giới hạn @IsIn ở DTO) — check runtime này là phòng hờ, vì class-validator
+    // chỉ chặn ở request thật qua ValidationPipe, không chặn khi service được
+    // gọi trực tiếp (vd unit test, code path khác trong tương lai).
+    if ((dto.type as ItemType) === ItemType.CUP_PRINTED) {
+      throw new AppException('STOCK_SKU_TEMPLATE_MISMATCH');
     }
-    return this.stockRepo.createItem(data, new Types.ObjectId(actorId));
+
+    const { sku, attributeSnapshot } =
+      await this.skuTemplateSvc.resolveAndBuildSku(
+        dto.templateId,
+        dto.type,
+        dto.attributeOptionIds,
+      );
+
+    try {
+      return await this.txHelper.withStockTransaction(async (session) => {
+        const itemId = new Types.ObjectId();
+        const barcode = await this.barcodeSvc.generateAndReservePrimaryBarcode(
+          itemId,
+          session,
+        );
+
+        const data: CreateWarehouseItemData = {
+          _id: itemId,
+          sku,
+          barcode,
+          name: dto.name,
+          type: dto.type,
+          unit: dto.unit,
+          altUnits: dto.altUnits,
+          attributes: attributeSnapshot,
+          isPerishable: dto.isPerishable,
+          nearExpiryDays: dto.nearExpiryDays,
+          minQuantity: dto.minQuantity,
+          depth: dto.depth,
+          width: dto.width,
+          height: dto.height,
+        };
+
+        return this.stockRepo.createItem(
+          data,
+          new Types.ObjectId(actorId),
+          session,
+        );
+      });
+    } catch (err) {
+      if (isMongoDuplicateKeyError(err)) {
+        throw new AppException('STOCK_ITEM_SKU_CONFLICT');
+      }
+      throw err;
+    }
   }
 
   async listWarehouseItems(

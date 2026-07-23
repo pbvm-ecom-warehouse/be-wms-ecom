@@ -6,10 +6,12 @@ import {
 } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import {
+  ArrayMinSize,
   IsArray,
   IsBoolean,
-  IsEnum,
+  IsIn,
   IsInt,
+  IsMongoId,
   IsNumber,
   IsOptional,
   IsString,
@@ -34,48 +36,37 @@ export class AltUnitDto {
   factor!: number;
 }
 
-export class ItemAttributeDto {
-  @ApiProperty({ example: 'Màu' })
-  @IsString()
-  @MinLength(1)
-  name!: string;
-
-  @ApiProperty({ example: 'Đỏ' })
-  @IsString()
-  @MinLength(1)
-  value!: string;
-
-  @ApiProperty({ example: 'COLOR' })
-  @IsString()
-  @MinLength(1)
-  code!: string;
-}
-
+/**
+ * SKU/barcode/attributes KHÔNG nhận từ client (issue #25) — BE tự resolve
+ * template + option rồi sinh. type chỉ nhận 3 giá trị public (CUP_PRINTED bị
+ * chặn ở service, không khai trong @IsIn để Swagger không gợi ý sai).
+ */
 export class CreateWarehouseItemDto {
-  @ApiProperty({ example: 'CUP-500ML-RED' })
+  @ApiProperty({
+    enum: [ItemType.CUP_BLANK, ItemType.MATERIAL, ItemType.PACKAGING],
+    example: ItemType.CUP_BLANK,
+  })
+  @IsIn([ItemType.CUP_BLANK, ItemType.MATERIAL, ItemType.PACKAGING])
+  type!: ItemType.CUP_BLANK | ItemType.MATERIAL | ItemType.PACKAGING;
+
+  @ApiProperty({
+    example: 'CUP_BLANK',
+    description: 'Lấy từ GET /stock/item-types/:type/sku-template',
+  })
   @IsString()
   @MinLength(1)
-  sku!: string;
+  templateId!: string;
 
-  @ApiPropertyOptional({ example: '8938501234567' })
-  @IsOptional()
-  @IsString()
-  barcode?: string;
-
-  @ApiPropertyOptional({ type: [String], example: ['8938501234567'] })
-  @IsOptional()
+  @ApiProperty({ type: [String], example: ['66a1...', '66a2...'] })
   @IsArray()
-  @IsString({ each: true })
-  altBarcodes?: string[];
+  @ArrayMinSize(1)
+  @IsMongoId({ each: true })
+  attributeOptionIds!: string[];
 
   @ApiProperty({ example: 'Ly nhựa 500ml' })
   @IsString()
   @MinLength(1)
   name!: string;
-
-  @ApiProperty({ enum: ItemType, example: ItemType.CUP_BLANK })
-  @IsEnum(ItemType)
-  type!: ItemType;
 
   @ApiProperty({ example: 'cái' })
   @IsString()
@@ -88,13 +79,6 @@ export class CreateWarehouseItemDto {
   @ValidateNested({ each: true })
   @Type(() => AltUnitDto)
   altUnits?: AltUnitDto[];
-
-  @ApiPropertyOptional({ type: [ItemAttributeDto] })
-  @IsOptional()
-  @IsArray()
-  @ValidateNested({ each: true })
-  @Type(() => ItemAttributeDto)
-  attributes?: ItemAttributeDto[];
 
   @ApiPropertyOptional({ example: false })
   @IsOptional()
@@ -146,5 +130,9 @@ export class CreateWarehouseItemDto {
 }
 
 export class UpdateWarehouseItemDto extends PartialType(
-  OmitType(CreateWarehouseItemDto, ['sku'] as const),
+  OmitType(CreateWarehouseItemDto, [
+    'type',
+    'templateId',
+    'attributeOptionIds',
+  ] as const),
 ) {}

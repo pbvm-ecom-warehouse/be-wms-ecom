@@ -49,7 +49,10 @@ export type CreateWarehouseItemData = {
   altUnits?: { unit: string; factor: number }[];
   attributes?: {
     key: string;
-    optionId: Types.ObjectId;
+    /** Mongoose tự cast string hex 24 ký tự sang ObjectId khi ghi — nhận cả 2
+     * dạng vì SkuTemplateService.resolveAndBuildSku trả optionId dạng string
+     * (đã .toString() từ document gốc, xem sku-template.service.ts). */
+    optionId: Types.ObjectId | string;
     name: string;
     value: string;
     code: string;

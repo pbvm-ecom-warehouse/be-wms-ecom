@@ -1,6 +1,7 @@
 import { Types } from 'mongoose';
 import { EVENTS } from '@app/events';
 import { StockService } from './stock.service';
+import { ItemType } from './schemas/warehouse-item.schema';
 
 const makeRepo = () => ({
   findSkuById: jest.fn(),
@@ -18,62 +19,135 @@ const makeQueue = () => ({
   add: jest.fn(),
 });
 
+const makeSkuTemplateService = () => ({
+  resolveAndBuildSku: jest.fn(),
+});
+
+const makeBarcodeService = () => ({
+  generateAndReservePrimaryBarcode: jest.fn(),
+});
+
+const makeTransactionHelper = () => ({
+  withStockTransaction: jest.fn((fn: (session: unknown) => unknown) => fn({})),
+});
+
 describe('StockService', () => {
   let svc: StockService;
   let repo: ReturnType<typeof makeRepo>;
   let queue: ReturnType<typeof makeQueue>;
   let notificationQueue: ReturnType<typeof makeQueue>;
+  let skuTemplateSvc: ReturnType<typeof makeSkuTemplateService>;
+  let barcodeSvc: ReturnType<typeof makeBarcodeService>;
+  let txHelper: ReturnType<typeof makeTransactionHelper>;
 
   beforeEach(() => {
     repo = makeRepo();
     queue = makeQueue();
     notificationQueue = makeQueue();
+    skuTemplateSvc = makeSkuTemplateService();
+    barcodeSvc = makeBarcodeService();
+    txHelper = makeTransactionHelper();
     svc = new StockService(
       repo as never,
       queue as never,
       notificationQueue as never,
+      skuTemplateSvc as never,
+      barcodeSvc as never,
+      txHelper as never,
     );
   });
 
   describe('createWarehouseItem', () => {
     const actorId = new Types.ObjectId().toString();
     const dto = {
-      sku: 'SKU-1',
-      name: 'Ly nhựa 500ml',
-      type: 'CUP_BLANK' as const,
-      unit: 'cái',
+      type: ItemType.MATERIAL,
+      templateId: 'MATERIAL_SYRUP',
+      attributeOptionIds: ['opt-flavor', 'opt-spec'],
+      name: 'Syrup đào',
+      unit: 'chai',
     };
 
-    it('throw STOCK_ITEM_SKU_CONFLICT khi sku đã tồn tại', async () => {
-      repo.findItemBySku.mockResolvedValue({ sku: 'SKU-1' });
-      await expect(svc.createWarehouseItem(dto, actorId)).rejects.toMatchObject(
-        { code: 'STOCK_ITEM_SKU_CONFLICT' },
-      );
-      expect(repo.createItem).not.toHaveBeenCalled();
+    it('reject CUP_PRINTED — không cho tạo thủ công qua API public', async () => {
+      await expect(
+        svc.createWarehouseItem(
+          { ...dto, type: ItemType.CUP_PRINTED } as never,
+          actorId,
+        ),
+      ).rejects.toMatchObject({ code: 'STOCK_SKU_TEMPLATE_MISMATCH' });
+      expect(skuTemplateSvc.resolveAndBuildSku).not.toHaveBeenCalled();
     });
 
-    it('throw STOCK_ITEM_SKU_CONFLICT khi sku trùng với bản ghi đã soft-delete', async () => {
-      repo.findItemBySku.mockResolvedValue({
-        sku: 'SKU-1',
-        deletedAt: new Date(),
+    it('resolve SKU qua SkuTemplateService, sinh barcode, tạo item trong transaction', async () => {
+      skuTemplateSvc.resolveAndBuildSku.mockResolvedValue({
+        sku: 'MAT-SYR-PEACH-750ML',
+        attributeSnapshot: [
+          {
+            key: 'FLAVOR',
+            optionId: 'opt-flavor',
+            name: 'Đào',
+            value: 'Đào',
+            code: 'PEACH',
+          },
+        ],
       });
-      await expect(svc.createWarehouseItem(dto, actorId)).rejects.toMatchObject(
-        { code: 'STOCK_ITEM_SKU_CONFLICT' },
+      barcodeSvc.generateAndReservePrimaryBarcode.mockResolvedValue(
+        '2000000000015',
       );
+      const createdDoc = {
+        _id: new Types.ObjectId(),
+        sku: 'MAT-SYR-PEACH-750ML',
+      };
+      repo.createItem.mockResolvedValue(createdDoc);
+
+      const result = await svc.createWarehouseItem(dto as never, actorId);
+
+      expect(skuTemplateSvc.resolveAndBuildSku).toHaveBeenCalledWith(
+        'MATERIAL_SYRUP',
+        ItemType.MATERIAL,
+        ['opt-flavor', 'opt-spec'],
+      );
+      expect(repo.createItem).toHaveBeenCalledWith(
+        expect.objectContaining({
+          sku: 'MAT-SYR-PEACH-750ML',
+          barcode: '2000000000015',
+        }),
+        new Types.ObjectId(actorId),
+        expect.anything(),
+      );
+      expect(result).toBe(createdDoc);
     });
 
-    it('tạo item mới khi sku chưa tồn tại', async () => {
-      repo.findItemBySku.mockResolvedValue(null);
-      const mockDoc = { _id: new Types.ObjectId(), ...dto };
-      repo.createItem.mockResolvedValue(mockDoc);
-
-      const result = await svc.createWarehouseItem(dto, actorId);
-
-      expect(repo.createItem).toHaveBeenCalledWith(
-        dto,
-        new Types.ObjectId(actorId),
+    it('map lỗi 11000 trên sku (race hiếm) thành STOCK_ITEM_SKU_CONFLICT, không throw 500 thô', async () => {
+      skuTemplateSvc.resolveAndBuildSku.mockResolvedValue({
+        sku: 'MAT-SYR-PEACH-750ML',
+        attributeSnapshot: [],
+      });
+      barcodeSvc.generateAndReservePrimaryBarcode.mockResolvedValue(
+        '2000000000015',
       );
-      expect(result).toBe(mockDoc);
+      repo.createItem.mockRejectedValue({
+        code: 11000,
+        keyPattern: { sku: 1 },
+      });
+
+      await expect(
+        svc.createWarehouseItem(dto as never, actorId),
+      ).rejects.toMatchObject({ code: 'STOCK_ITEM_SKU_CONFLICT' });
+    });
+
+    it('lỗi 11000 khác field sku (fallback) vẫn map về STOCK_ITEM_SKU_CONFLICT nếu không nhận diện được keyPattern', async () => {
+      skuTemplateSvc.resolveAndBuildSku.mockResolvedValue({
+        sku: 'MAT-SYR-PEACH-750ML',
+        attributeSnapshot: [],
+      });
+      barcodeSvc.generateAndReservePrimaryBarcode.mockResolvedValue(
+        '2000000000015',
+      );
+      repo.createItem.mockRejectedValue({ code: 11000, keyPattern: {} });
+
+      await expect(
+        svc.createWarehouseItem(dto as never, actorId),
+      ).rejects.toMatchObject({ code: 'STOCK_ITEM_SKU_CONFLICT' });
     });
   });
 

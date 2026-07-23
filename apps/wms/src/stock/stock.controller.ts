@@ -47,7 +47,10 @@ export class StockController {
 
   @Post()
   @Roles(WmsRole.ADMIN, WmsRole.MANAGER)
-  @ApiOperation({ summary: 'Tạo mặt hàng kho mới — [ADMIN, MANAGER]' })
+  @ApiOperation({
+    summary:
+      'Tạo mặt hàng kho mới (CUP_BLANK/MATERIAL/PACKAGING) — BE tự sinh sku/barcode từ template — [ADMIN, MANAGER]',
+  })
   @ApiCreatedResponse({ type: WarehouseItemResponseDto })
   async create(
     @Body() dto: CreateWarehouseItemDto,

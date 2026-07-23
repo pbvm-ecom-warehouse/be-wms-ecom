@@ -16,6 +16,17 @@ export class AltUnitResponseDto {
 export class ItemAttributeResponseDto {
   @Expose()
   @ApiProperty()
+  key!: string;
+
+  @Expose()
+  @Transform(({ obj }: { obj: { optionId?: Types.ObjectId } }) =>
+    obj.optionId?.toString(),
+  )
+  @ApiProperty()
+  optionId!: string;
+
+  @Expose()
+  @ApiProperty()
   name!: string;
 
   @Expose()
@@ -54,6 +65,10 @@ export class WarehouseItemResponseDto {
   @Expose()
   @ApiProperty({ enum: ItemType })
   type!: ItemType;
+
+  @Expose()
+  @ApiPropertyOptional()
+  category?: string;
 
   @Expose()
   @ApiProperty()
