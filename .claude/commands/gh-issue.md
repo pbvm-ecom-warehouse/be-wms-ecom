@@ -26,4 +26,6 @@ Issue cần xử lý: **$ARGUMENTS**
 
 5. **Verify trước khi báo xong** — dùng skill `superpowers:verification-before-completion`: chạy `pnpm lint`, `pnpm test`, `pnpm build` liên quan đến phần đã đổi, xác nhận output thật sự pass, không chỉ giả định.
 
-6. **Báo cáo kết quả** cho user, kèm số issue đã tham chiếu. **Không** tự động commit, push, tạo branch hay mở PR trừ khi user yêu cầu rõ trong lượt này.
+6. **Báo cáo kết quả** cho user, kèm số issue đã tham chiếu.
+
+7. **Hỏi bước tiếp theo** — dùng `AskUserQuestion` hỏi user có muốn commit/push và đóng issue trên GitHub hay không (vd option: "Commit + đóng issue" / "Chỉ commit, không đóng issue" / "Không làm gì thêm"). **Không** tự động commit, push, tạo branch, mở PR hay đóng issue nếu chưa hỏi và được user xác nhận rõ trong lượt này. Nếu user chọn đóng issue, dùng `gh issue close <số> --comment "..."` tóm tắt ngắn gọn thay đổi đã làm.
