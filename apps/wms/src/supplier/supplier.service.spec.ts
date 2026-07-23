@@ -157,7 +157,11 @@ describe('SupplierService', () => {
     });
 
     it('update khi cặp (itemId, supplierId) đã có báo giá (không truyền itemId vào update)', async () => {
-      const existing = { _id: { toString: () => 'existingId' }, itemId, supplierId };
+      const existing = {
+        _id: { toString: () => 'existingId' },
+        itemId,
+        supplierId,
+      };
       repo.findSupplierItemByItemAndSupplier.mockResolvedValue(existing);
       repo.updateSupplierItem.mockResolvedValue({ itemId, supplierId });
       await svc.upsertSupplierItem(dto);
@@ -171,7 +175,10 @@ describe('SupplierService', () => {
 
     it('cùng itemId nhưng khác supplierId → tạo báo giá mới, không ghi đè báo giá NCC khác', async () => {
       repo.findSupplierItemByItemAndSupplier.mockResolvedValue(null);
-      repo.createSupplierItem.mockResolvedValue({ itemId, supplierId: 'sup999' });
+      repo.createSupplierItem.mockResolvedValue({
+        itemId,
+        supplierId: 'sup999',
+      });
       const dtoOtherSupplier = { ...dto, supplierId: 'sup999' };
       await svc.upsertSupplierItem(dtoOtherSupplier);
       expect(repo.findSupplierItemByItemAndSupplier).toHaveBeenCalledWith(
@@ -189,9 +196,14 @@ describe('SupplierService', () => {
     });
 
     it('trả về mọi báo giá của SKU', async () => {
-      const docs = [{ itemId, supplierId: 'sup1' }, { itemId, supplierId: 'sup2' }];
+      const docs = [
+        { itemId, supplierId: 'sup1' },
+        { itemId, supplierId: 'sup2' },
+      ];
       repo.findSupplierItemsByItemId.mockResolvedValue(docs);
-      await expect(svc.listSupplierItemsByItemId(itemId)).resolves.toEqual(docs);
+      await expect(svc.listSupplierItemsByItemId(itemId)).resolves.toEqual(
+        docs,
+      );
     });
   });
 
