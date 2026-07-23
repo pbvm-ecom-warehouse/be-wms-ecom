@@ -85,7 +85,7 @@ describe('AttributeOptionService', () => {
       });
 
       await expect(
-        svc.update(id, { code: 'NEW' } as never, actorId),
+        svc.update(id, { code: 'NEW' }, actorId),
       ).rejects.toMatchObject({ code: 'STOCK_ATTRIBUTE_CODE_IMMUTABLE' });
       expect(repo.update).not.toHaveBeenCalled();
     });

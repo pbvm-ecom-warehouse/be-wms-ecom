@@ -34,6 +34,9 @@ export function suggestCodeFromName(name: string): string {
 
 export type CreateAttributeOptionDto = CreateAttributeOptionData;
 export type UpdateAttributeOptionDto = Partial<{
+  /** Chỉ dùng để service phát hiện + từ chối — không bao giờ ghi vào DB
+   * (xem check 'code' in dto bên dưới). */
+  code: string;
   name: string;
   isActive: boolean;
   sortOrder: number;

@@ -59,6 +59,19 @@ export class CreateAttributeOptionDto {
 }
 
 export class UpdateAttributeOptionDto {
+  /** Nhận field này để ValidationPipe (whitelist) không strip trước khi tới
+   * service — AttributeOptionService.update tự throw
+   * STOCK_ATTRIBUTE_CODE_IMMUTABLE khi thấy field này, thay vì để
+   * ValidationPipe reject bằng lỗi validation chung chung. */
+  @ApiPropertyOptional({
+    description:
+      'Không dùng để cập nhật — gửi lên sẽ bị từ chối (code bất biến sau khi tạo)',
+    example: 'CLR',
+  })
+  @IsOptional()
+  @IsString()
+  code?: string;
+
   @ApiPropertyOptional({ example: 'Trong suốt (đã đổi tên)' })
   @IsOptional()
   @IsString()
