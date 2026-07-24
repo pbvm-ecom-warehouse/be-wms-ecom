@@ -166,37 +166,40 @@ export class StockService {
     }
 
     try {
-      const createdItem = await this.txHelper.withStockTransaction(async (session) => {
-        const itemId = new Types.ObjectId();
-        const barcode = await this.barcodeSvc.generateAndReservePrimaryBarcode(
-          itemId,
-          session,
-        );
+      const createdItem = await this.txHelper.withStockTransaction(
+        async (session) => {
+          const itemId = new Types.ObjectId();
+          const barcode =
+            await this.barcodeSvc.generateAndReservePrimaryBarcode(
+              itemId,
+              session,
+            );
 
-        const data: CreateWarehouseItemData = {
-          _id: itemId,
-          sku,
-          barcode,
-          name: dto.name,
-          type: dto.type,
-          unit: dto.unit,
-          altUnits: dto.altUnits,
-          attributes: attributeSnapshot,
-          isPerishable: dto.isPerishable,
-          nearExpiryDays: dto.nearExpiryDays,
-          minQuantity: dto.minQuantity,
-          depth: dto.depth,
-          width: dto.width,
-          height: dto.height,
-          images,
-        };
+          const data: CreateWarehouseItemData = {
+            _id: itemId,
+            sku,
+            barcode,
+            name: dto.name,
+            type: dto.type,
+            unit: dto.unit,
+            altUnits: dto.altUnits,
+            attributes: attributeSnapshot,
+            isPerishable: dto.isPerishable,
+            nearExpiryDays: dto.nearExpiryDays,
+            minQuantity: dto.minQuantity,
+            depth: dto.depth,
+            width: dto.width,
+            height: dto.height,
+            images,
+          };
 
-        return this.stockRepo.createItem(
-          data,
-          new Types.ObjectId(actorId),
-          session,
-        );
-      });
+          return this.stockRepo.createItem(
+            data,
+            new Types.ObjectId(actorId),
+            session,
+          );
+        },
+      );
 
       try {
         const payload: WarehouseItemCreatedPayload = {
@@ -214,7 +217,9 @@ export class StockService {
         await this.stockQueue.add(EVENTS.ITEM_CREATED, payload, {
           jobId: `item_created-${createdItem.sku}`,
         });
-        this.logger.log(`warehouse_item.created → sku=${createdItem.sku} (initialQty=0)`);
+        this.logger.log(
+          `warehouse_item.created → sku=${createdItem.sku} (initialQty=0)`,
+        );
       } catch (evtErr) {
         this.logger.error(
           `Lỗi khi phát sự kiện warehouse_item.created cho SKU ${createdItem.sku}:`,

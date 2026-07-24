@@ -212,7 +212,10 @@ export class NotificationConsumer extends WorkerHost {
             }
           }
         } catch (err: any) {
-          this.logger.error('Lỗi khi gửi FCM Push Notification cho Ecom Manager:', err);
+          this.logger.error(
+            'Lỗi khi gửi FCM Push Notification cho Ecom Manager:',
+            err,
+          );
         }
         break;
       }
