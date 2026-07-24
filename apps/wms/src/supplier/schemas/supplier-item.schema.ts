@@ -39,6 +39,14 @@ export class SupplierItem {
   /** false = báo giá hết hiệu lực, không gợi ý khi tạo PO */
   @Prop({ default: true })
   isActive!: boolean;
+
+  // purchasePrice ảnh hưởng trực tiếp giá auto-fill lên PO — cần truy vết
+  // ai sửa/khi nào, không chỉ dựa vào updatedAt (issue #33).
+  @Prop({ type: SchemaTypes.ObjectId })
+  createdBy?: Types.ObjectId;
+
+  @Prop({ type: SchemaTypes.ObjectId })
+  updatedBy?: Types.ObjectId;
 }
 
 export type SupplierItemDocument = HydratedDocument<SupplierItem>;

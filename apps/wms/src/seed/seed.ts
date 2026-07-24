@@ -258,18 +258,22 @@ async function seedZoneAndItems(
   );
   const supplierId = supplier._id.toString();
 
-  // upsertSupplierItem chỉ nhận 1 tham số (dto) — không có actorId (xem
-  // controller thật: async upsertSupplierItem(@Body() dto) không có @CurrentUser).
-  await supplierService.upsertSupplierItem({
-    itemId: material._id.toString(),
-    supplierId,
-    purchasePrice: 15000,
-  });
-  await supplierService.upsertSupplierItem({
-    itemId: cupBlank._id.toString(),
-    supplierId,
-    purchasePrice: 3000,
-  });
+  await supplierService.upsertSupplierItem(
+    {
+      itemId: material._id.toString(),
+      supplierId,
+      purchasePrice: 15000,
+    },
+    adminId,
+  );
+  await supplierService.upsertSupplierItem(
+    {
+      itemId: cupBlank._id.toString(),
+      supplierId,
+      purchasePrice: 3000,
+    },
+    adminId,
+  );
 
   logger.log(
     `Zone seed: ${zoneId}, shelf staging: ${stagingShelf._id.toString()}, shelf chính: ${mainShelf._id.toString()}`,

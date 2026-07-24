@@ -97,13 +97,14 @@ export class SupplierService {
    */
   async upsertSupplierItem(
     dto: CreateSupplierItemDto,
+    actorId: string,
   ): Promise<SupplierItemDocument> {
     const existing = await this.repo.findSupplierItemByItemAndSupplier(
       dto.itemId,
       dto.supplierId,
     );
     if (!existing) {
-      return this.repo.createSupplierItem(dto);
+      return this.repo.createSupplierItem(dto, actorId);
     }
     // Không truyền itemId vào update — field này bất biến sau khi tạo
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -111,6 +112,7 @@ export class SupplierService {
     const updated = await this.repo.updateSupplierItem(
       existing._id.toString(),
       updateFields,
+      actorId,
     );
     if (!updated) throw new AppException('SUPPLIER_ITEM_NOT_FOUND');
     return updated;
@@ -151,8 +153,9 @@ export class SupplierService {
   async updateSupplierItem(
     id: string,
     dto: UpdateSupplierItemDto,
+    actorId: string,
   ): Promise<SupplierItemDocument> {
-    const doc = await this.repo.updateSupplierItem(id, dto);
+    const doc = await this.repo.updateSupplierItem(id, dto, actorId);
     if (!doc) throw new AppException('SUPPLIER_ITEM_NOT_FOUND');
     return doc;
   }

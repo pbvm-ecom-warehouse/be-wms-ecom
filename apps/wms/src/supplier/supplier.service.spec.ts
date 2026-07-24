@@ -149,12 +149,12 @@ describe('SupplierService', () => {
     it('tạo mới khi cặp (itemId, supplierId) chưa có báo giá', async () => {
       repo.findSupplierItemByItemAndSupplier.mockResolvedValue(null);
       repo.createSupplierItem.mockResolvedValue({ itemId, supplierId });
-      await svc.upsertSupplierItem(dto);
+      await svc.upsertSupplierItem(dto, actorId);
       expect(repo.findSupplierItemByItemAndSupplier).toHaveBeenCalledWith(
         itemId,
         supplierId,
       );
-      expect(repo.createSupplierItem).toHaveBeenCalledWith(dto);
+      expect(repo.createSupplierItem).toHaveBeenCalledWith(dto, actorId);
     });
 
     it('update khi cặp (itemId, supplierId) đã có báo giá (không truyền itemId vào update)', async () => {
@@ -165,13 +165,14 @@ describe('SupplierService', () => {
       };
       repo.findSupplierItemByItemAndSupplier.mockResolvedValue(existing);
       repo.updateSupplierItem.mockResolvedValue({ itemId, supplierId });
-      await svc.upsertSupplierItem(dto);
+      await svc.upsertSupplierItem(dto, actorId);
       // itemId bị loại khỏi payload update — field bất biến sau khi tạo
       const { supplierId: s, purchasePrice: p } = dto;
-      expect(repo.updateSupplierItem).toHaveBeenCalledWith('existingId', {
-        supplierId: s,
-        purchasePrice: p,
-      });
+      expect(repo.updateSupplierItem).toHaveBeenCalledWith(
+        'existingId',
+        { supplierId: s, purchasePrice: p },
+        actorId,
+      );
     });
 
     it('cùng itemId nhưng khác supplierId → tạo báo giá mới, không ghi đè báo giá NCC khác', async () => {
@@ -181,12 +182,15 @@ describe('SupplierService', () => {
         supplierId: 'sup999',
       });
       const dtoOtherSupplier = { ...dto, supplierId: 'sup999' };
-      await svc.upsertSupplierItem(dtoOtherSupplier);
+      await svc.upsertSupplierItem(dtoOtherSupplier, actorId);
       expect(repo.findSupplierItemByItemAndSupplier).toHaveBeenCalledWith(
         itemId,
         'sup999',
       );
-      expect(repo.createSupplierItem).toHaveBeenCalledWith(dtoOtherSupplier);
+      expect(repo.createSupplierItem).toHaveBeenCalledWith(
+        dtoOtherSupplier,
+        actorId,
+      );
     });
   });
 

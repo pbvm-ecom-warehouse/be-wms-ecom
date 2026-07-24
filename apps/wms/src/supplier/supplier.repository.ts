@@ -127,11 +127,14 @@ export class SupplierRepository {
 
   async createSupplierItem(
     dto: CreateSupplierItemDto,
+    actorId: string,
   ): Promise<SupplierItemDocument> {
     return this.supplierItemModel.create({
       ...dto,
       itemId: new Types.ObjectId(dto.itemId),
       supplierId: new Types.ObjectId(dto.supplierId),
+      createdBy: new Types.ObjectId(actorId),
+      updatedBy: new Types.ObjectId(actorId),
     });
   }
 
@@ -173,9 +176,13 @@ export class SupplierRepository {
   async updateSupplierItem(
     id: string,
     dto: UpdateSupplierItemDto,
+    actorId: string,
   ): Promise<SupplierItemDocument | null> {
     // Convert supplierId string thành ObjectId nếu có trong dto
-    const update: Record<string, unknown> = { ...dto };
+    const update: Record<string, unknown> = {
+      ...dto,
+      updatedBy: new Types.ObjectId(actorId),
+    };
     if (dto.supplierId)
       update['supplierId'] = new Types.ObjectId(dto.supplierId);
     try {
