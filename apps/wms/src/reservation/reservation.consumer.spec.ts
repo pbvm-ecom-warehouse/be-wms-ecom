@@ -28,17 +28,14 @@ describe('ReservationConsumer', () => {
       data: {
         orderId: 'order-1',
         items: [{ sku: 'SKU-1', quantity: 3 }],
-        preferWarehouse: 'CENTRAL',
       },
     } as never;
 
     await consumer.process(job);
 
-    expect(service.reserveForOrder).toHaveBeenCalledWith(
-      'order-1',
-      [{ sku: 'SKU-1', quantity: 3 }],
-      'CENTRAL',
-    );
+    expect(service.reserveForOrder).toHaveBeenCalledWith('order-1', [
+      { sku: 'SKU-1', quantity: 3 },
+    ]);
     expect(service.releaseForOrder).not.toHaveBeenCalled();
   });
 

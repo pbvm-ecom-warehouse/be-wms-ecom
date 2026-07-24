@@ -10,7 +10,7 @@ import { Queue } from 'bullmq';
 import { Types } from 'mongoose';
 import { StockRepository } from '../stock/stock.repository';
 import { StockTransactionHelper } from '../stock/helpers/with-stock-transaction.helper';
-import { WarehouseRepository } from '../warehouse/warehouse.repository';
+import { LocationRepository } from '../location/location.repository';
 import { GoodsIssueRepository } from '../goods-issue/goods-issue.repository';
 import { MovementType } from '../stock/schemas/stock-movement.schema';
 import { SYSTEM_ACTOR_ID } from './reservation.constants';
@@ -30,23 +30,18 @@ export class ReservationService {
   constructor(
     private readonly stockRepo: StockRepository,
     private readonly stockTransactionHelper: StockTransactionHelper,
-    private readonly warehouseRepo: WarehouseRepository,
+    private readonly locationRepo: LocationRepository,
     private readonly goodsIssueRepo: GoodsIssueRepository,
     @InjectQueue(QUEUES.ORDER_REPLY) private readonly orderReplyQueue: Queue,
   ) {}
 
   /**
    * Xử lý STOCK_RESERVE_REQUESTED. Idempotent theo orderId (kiểm tra đã có
-   * movement 'reservation' chưa). Chọn 1 kho duy nhất đủ tồn cho TOÀN BỘ sku
-   * trong đơn (ưu tiên preferWarehouse), atomic theo từng sku trong 1
-   * transaction — nếu 1 sku không đủ ở kho đang thử, transaction abort và
-   * toàn bộ reserve tạm thời trong kho đó tự rollback, chuyển sang kho khác.
+   * movement 'reservation' chưa). App = 1 kho duy nhất nên reserve trực tiếp
+   * trên pool tồn kho chung, atomic theo từng sku trong 1 transaction — nếu
+   * 1 sku không đủ, transaction abort và toàn bộ reserve tạm thời tự rollback.
    */
-  async reserveForOrder(
-    orderId: string,
-    items: ReserveItem[],
-    preferWarehouse?: string,
-  ): Promise<void> {
+  async reserveForOrder(orderId: string, items: ReserveItem[]): Promise<void> {
     const alreadyReserved = await this.stockRepo.hasMovementForRef(
       REF_TYPE_RESERVE,
       new Types.ObjectId(orderId),
@@ -77,52 +72,45 @@ export class ReservationService {
       });
     }
 
-    // preferWarehouse không dùng để chọn kho: payload hiện gửi chuỗi tượng
-    // trưng (vd 'CENTRAL') nhưng Warehouse schema không có code/slug nào để
-    // đối chiếu — tham số vẫn được nhận để khớp StockReserveRequestedPayload,
-    // nhưng bị bỏ qua. Thử lần lượt mọi kho active theo thứ tự createdAt asc.
-    void preferWarehouse;
-
-    // Có sku không tồn tại trong WarehouseItem → đơn không thể reserve đủ dù
-    // kho nào đi nữa. Bỏ qua vòng thử kho (tránh mở transaction vô ích) —
-    // đồng thời tránh bug "mảng resolvedItems rỗng" khiến tryReserveAllAtWarehouse
-    // coi vòng lặp for rỗng là "đã reserve hết" (allReserved mặc định true).
-    const candidateIds =
-      missingSkus.length > 0
-        ? []
-        : await this.warehouseRepo.findAllActiveWarehouseIds();
-
-    for (const warehouseId of candidateIds) {
-      const stagingShelf = await this.warehouseRepo.findStagingShelfByWarehouse(
-        warehouseId.toString(),
-      );
-      if (!stagingShelf) continue; // kho không có staging shelf → bỏ qua ứng viên này
-
-      const reservedHere = await this.tryReserveAllAtWarehouse(
+    if (missingSkus.length > 0) {
+      await this.emitReserveFailed(
         orderId,
-        resolvedItems,
-        warehouseId,
-        stagingShelf._id,
+        `Sku không tồn tại: ${missingSkus.join(', ')}`,
+        missingSkus,
       );
-      if (reservedHere) {
-        await this.emitReserved(orderId, warehouseId);
-        return;
-      }
+      return;
+    }
+
+    const stagingShelf = await this.locationRepo.findStagingShelf();
+    if (!stagingShelf) {
+      await this.emitReserveFailed(
+        orderId,
+        'Hệ thống chưa cấu hình vị trí nhận hàng (staging)',
+        resolvedItems.map((i) => i.sku),
+      );
+      return;
+    }
+
+    const reserved = await this.tryReserveAll(
+      orderId,
+      resolvedItems,
+      stagingShelf._id,
+    );
+    if (reserved) {
+      await this.emitReserved(orderId);
+      return;
     }
 
     await this.emitReserveFailed(
       orderId,
-      missingSkus.length > 0
-        ? `Sku không tồn tại: ${missingSkus.join(', ')}`
-        : 'Không kho nào đủ tồn cho toàn bộ đơn hàng',
-      missingSkus.length > 0 ? missingSkus : resolvedItems.map((i) => i.sku),
+      'Không đủ tồn cho toàn bộ đơn hàng',
+      resolvedItems.map((i) => i.sku),
     );
   }
 
-  private async tryReserveAllAtWarehouse(
+  private async tryReserveAll(
     orderId: string,
     items: { itemId: Types.ObjectId; sku: string; quantity: number }[],
-    warehouseId: Types.ObjectId,
     stagingShelfId: Types.ObjectId,
   ): Promise<boolean> {
     let allReserved = true;
@@ -132,7 +120,6 @@ export class ReservationService {
           for (const item of items) {
             const ok = await this.stockRepo.reserveIfAvailable(
               item.itemId,
-              warehouseId,
               item.quantity,
               session,
             );
@@ -143,7 +130,6 @@ export class ReservationService {
             await this.stockRepo.insertMovement(
               {
                 itemId: item.itemId,
-                warehouseId,
                 shelfId: stagingShelfId,
                 lotId: null,
                 type: MovementType.RESERVE,
@@ -166,20 +152,12 @@ export class ReservationService {
     return allReserved;
   }
 
-  private async emitReserved(
-    orderId: string,
-    warehouseId: Types.ObjectId,
-  ): Promise<void> {
-    const payload: StockReservedPayload = {
-      orderId,
-      fulfillWarehouseId: warehouseId.toString(),
-    };
+  private async emitReserved(orderId: string): Promise<void> {
+    const payload: StockReservedPayload = { orderId };
     await this.orderReplyQueue.add(EVENTS.STOCK_RESERVED, payload, {
       jobId: `reservation:${orderId}`,
     });
-    this.logger.log(
-      `stock.reserved → orderId=${orderId} warehouseId=${warehouseId.toString()}`,
-    );
+    this.logger.log(`stock.reserved → orderId=${orderId}`);
   }
 
   private async emitReserveFailed(
@@ -239,7 +217,6 @@ export class ReservationService {
       for (const movement of reserveMovements) {
         await this.stockRepo.upsertBalance(
           movement.itemId,
-          movement.warehouseId,
           0,
           -movement.quantity,
           0,
@@ -248,7 +225,6 @@ export class ReservationService {
         await this.stockRepo.insertMovement(
           {
             itemId: movement.itemId,
-            warehouseId: movement.warehouseId,
             shelfId: movement.shelfId,
             lotId: null,
             type: MovementType.RELEASE,
