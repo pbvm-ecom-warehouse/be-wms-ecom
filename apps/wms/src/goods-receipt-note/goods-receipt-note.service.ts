@@ -1,5 +1,5 @@
 // apps/wms/src/goods-receipt-note/goods-receipt-note.service.ts
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { Types } from 'mongoose';
 import { AppException, CloudinaryService } from '@app/common';
 import {
@@ -13,6 +13,8 @@ import { StockService } from '../stock/stock.service';
 import { StockTransactionHelper } from '../stock/helpers/with-stock-transaction.helper';
 import { PutAwayService } from '../put-away/put-away.service';
 import { MovementType } from '../stock/schemas/stock-movement.schema';
+import { SupplierService } from '../supplier/supplier.service';
+import { SupplierStatus } from '../supplier/schemas/supplier.schema';
 import {
   GoodsReceiptNoteStatus,
   type GoodsReceiptNoteDocument,
@@ -40,6 +42,8 @@ export interface UploadedImageFile {
 
 @Injectable()
 export class GoodsReceiptNoteService {
+  private readonly logger = new Logger(GoodsReceiptNoteService.name);
+
   constructor(
     private readonly repo: GoodsReceiptNoteRepository,
     private readonly purchaseOrderService: PurchaseOrderService,
@@ -49,6 +53,7 @@ export class GoodsReceiptNoteService {
     private readonly stockTransactionHelper: StockTransactionHelper,
     private readonly putAwayService: PutAwayService,
     private readonly cloudinary: CloudinaryService,
+    private readonly supplierService: SupplierService,
   ) {}
 
   async createGoodsReceiptNote(
@@ -115,6 +120,7 @@ export class GoodsReceiptNoteService {
     const po = await this.purchaseOrderService.getPurchaseOrder(
       grn.purchaseOrderId.toString(),
     );
+    await this.warnIfSupplierNotActive(po.supplierId.toString(), grn.grnNumber);
 
     // Gộp baseQty theo itemId trước khi so sánh — 1 GRN có thể có nhiều dòng cùng item (nhiều lô)
     const baseQtyByItem = new Map<string, number>();
@@ -328,6 +334,23 @@ export class GoodsReceiptNoteService {
     const doc = await this.repo.findGoodsReceiptNoteById(id);
     if (!doc) throw new AppException('GRN_NOT_FOUND');
     return doc;
+  }
+
+  /**
+   * PO chỉ chặn tạo mới nếu NCC không ACTIVE (assertSupplierActive lúc createPurchaseOrder);
+   * PO đã đặt/đang giao dở vẫn cho nhận hàng tiếp để tránh tồn kho treo hoặc tranh chấp hợp
+   * đồng đã ký (issue #34 — quyết định nghiệp vụ: cảnh báo, không chặn confirm GRN).
+   */
+  private async warnIfSupplierNotActive(
+    supplierId: string,
+    grnNumber: string,
+  ): Promise<void> {
+    const supplier = await this.supplierService.getSupplier(supplierId);
+    if (supplier.status !== SupplierStatus.ACTIVE) {
+      this.logger.warn(
+        `GRN ${grnNumber}: xác nhận nhận hàng cho PO của NCC "${supplier.name}" đang ở trạng thái ${supplier.status} (không còn ACTIVE) — cần MANAGER/ADMIN kiểm tra lại`,
+      );
+    }
   }
 
   /** Sinh mã GRN dạng GRN-YYYYMMDD-xxxx, số thứ tự reset theo ngày. */

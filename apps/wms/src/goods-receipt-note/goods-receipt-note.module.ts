@@ -12,6 +12,7 @@ import { PurchaseOrderModule } from '../purchase-order/purchase-order.module';
 import { LocationModule } from '../location/location.module';
 import { StockModule } from '../stock/stock.module';
 import { PutAwayModule } from '../put-away/put-away.module';
+import { SupplierModule } from '../supplier/supplier.module';
 
 @Module({
   imports: [
@@ -22,6 +23,7 @@ import { PutAwayModule } from '../put-away/put-away.module';
     LocationModule, // findStagingShelf
     StockModule, // StockRepository/StockService/StockTransactionHelper — cộng tồn 2 lớp
     PutAwayModule, // createTaskFromGrn — sinh việc put-away khi GRN CONFIRMED
+    SupplierModule, // getSupplier — cảnh báo khi confirm GRN cho NCC không còn ACTIVE (issue #34)
   ],
   providers: [GoodsReceiptNoteRepository, GoodsReceiptNoteService],
   controllers: [GoodsReceiptNoteController],

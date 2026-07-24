@@ -62,6 +62,10 @@ const makePutAwayService = () => ({
   createTaskFromGrn: jest.fn(),
 });
 
+const makeSupplierService = () => ({
+  getSupplier: jest.fn(),
+});
+
 describe('GoodsReceiptNoteService', () => {
   let svc: GoodsReceiptNoteService;
   let repo: ReturnType<typeof makeRepo>;
@@ -72,10 +76,12 @@ describe('GoodsReceiptNoteService', () => {
   let txHelper: ReturnType<typeof makeStockTransactionHelper>;
   let putAwayService: ReturnType<typeof makePutAwayService>;
   let cloudinary: ReturnType<typeof makeCloudinaryService>;
+  let supplierService: ReturnType<typeof makeSupplierService>;
 
   const actorId = new Types.ObjectId().toString();
   const purchaseOrderId = new Types.ObjectId().toString();
   const itemId = new Types.ObjectId().toString();
+  const supplierId = new Types.ObjectId().toString();
   const stagingShelfId = new Types.ObjectId();
 
   beforeEach(() => {
@@ -87,6 +93,7 @@ describe('GoodsReceiptNoteService', () => {
     txHelper = makeStockTransactionHelper();
     putAwayService = makePutAwayService();
     cloudinary = makeCloudinaryService();
+    supplierService = makeSupplierService();
     svc = new GoodsReceiptNoteService(
       repo as never,
       poService as never,
@@ -96,8 +103,13 @@ describe('GoodsReceiptNoteService', () => {
       txHelper as never,
       putAwayService as never,
       cloudinary as never,
+      supplierService as never,
     );
     repo.countByGrnNumberPrefix.mockResolvedValue(0);
+    supplierService.getSupplier.mockResolvedValue({
+      name: 'NCC Test',
+      status: 'ACTIVE',
+    });
   });
 
   describe('createGoodsReceiptNote', () => {
@@ -216,6 +228,7 @@ describe('GoodsReceiptNoteService', () => {
         items: [{ itemId, sku: 'SKU-1', actualQty: 60, unit: 'cái' }],
       });
       poService.getPurchaseOrder.mockResolvedValue({
+        supplierId,
         items: [{ itemId, expectedQty: 100, receivedQty: 50 }],
       });
       await expect(
@@ -226,6 +239,7 @@ describe('GoodsReceiptNoteService', () => {
 
     it('cộng tồn 2 lớp + ghi movement RECEIVE + cập nhật PO khi hợp lệ', async () => {
       poService.getPurchaseOrder.mockResolvedValue({
+        supplierId,
         items: [{ itemId, expectedQty: 100, receivedQty: 50 }],
       });
       stockRepo.findItemById.mockResolvedValue({
@@ -321,8 +335,44 @@ describe('GoodsReceiptNoteService', () => {
       expect(result).toEqual(confirmed);
     });
 
+    it('không chặn confirm khi NCC của PO đang BLACKLIST — chỉ cảnh báo, vẫn nhận hàng (issue #34)', async () => {
+      poService.getPurchaseOrder.mockResolvedValue({
+        supplierId,
+        items: [{ itemId, expectedQty: 100, receivedQty: 50 }],
+      });
+      supplierService.getSupplier.mockResolvedValue({
+        name: 'NCC Blacklist',
+        status: 'BLACKLIST',
+      });
+      stockRepo.findItemById.mockResolvedValue({
+        isPerishable: false,
+        unit: 'cái',
+        altUnits: [],
+      });
+      locationService.findStagingShelf.mockResolvedValue({
+        _id: stagingShelfId,
+      });
+      const confirmed = { status: GoodsReceiptNoteStatus.CONFIRMED };
+      repo.findGoodsReceiptNoteById
+        .mockResolvedValueOnce({
+          _id: grnId,
+          status: GoodsReceiptNoteStatus.DRAFT,
+          purchaseOrderId,
+          grnNumber: 'GRN-X',
+          items: [{ itemId, sku: 'SKU-1', actualQty: 20, unit: 'cái' }],
+        })
+        .mockResolvedValueOnce(confirmed);
+
+      const result = await svc.confirmGoodsReceiptNote(grnId, actorId);
+
+      // NCC BLACKLIST không chặn confirm — chỉ log cảnh báo (quyết định nghiệp vụ issue #34)
+      expect(supplierService.getSupplier).toHaveBeenCalledWith(supplierId);
+      expect(result).toEqual(confirmed);
+    });
+
     it('xử lý đúng 2 dòng cùng itemId nhưng khác lô (lotNumber/expiryDate riêng)', async () => {
       poService.getPurchaseOrder.mockResolvedValue({
+        supplierId,
         items: [{ itemId, expectedQty: 100, receivedQty: 0 }],
       });
       stockRepo.findItemById.mockResolvedValue({
@@ -478,6 +528,7 @@ describe('GoodsReceiptNoteService', () => {
 
     it('quy đổi baseQty theo altUnits khi dòng GRN dùng đơn vị thay thế (thùng → cái)', async () => {
       poService.getPurchaseOrder.mockResolvedValue({
+        supplierId,
         items: [{ itemId, expectedQty: 1000, receivedQty: 0 }],
       });
       stockRepo.findItemById.mockResolvedValue({
