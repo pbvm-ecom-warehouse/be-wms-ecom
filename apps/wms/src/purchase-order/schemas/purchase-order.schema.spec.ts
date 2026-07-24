@@ -19,7 +19,6 @@ describe('PurchaseOrder schema', () => {
     const paths = PurchaseOrderSchema.paths;
     expect(paths['poNumber']).toBeDefined();
     expect(paths['supplierId']).toBeDefined();
-    expect(paths['warehouseId']).toBeDefined();
     expect(paths['status']).toBeDefined();
     expect(paths['items']).toBeDefined();
     expect(paths['createdBy']).toBeDefined();

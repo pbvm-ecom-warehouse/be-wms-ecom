@@ -7,7 +7,6 @@ import {
   ResolvedPurchaseOrderItem,
 } from './purchase-order.repository';
 import { SupplierService } from '../supplier/supplier.service';
-import { WarehouseService } from '../warehouse/warehouse.service';
 import { StockRepository } from '../stock/stock.repository';
 import {
   PurchaseOrderStatus,
@@ -23,7 +22,6 @@ export class PurchaseOrderService {
   constructor(
     private readonly repo: PurchaseOrderRepository,
     private readonly supplierService: SupplierService,
-    private readonly warehouseService: WarehouseService,
     private readonly stockRepo: StockRepository,
   ) {}
 
@@ -33,8 +31,6 @@ export class PurchaseOrderService {
   ): Promise<PurchaseOrderDocument> {
     // Chặn NCC blacklist/inactive trước khi làm gì khác
     await this.supplierService.assertSupplierActive(dto.supplierId);
-    // Kho nhận hàng phải tồn tại
-    await this.warehouseService.getWarehouse(dto.warehouseId);
 
     const resolvedItems: ResolvedPurchaseOrderItem[] = [];
     for (const item of dto.items) {

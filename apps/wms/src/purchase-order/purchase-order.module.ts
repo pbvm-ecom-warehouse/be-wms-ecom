@@ -9,7 +9,6 @@ import { PurchaseOrderRepository } from './purchase-order.repository';
 import { PurchaseOrderService } from './purchase-order.service';
 import { PurchaseOrderController } from './purchase-order.controller';
 import { SupplierModule } from '../supplier/supplier.module';
-import { WarehouseModule } from '../warehouse/warehouse.module';
 import { StockModule } from '../stock/stock.module';
 
 @Module({
@@ -18,7 +17,6 @@ import { StockModule } from '../stock/stock.module';
       { name: PurchaseOrder.name, schema: PurchaseOrderSchema },
     ]),
     SupplierModule, // assertSupplierActive + getSupplierItemByItemId
-    WarehouseModule, // getWarehouse
     StockModule, // findItemById — validate itemId tồn tại khi tạo PO
   ],
   providers: [PurchaseOrderRepository, PurchaseOrderService],

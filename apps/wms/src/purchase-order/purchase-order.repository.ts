@@ -36,7 +36,6 @@ export class PurchaseOrderRepository {
     return this.model.create({
       poNumber,
       supplierId: new Types.ObjectId(dto.supplierId),
-      warehouseId: new Types.ObjectId(dto.warehouseId),
       status: PurchaseOrderStatus.CONFIRMED,
       expectedDate: dto.expectedDate ? new Date(dto.expectedDate) : undefined,
       note: dto.note,

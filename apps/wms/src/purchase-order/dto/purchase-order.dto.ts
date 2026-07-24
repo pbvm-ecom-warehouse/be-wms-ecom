@@ -55,10 +55,6 @@ export class CreatePurchaseOrderDto {
   @IsMongoId()
   supplierId!: string;
 
-  @ApiProperty({ description: 'Warehouse._id (ObjectId)', example: '665f...' })
-  @IsMongoId()
-  warehouseId!: string;
-
   @ApiPropertyOptional({ description: 'Ngày dự kiến nhận hàng' })
   @IsOptional()
   @IsString()
@@ -147,13 +143,6 @@ export class PurchaseOrderResponseDto {
   )
   @ApiProperty()
   supplierId!: string;
-
-  @Expose()
-  @Transform(({ obj }: { obj: { warehouseId?: Types.ObjectId } }) =>
-    obj.warehouseId?.toString(),
-  )
-  @ApiProperty()
-  warehouseId!: string;
 
   @Expose()
   @ApiProperty({ enum: PurchaseOrderStatus })

@@ -49,10 +49,6 @@ export class PurchaseOrder {
   @Prop({ type: Types.ObjectId, required: true })
   supplierId!: Types.ObjectId;
 
-  /** Kho sẽ nhận hàng */
-  @Prop({ type: Types.ObjectId, required: true })
-  warehouseId!: Types.ObjectId;
-
   @Prop({ enum: PurchaseOrderStatus, default: PurchaseOrderStatus.CONFIRMED })
   status!: PurchaseOrderStatus;
 
