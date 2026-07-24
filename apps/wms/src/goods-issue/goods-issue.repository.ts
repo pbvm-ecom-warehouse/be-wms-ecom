@@ -15,7 +15,6 @@ export interface CreateGoodsIssueLineInput {
 
 export interface CreateGoodsIssueInput {
   orderId: string;
-  warehouseId: Types.ObjectId;
   lines: CreateGoodsIssueLineInput[];
   shippingAddress: Record<string, unknown>;
   recipient: { name: string; phone: string };
@@ -51,7 +50,6 @@ export class GoodsIssueRepository {
     const [doc] = await this.model.create([
       {
         orderId: input.orderId,
-        warehouseId: input.warehouseId,
         status: GoodsIssueStatus.PENDING,
         shippingAddress: input.shippingAddress,
         recipient: input.recipient,

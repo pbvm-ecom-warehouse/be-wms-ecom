@@ -26,7 +26,7 @@ const makeBarcodeService = () => ({
   findItemIdByCode: jest.fn(),
 });
 
-const makeWarehouseRepo = () => ({
+const makeLocationRepo = () => ({
   findShelfByCode: jest.fn(),
 });
 
@@ -47,7 +47,7 @@ describe('GoodsIssueService', () => {
   let repo: ReturnType<typeof makeRepo>;
   let stockRepo: ReturnType<typeof makeStockRepo>;
   let stockService: ReturnType<typeof makeStockService>;
-  let warehouseRepo: ReturnType<typeof makeWarehouseRepo>;
+  let locationRepo: ReturnType<typeof makeLocationRepo>;
   let txHelper: ReturnType<typeof makeTxHelper>;
   let barcodeSvc: ReturnType<typeof makeBarcodeService>;
   let queue: ReturnType<typeof makeQueue>;
@@ -55,14 +55,13 @@ describe('GoodsIssueService', () => {
 
   const actorId = new Types.ObjectId().toString();
   const orderId = 'order-1';
-  const warehouseId = new Types.ObjectId();
   const itemId = new Types.ObjectId();
 
   beforeEach(() => {
     repo = makeRepo();
     stockRepo = makeStockRepo();
     stockService = makeStockService();
-    warehouseRepo = makeWarehouseRepo();
+    locationRepo = makeLocationRepo();
     txHelper = makeTxHelper();
     barcodeSvc = makeBarcodeService();
     queue = makeQueue();
@@ -71,7 +70,7 @@ describe('GoodsIssueService', () => {
       repo as never,
       stockRepo as never,
       stockService as never,
-      warehouseRepo as never,
+      locationRepo as never,
       txHelper as never,
       barcodeSvc as never,
       queue as never,
@@ -92,7 +91,6 @@ describe('GoodsIssueService', () => {
       repo.findByOrderId.mockResolvedValue({ _id: 'gi1' });
       await svc.createFromOrderReady(
         orderId,
-        warehouseId.toString(),
         [{ sku: 'SKU-1', quantity: 5 }],
         ...snapshotArgs(),
       );
@@ -110,7 +108,6 @@ describe('GoodsIssueService', () => {
         snapshotArgs();
       await svc.createFromOrderReady(
         orderId,
-        warehouseId.toString(),
         [
           { sku: 'SKU-1', quantity: 5 },
           { sku: 'SKU-UNKNOWN', quantity: 3 },
@@ -122,7 +119,6 @@ describe('GoodsIssueService', () => {
       );
       expect(repo.createGoodsIssue).toHaveBeenCalledWith({
         orderId,
-        warehouseId,
         lines: [{ itemId, sku: 'SKU-1', quantity: 5 }],
         shippingAddress,
         recipient,
@@ -136,7 +132,6 @@ describe('GoodsIssueService', () => {
       stockRepo.findItemBySku.mockResolvedValue(null);
       await svc.createFromOrderReady(
         orderId,
-        warehouseId.toString(),
         [{ sku: 'SKU-UNKNOWN', quantity: 3 }],
         ...snapshotArgs(),
       );
@@ -155,7 +150,6 @@ describe('GoodsIssueService', () => {
     it('throw GOODS_ISSUE_ITEM_MISMATCH khi itemId không thuộc phiếu', async () => {
       repo.findById.mockResolvedValue({
         _id: 'gi1',
-        warehouseId,
         items: [{ itemId: new Types.ObjectId(), remainingQty: 5 }],
       });
       await expect(
@@ -166,7 +160,6 @@ describe('GoodsIssueService', () => {
     it('gọi findAvailableStockForPick với isPerishable đúng theo WarehouseItem', async () => {
       repo.findById.mockResolvedValue({
         _id: 'gi1',
-        warehouseId,
         items: [{ itemId, remainingQty: 5 }],
       });
       stockRepo.findItemById.mockResolvedValue({ isPerishable: true });
@@ -176,7 +169,6 @@ describe('GoodsIssueService', () => {
 
       expect(stockRepo.findAvailableStockForPick).toHaveBeenCalledWith(
         itemId,
-        warehouseId,
         true,
       );
     });
@@ -189,7 +181,6 @@ describe('GoodsIssueService', () => {
     const baseGi = () => ({
       _id: giId,
       orderId,
-      warehouseId,
       items: [{ itemId, sku: 'SKU-1', quantity: 20, remainingQty: 20 }],
     });
 
@@ -221,28 +212,11 @@ describe('GoodsIssueService', () => {
       repo.findById.mockResolvedValue(baseGi());
       barcodeSvc.findItemIdByCode.mockResolvedValue(itemId);
       stockRepo.findItemByIdDocument.mockResolvedValue({ _id: itemId });
-      warehouseRepo.findShelfByCode.mockResolvedValue(null);
+      locationRepo.findShelfByCode.mockResolvedValue(null);
       await expect(
         svc.confirmLine(
           giId,
           { itemBarcode: 'X', shelfCode: 'UNKNOWN', quantity: 5 },
-          actorId,
-        ),
-      ).rejects.toMatchObject({ code: 'GOODS_ISSUE_SHELF_NOT_FOUND' });
-    });
-
-    it('throw GOODS_ISSUE_SHELF_NOT_FOUND khi shelf thuộc kho khác với phiếu', async () => {
-      repo.findById.mockResolvedValue(baseGi());
-      barcodeSvc.findItemIdByCode.mockResolvedValue(itemId);
-      stockRepo.findItemByIdDocument.mockResolvedValue({ _id: itemId });
-      warehouseRepo.findShelfByCode.mockResolvedValue({
-        _id: shelfId,
-        warehouseId: new Types.ObjectId(),
-      });
-      await expect(
-        svc.confirmLine(
-          giId,
-          { itemBarcode: 'X', shelfCode: 'OTHER-WH', quantity: 5 },
           actorId,
         ),
       ).rejects.toMatchObject({ code: 'GOODS_ISSUE_SHELF_NOT_FOUND' });
@@ -255,9 +229,8 @@ describe('GoodsIssueService', () => {
       stockRepo.findItemByIdDocument.mockResolvedValue({
         _id: mismatchedItemId,
       });
-      warehouseRepo.findShelfByCode.mockResolvedValue({
+      locationRepo.findShelfByCode.mockResolvedValue({
         _id: shelfId,
-        warehouseId,
       });
       await expect(
         svc.confirmLine(
@@ -272,9 +245,8 @@ describe('GoodsIssueService', () => {
       repo.findById.mockResolvedValue(baseGi());
       barcodeSvc.findItemIdByCode.mockResolvedValue(itemId);
       stockRepo.findItemByIdDocument.mockResolvedValue({ _id: itemId });
-      warehouseRepo.findShelfByCode.mockResolvedValue({
+      locationRepo.findShelfByCode.mockResolvedValue({
         _id: shelfId,
-        warehouseId,
       });
       await expect(
         svc.confirmLine(
@@ -289,9 +261,8 @@ describe('GoodsIssueService', () => {
       repo.findById.mockResolvedValue(baseGi());
       barcodeSvc.findItemIdByCode.mockResolvedValue(itemId);
       stockRepo.findItemByIdDocument.mockResolvedValue({ _id: itemId });
-      warehouseRepo.findShelfByCode.mockResolvedValue({
+      locationRepo.findShelfByCode.mockResolvedValue({
         _id: shelfId,
-        warehouseId,
       });
       stockRepo.findInventory.mockResolvedValue({ quantity: 2 });
       await expect(
@@ -307,9 +278,8 @@ describe('GoodsIssueService', () => {
       repo.findById.mockResolvedValue(baseGi());
       barcodeSvc.findItemIdByCode.mockResolvedValue(itemId);
       stockRepo.findItemByIdDocument.mockResolvedValue({ _id: itemId });
-      warehouseRepo.findShelfByCode.mockResolvedValue({
+      locationRepo.findShelfByCode.mockResolvedValue({
         _id: shelfId,
-        warehouseId,
       });
       stockRepo.findInventory.mockResolvedValue(null);
       await expect(
@@ -328,9 +298,8 @@ describe('GoodsIssueService', () => {
       });
       barcodeSvc.findItemIdByCode.mockResolvedValue(itemId);
       stockRepo.findItemByIdDocument.mockResolvedValue({ _id: itemId });
-      warehouseRepo.findShelfByCode.mockResolvedValue({
+      locationRepo.findShelfByCode.mockResolvedValue({
         _id: shelfId,
-        warehouseId,
       });
       stockRepo.findInventory.mockResolvedValue({ quantity: 20 });
       repo.markConfirmedIfAllDone.mockResolvedValue(false);
@@ -343,7 +312,6 @@ describe('GoodsIssueService', () => {
 
       expect(stockRepo.upsertInventory).toHaveBeenCalledWith(
         itemId,
-        warehouseId,
         shelfId,
         null,
         -12,
@@ -351,7 +319,6 @@ describe('GoodsIssueService', () => {
       );
       expect(stockRepo.upsertBalance).toHaveBeenCalledWith(
         itemId,
-        warehouseId,
         -12,
         -12,
         0,
@@ -360,7 +327,6 @@ describe('GoodsIssueService', () => {
       expect(stockRepo.insertMovement).toHaveBeenCalledWith(
         expect.objectContaining({
           itemId,
-          warehouseId,
           shelfId,
           type: 'ISSUE',
           quantity: -12,
@@ -385,9 +351,8 @@ describe('GoodsIssueService', () => {
       });
       barcodeSvc.findItemIdByCode.mockResolvedValue(itemId);
       stockRepo.findItemByIdDocument.mockResolvedValue({ _id: itemId });
-      warehouseRepo.findShelfByCode.mockResolvedValue({
+      locationRepo.findShelfByCode.mockResolvedValue({
         _id: shelfId,
-        warehouseId,
       });
       stockRepo.findInventory.mockResolvedValue({ quantity: 20 });
       repo.markConfirmedIfAllDone.mockResolvedValue(true);
@@ -412,16 +377,15 @@ describe('GoodsIssueService', () => {
       );
     });
 
-    it('confirmLine gọi checkAndEmitStockLow(item._id, gi.warehouseId) sau khi transaction commit', async () => {
+    it('confirmLine gọi checkAndEmitStockLow(item._id) sau khi transaction commit', async () => {
       repo.findById.mockResolvedValueOnce(baseGi()).mockResolvedValueOnce({
         ...baseGi(),
         status: GoodsIssueStatus.PENDING,
       });
       barcodeSvc.findItemIdByCode.mockResolvedValue(itemId);
       stockRepo.findItemByIdDocument.mockResolvedValue({ _id: itemId });
-      warehouseRepo.findShelfByCode.mockResolvedValue({
+      locationRepo.findShelfByCode.mockResolvedValue({
         _id: shelfId,
-        warehouseId,
       });
       stockRepo.findInventory.mockResolvedValue({ quantity: 20 });
       repo.markConfirmedIfAllDone.mockResolvedValue(false);
@@ -432,10 +396,7 @@ describe('GoodsIssueService', () => {
         actorId,
       );
 
-      expect(stockService.checkAndEmitStockLow).toHaveBeenCalledWith(
-        itemId,
-        warehouseId,
-      );
+      expect(stockService.checkAndEmitStockLow).toHaveBeenCalledWith(itemId);
     });
   });
 

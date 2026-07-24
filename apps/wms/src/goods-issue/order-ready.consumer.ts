@@ -26,7 +26,6 @@ export class OrderReadyConsumer extends WorkerHost {
         );
         await this.goodsIssueService.createFromOrderReady(
           data.orderId,
-          data.fulfillWarehouseId,
           data.items,
           data.shippingAddress,
           data.recipient,
