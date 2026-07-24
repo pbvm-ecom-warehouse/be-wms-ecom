@@ -60,21 +60,21 @@ export class CatalogRepository {
   async findOrCreateDefaultCategory(): Promise<Types.ObjectId> {
     const existing = await this.categoryModel.findOne().lean();
     if (existing) {
-      return existing._id as Types.ObjectId;
+      return existing._id;
     }
     const created = await this.categoryModel.create({
       name: 'Chưa phân loại',
       slug: 'chua-phan-loai',
       position: 0,
     });
-    return created._id as Types.ObjectId;
+    return created._id;
   }
 
   async findOrCreateProductForVariant(type: string): Promise<Types.ObjectId> {
     const slug = `san-pham-kho-${type.toLowerCase()}`;
     const existing = await this.productModel.findOne({ slug }).lean();
     if (existing) {
-      return existing._id as Types.ObjectId;
+      return existing._id;
     }
     const categoryId = await this.findOrCreateDefaultCategory();
     const created = await this.productModel.create({
@@ -84,7 +84,7 @@ export class CatalogRepository {
       categoryId,
       status: ProductStatus.DRAFT,
     });
-    return created._id as Types.ObjectId;
+    return created._id;
   }
 
   async createProductVariantFromWms(
@@ -99,7 +99,10 @@ export class CatalogRepository {
     try {
       await session.withTransaction(async () => {
         await this.processedModel.create([{ jobId, eventName }], { session });
-        const existing = await this.variantModel.findOne({ sku }).session(session).lean();
+        const existing = await this.variantModel
+          .findOne({ sku })
+          .session(session)
+          .lean();
         if (!existing) {
           const productId = await this.findOrCreateProductForVariant(type);
           await this.variantModel.create(

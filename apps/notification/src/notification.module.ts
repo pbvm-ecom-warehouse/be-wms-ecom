@@ -17,10 +17,7 @@ import {
   UserFcmToken,
   UserFcmTokenSchema,
 } from '../../ecommerce/src/auth/schemas/user-fcm-token.schema';
-import {
-  User,
-  UserSchema,
-} from '../../ecommerce/src/auth/schemas/user.schema';
+import { User, UserSchema } from '../../ecommerce/src/auth/schemas/user.schema';
 
 @Module({
   imports: [

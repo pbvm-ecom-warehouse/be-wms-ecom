@@ -17,7 +17,7 @@ export class SkuPreviewDto {
   @IsIn([ItemType.CUP_BLANK, ItemType.MATERIAL, ItemType.PACKAGING])
   type!: ItemType.CUP_BLANK | ItemType.MATERIAL | ItemType.PACKAGING;
 
-  @ApiProperty({ example: 'MATERIAL_SYRUP' })
+  @ApiProperty({ example: 'MATERIAL' })
   @IsString()
   @MinLength(1)
   templateId!: string;
@@ -31,6 +31,6 @@ export class SkuPreviewDto {
 
 export class SkuPreviewResponseDto {
   @Expose()
-  @ApiProperty({ example: 'MAT-SYR-PEACH-750ML' })
+  @ApiProperty({ example: 'MAT-SYRUP-PEACH-750ML' })
   sku!: string;
 }

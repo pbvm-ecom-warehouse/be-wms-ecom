@@ -1,11 +1,16 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Expose, Type } from 'class-transformer';
-import { AttributeOptionResponseDto } from '../attribute-option/dto/attribute-option.dto';
 
 export class SkuTemplateFieldResponseDto {
   @Expose()
   @ApiProperty()
   key!: string;
+
+  @Expose()
+  @ApiProperty({
+    description: 'false = field optional, FE có thể để trống trên form',
+  })
+  required!: boolean;
 }
 
 export class SkuTemplateResponseDto {
@@ -33,19 +38,4 @@ export class SkuTemplateResponseDto {
   @Type(() => SkuTemplateFieldResponseDto)
   @ApiProperty({ type: [SkuTemplateFieldResponseDto] })
   fields!: SkuTemplateFieldResponseDto[];
-}
-
-export class SkuCategoryOptionsResponseDto {
-  @Expose()
-  @ApiProperty({ example: 'category-options' })
-  kind!: 'category-options';
-
-  @Expose()
-  @ApiProperty()
-  categoryKey!: string;
-
-  @Expose()
-  @Type(() => AttributeOptionResponseDto)
-  @ApiProperty({ type: [AttributeOptionResponseDto] })
-  options!: AttributeOptionResponseDto[];
 }

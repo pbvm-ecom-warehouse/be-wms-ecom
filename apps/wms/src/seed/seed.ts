@@ -238,8 +238,9 @@ async function seedZoneAndItems(
   const material = await stockService.createWarehouseItem(
     {
       type: ItemType.MATERIAL,
-      templateId: 'MATERIAL_TEA',
+      templateId: 'MATERIAL',
       attributeOptionIds: [
+        optionIds['TEA'], // MATERIAL_CATEGORY: Trà
         optionIds['BLK'], // MATERIAL_TYPE: Trà đen
         optionIds['ORG'], // FLAVOR: Nguyên bản
         optionIds['500G'], // SPEC: 500g
