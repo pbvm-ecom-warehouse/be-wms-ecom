@@ -15,6 +15,7 @@ export function buildSku(
   for (const field of template.fields) {
     const code = codesByKey[field.key];
     if (!code) {
+      if (field.required === false) continue;
       throw new Error(
         `Thiếu code cho field ${field.key} của template ${template.templateId}`,
       );

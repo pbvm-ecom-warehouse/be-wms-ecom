@@ -4,7 +4,7 @@ import { CreateWarehouseItemDto } from './create-warehouse-item.dto';
 import { ItemType } from '../schemas/warehouse-item.schema';
 
 const BASE = {
-  templateId: 'MATERIAL_SYRUP',
+  templateId: 'MATERIAL',
   attributeOptionIds: ['66a10000000000000000a001'],
   name: 'Item 1',
   type: ItemType.MATERIAL,

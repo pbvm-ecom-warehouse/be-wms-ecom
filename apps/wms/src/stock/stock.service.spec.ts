@@ -68,7 +68,7 @@ describe('StockService', () => {
     const actorId = new Types.ObjectId().toString();
     const dto = {
       type: ItemType.MATERIAL,
-      templateId: 'MATERIAL_SYRUP',
+      templateId: 'MATERIAL',
       attributeOptionIds: ['opt-flavor', 'opt-spec'],
       name: 'Syrup đào',
       unit: 'chai',
@@ -86,7 +86,7 @@ describe('StockService', () => {
 
     it('resolve SKU qua SkuTemplateService, sinh barcode, tạo item trong transaction', async () => {
       skuTemplateSvc.resolveAndBuildSku.mockResolvedValue({
-        sku: 'MAT-SYR-PEACH-750ML',
+        sku: 'MAT-SYRUP-PEACH-750ML',
         attributeSnapshot: [
           {
             key: 'FLAVOR',
@@ -102,20 +102,20 @@ describe('StockService', () => {
       );
       const createdDoc = {
         _id: new Types.ObjectId(),
-        sku: 'MAT-SYR-PEACH-750ML',
+        sku: 'MAT-SYRUP-PEACH-750ML',
       };
       repo.createItem.mockResolvedValue(createdDoc);
 
       const result = await svc.createWarehouseItem(dto as never, actorId);
 
       expect(skuTemplateSvc.resolveAndBuildSku).toHaveBeenCalledWith(
-        'MATERIAL_SYRUP',
+        'MATERIAL',
         ItemType.MATERIAL,
         ['opt-flavor', 'opt-spec'],
       );
       expect(repo.createItem).toHaveBeenCalledWith(
         expect.objectContaining({
-          sku: 'MAT-SYR-PEACH-750ML',
+          sku: 'MAT-SYRUP-PEACH-750ML',
           barcode: '2000000000015',
         }),
         new Types.ObjectId(actorId),
@@ -126,7 +126,7 @@ describe('StockService', () => {
 
     it('map lỗi 11000 trên sku (race hiếm) thành STOCK_ITEM_SKU_CONFLICT, không throw 500 thô', async () => {
       skuTemplateSvc.resolveAndBuildSku.mockResolvedValue({
-        sku: 'MAT-SYR-PEACH-750ML',
+        sku: 'MAT-SYRUP-PEACH-750ML',
         attributeSnapshot: [],
       });
       barcodeSvc.generateAndReservePrimaryBarcode.mockResolvedValue(
@@ -144,7 +144,7 @@ describe('StockService', () => {
 
     it('lỗi 11000 khác field sku (fallback) vẫn map về STOCK_ITEM_SKU_CONFLICT nếu không nhận diện được keyPattern', async () => {
       skuTemplateSvc.resolveAndBuildSku.mockResolvedValue({
-        sku: 'MAT-SYR-PEACH-750ML',
+        sku: 'MAT-SYRUP-PEACH-750ML',
         attributeSnapshot: [],
       });
       barcodeSvc.generateAndReservePrimaryBarcode.mockResolvedValue(

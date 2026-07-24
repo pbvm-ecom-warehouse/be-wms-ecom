@@ -5,7 +5,6 @@ import { AttributeOptionKey } from '../schemas/attribute-option.schema';
 import { ItemType } from '../schemas/warehouse-item.schema';
 import { buildSku } from './sku-builder';
 import {
-  CATEGORY_CODE_KEY,
   SkuTemplate,
   findRootTemplates,
   findTemplateById,
@@ -19,46 +18,19 @@ export interface AttributeSnapshotEntry {
   code: string;
 }
 
-export type SkuTemplateLookupResult =
-  | { kind: 'template'; template: SkuTemplate }
-  | {
-      kind: 'category-options';
-      categoryKey: AttributeOptionKey;
-    };
-
 @Injectable()
 export class SkuTemplateService {
   constructor(private readonly optionRepo: AttributeOptionRepository) {}
 
   /**
-   * CUP_BLANK không phân nhóm → trả template ngay. MATERIAL/PACKAGING cần
-   * chọn category trước: không truyền categoryOptionId → FE phải tự GET
-   * /attribute-options?key=<categoryKey> (client tự query, service chỉ báo
-   * categoryKey cần dùng — tránh trộn 2 trách nhiệm khác nhau vào 1 response).
+   * Từ issue #35: MATERIAL/PACKAGING gộp về 1 template chung mỗi loại nên
+   * không còn cần chọn category trước — luôn trả thẳng template duy nhất
+   * của itemType.
    */
-  async getRootOrCategoryOptions(
-    itemType: ItemType,
-    categoryOptionId?: string,
-  ): Promise<SkuTemplateLookupResult> {
-    const categoryKey = CATEGORY_CODE_KEY[itemType];
-    if (!categoryKey) {
-      const [template] = findRootTemplates(itemType);
-      if (!template) throw new AppException('STOCK_SKU_TEMPLATE_NOT_FOUND');
-      return { kind: 'template', template };
-    }
-
-    if (!categoryOptionId) {
-      return { kind: 'category-options', categoryKey };
-    }
-
-    const [option] = await this.optionRepo.findByIds([categoryOptionId]);
-    if (!option) throw new AppException('STOCK_ATTRIBUTE_OPTION_NOT_FOUND');
-
-    const template = findRootTemplates(itemType).find(
-      (t) => t.category === option.code,
-    );
+  getTemplate(itemType: ItemType): SkuTemplate {
+    const [template] = findRootTemplates(itemType);
     if (!template) throw new AppException('STOCK_SKU_TEMPLATE_NOT_FOUND');
-    return { kind: 'template', template };
+    return template;
   }
 
   /**
@@ -86,7 +58,12 @@ export class SkuTemplateService {
 
     for (const field of template.fields) {
       const option = byKey.get(field.key);
-      if (!option) throw new AppException('STOCK_ATTRIBUTE_OPTION_NOT_FOUND');
+      if (!option) {
+        // Field optional không có option đi kèm → bỏ qua segment này, không
+        // đẩy vào snapshot (issue #35: FLAVOR/SIZE/COLOR có thể để trống).
+        if (field.required === false) continue;
+        throw new AppException('STOCK_ATTRIBUTE_OPTION_NOT_FOUND');
+      }
       if (!option.isActive) {
         throw new AppException('STOCK_ATTRIBUTE_OPTION_INACTIVE');
       }
