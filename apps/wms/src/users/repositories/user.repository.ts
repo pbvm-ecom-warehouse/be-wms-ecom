@@ -21,7 +21,6 @@ export interface FindAllUsersQuery {
   limit: number;
   role?: string;
   status?: UserStatus;
-  warehouseId?: string;
   search?: string;
 }
 
@@ -29,7 +28,6 @@ export interface UpdateUserProfileInput {
   name?: string;
   email?: string;
   phone?: string;
-  warehouseId?: string;
 }
 
 const SOFT_DELETE_FILTER = { deletedAt: null } as const;
@@ -105,7 +103,6 @@ export class UserRepository {
     const filter: Record<string, unknown> = { ...SOFT_DELETE_FILTER };
     if (query.role) filter['role'] = query.role;
     if (query.status) filter['status'] = query.status;
-    if (query.warehouseId) filter['warehouseId'] = query.warehouseId;
     if (query.search) {
       const escapedSearch = escapeRegExp(query.search);
       filter['$or'] = [

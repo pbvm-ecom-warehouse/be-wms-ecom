@@ -8,7 +8,7 @@ import { AuthService } from '../auth/auth.service';
 import { CreateUserDto } from '../users/dto/create-user.dto';
 import { User } from '../users/schemas/user.schema';
 import { UsersService } from '../users/users.service';
-import { WarehouseService } from '../warehouse/warehouse.service';
+import { LocationService } from '../location/location.service';
 import { StockService } from '../stock/stock.service';
 import { SupplierService } from '../supplier/supplier.service';
 import { ItemType } from '../stock/schemas/warehouse-item.schema';
@@ -40,6 +40,27 @@ const SEED_ATTRIBUTE_OPTIONS: {
   { key: AttributeOptionKey.MATERIAL_TYPE, name: 'Trà đen', code: 'BLK' },
   { key: AttributeOptionKey.FLAVOR, name: 'Nguyên bản', code: 'ORG' },
   { key: AttributeOptionKey.SPEC, name: '500g', code: '500G' },
+  // Category value — code phải khớp SkuTemplate.category trong
+  // sku-template.registry.ts (AttributeOptionService.create validate điều
+  // này), thiếu thì bước chọn category khi tạo item MATERIAL/PACKAGING sẽ rỗng.
+  { key: AttributeOptionKey.MATERIAL_CATEGORY, name: 'Trà', code: 'TEA' },
+  { key: AttributeOptionKey.MATERIAL_CATEGORY, name: 'Sữa', code: 'MILK' },
+  { key: AttributeOptionKey.MATERIAL_CATEGORY, name: 'Đường', code: 'SUGAR' },
+  {
+    key: AttributeOptionKey.MATERIAL_CATEGORY,
+    name: 'Topping',
+    code: 'TOPPING',
+  },
+  { key: AttributeOptionKey.MATERIAL_CATEGORY, name: 'Syrup', code: 'SYRUP' },
+  { key: AttributeOptionKey.MATERIAL_CATEGORY, name: 'Bột', code: 'POWDER' },
+  { key: AttributeOptionKey.PACKAGING_CATEGORY, name: 'Nắp ly', code: 'LID' },
+  {
+    key: AttributeOptionKey.PACKAGING_CATEGORY,
+    name: 'Ống hút',
+    code: 'STRAW',
+  },
+  { key: AttributeOptionKey.PACKAGING_CATEGORY, name: 'Túi', code: 'BAG' },
+  { key: AttributeOptionKey.PACKAGING_CATEGORY, name: 'Hộp', code: 'BOX' },
 ];
 
 /**
@@ -55,7 +76,7 @@ export async function seed(): Promise<void> {
   try {
     const { adminId } = await seedUsers(app);
     const optionIds = await seedAttributeOptions(app, adminId);
-    await seedWarehouseAndItems(app, adminId, optionIds);
+    await seedZoneAndItems(app, adminId, optionIds);
     logger.log('Seed hoàn tất.');
   } finally {
     await app.close();
@@ -115,12 +136,14 @@ async function seedUsers(
 }
 
 /**
- * Seed option thuộc tính tối thiểu để seedWarehouseAndItems build được SKU
- * qua template thật (issue #25) — không seed đủ 14 key, chỉ seed đúng những
- * option 2 item demo (MATERIAL_TEA, CUP_BLANK) cần. Idempotent qua unique
- * {key, code} — AttributeOptionService.create tự throw STOCK_ATTRIBUTE_CODE_CONFLICT
- * nếu đã tồn tại, bắt và bỏ qua (không phải lỗi seed, là trạng thái mong đợi
- * khi seed chạy lại).
+ * Seed option thuộc tính để seedWarehouseAndItems build được SKU qua template
+ * thật (issue #25), cộng với toàn bộ category value (MATERIAL_CATEGORY/
+ * PACKAGING_CATEGORY) mà sku-template.registry.ts cần — thiếu category value
+ * nào thì bước chọn category khi tạo item MATERIAL/PACKAGING qua UI sẽ rỗng
+ * cho category đó. Idempotent qua unique {key, code} —
+ * AttributeOptionService.create tự throw STOCK_ATTRIBUTE_CODE_CONFLICT nếu đã
+ * tồn tại, bắt và bỏ qua (không phải lỗi seed, là trạng thái mong đợi khi seed
+ * chạy lại).
  */
 async function seedAttributeOptions(
   app: INestApplicationContext,
@@ -146,69 +169,60 @@ async function seedAttributeOptions(
   return codeToId;
 }
 
-const SEED_WAREHOUSE_NAME = 'Kho trung tâm (seed)';
+const SEED_ZONE_CODE = 'SEED-A';
 
 /**
- * Seed cây warehouse (zone/rack/2 shelf) + 2 WarehouseItem + 1 Supplier + 2
+ * Seed cây location (zone/rack/2 shelf) + 2 WarehouseItem + 1 Supplier + 2
  * SupplierItem, dùng cho demo script và test tay ở các task sau của S4-05.
  *
  * Idempotent bằng cách kiểm tra NGUYÊN CẢ CÂY qua 1 điều kiện duy nhất: nếu
- * warehouse "Kho trung tâm (seed)" đã tồn tại thì bỏ qua toàn bộ — không tạo
- * lại zone/rack/shelf/item/supplier, và cũng không cần đọc lại id của chúng
+ * zone "SEED-A" đã tồn tại thì bỏ qua toàn bộ — không tạo lại
+ * zone/rack/shelf/item/supplier, và cũng không cần đọc lại id của chúng
  * (không có gì trong plan này tiêu thụ giá trị trả về của seed(), xem
  * task-2-brief.md). Lý do check-1-chỗ là đủ: toàn bộ cây này luôn được tạo
- * cùng nhau trong 1 lần chạy seed — không có kịch bản nào tạo warehouse mà
- * chưa tạo item/supplier đi kèm — nên không cần duplicate-guard riêng cho
- * từng create() (WarehouseService.createWarehouse không có unique code để tự
- * chặn trùng — xem comment trong warehouse.service.ts).
+ * cùng nhau trong 1 lần chạy seed — không có kịch bản nào tạo zone mà chưa
+ * tạo item/supplier đi kèm — nên không cần duplicate-guard riêng cho từng
+ * create() (LocationService.createZone tự chặn trùng qua unique `code`, dùng
+ * luôn code đó làm điều kiện idempotency ở đây).
  */
-async function seedWarehouseAndItems(
+async function seedZoneAndItems(
   app: INestApplicationContext,
   adminId: string,
   optionIds: Record<string, string>,
 ): Promise<{
-  warehouseId: string;
   stagingShelfId: string;
   mainShelfId: string;
   itemIds: string[];
   supplierId: string;
 } | null> {
-  const warehouseService = app.get(WarehouseService);
+  const locationService = app.get(LocationService);
   const stockService = app.get(StockService);
   const supplierService = app.get(SupplierService);
 
-  const existingWarehouses = await warehouseService.listWarehouses();
-  const existing = existingWarehouses.find(
-    (w) => w.name === SEED_WAREHOUSE_NAME,
-  );
+  const zones = await locationService.listZones();
+  const existing = zones.find((z) => z.code === SEED_ZONE_CODE);
   if (existing) {
-    logger.log('seed data đã tồn tại — bỏ qua toàn bộ warehouse/item/supplier');
+    logger.log('seed data đã tồn tại — bỏ qua toàn bộ zone/item/supplier');
     return null;
   }
 
-  const warehouse = await warehouseService.createWarehouse(
-    { name: SEED_WAREHOUSE_NAME, address: '1 Đường Kho, Q9, TP.HCM' },
-    adminId,
-  );
-  const warehouseId = warehouse._id.toString();
-
-  const zone = await warehouseService.createZone(
-    { warehouseId, name: 'Khu A (seed)', code: 'SEED-A' },
+  const zone = await locationService.createZone(
+    { name: 'Khu A (seed)', code: SEED_ZONE_CODE },
     adminId,
   );
   const zoneId = zone._id.toString();
 
-  const rack = await warehouseService.createRack(
+  const rack = await locationService.createRack(
     { zoneId, name: 'Kệ A1 (seed)', code: 'SEED-A1' },
     adminId,
   );
   const rackId = rack._id.toString();
 
-  const stagingShelf = await warehouseService.createShelf(
+  const stagingShelf = await locationService.createShelf(
     { rackId, level: 1, code: 'SEED-A1-STAGING', isStaging: true },
     adminId,
   );
-  const mainShelf = await warehouseService.createShelf(
+  const mainShelf = await locationService.createShelf(
     {
       rackId,
       level: 2,
@@ -267,25 +281,28 @@ async function seedWarehouseAndItems(
   );
   const supplierId = supplier._id.toString();
 
-  // upsertSupplierItem chỉ nhận 1 tham số (dto) — không có actorId (xem
-  // controller thật: async upsertSupplierItem(@Body() dto) không có @CurrentUser).
-  await supplierService.upsertSupplierItem({
-    itemId: material._id.toString(),
-    supplierId,
-    purchasePrice: 15000,
-  });
-  await supplierService.upsertSupplierItem({
-    itemId: cupBlank._id.toString(),
-    supplierId,
-    purchasePrice: 3000,
-  });
+  await supplierService.upsertSupplierItem(
+    {
+      itemId: material._id.toString(),
+      supplierId,
+      purchasePrice: 15000,
+    },
+    adminId,
+  );
+  await supplierService.upsertSupplierItem(
+    {
+      itemId: cupBlank._id.toString(),
+      supplierId,
+      purchasePrice: 3000,
+    },
+    adminId,
+  );
 
   logger.log(
-    `Kho seed: ${warehouseId}, shelf staging: ${stagingShelf._id.toString()}, shelf chính: ${mainShelf._id.toString()}`,
+    `Zone seed: ${zoneId}, shelf staging: ${stagingShelf._id.toString()}, shelf chính: ${mainShelf._id.toString()}`,
   );
 
   return {
-    warehouseId,
     stagingShelfId: stagingShelf._id.toString(),
     mainShelfId: mainShelf._id.toString(),
     itemIds: [material._id.toString(), cupBlank._id.toString()],

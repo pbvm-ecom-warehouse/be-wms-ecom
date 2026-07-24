@@ -28,7 +28,6 @@ import {
 import { AppException } from '@app/common';
 import { plainToInstance } from 'class-transformer';
 import { validate } from 'class-validator';
-import { Types } from 'mongoose';
 import {
   GoodsReturnService,
   type UploadedImageFile,
@@ -105,9 +104,6 @@ export class GoodsReturnController {
   }> {
     const { data, total } = await this.svc.listGoodsReturns({
       status: query.status,
-      warehouseId: query.warehouseId
-        ? new Types.ObjectId(query.warehouseId)
-        : undefined,
       orderId: query.orderId,
       page: query.page,
       limit: query.limit,
@@ -152,7 +148,6 @@ export class GoodsReturnController {
     schema: {
       type: 'object',
       properties: {
-        warehouseId: { type: 'string' },
         items: { type: 'string' },
         images_0: { type: 'string', format: 'binary' },
       },
@@ -218,7 +213,6 @@ export class GoodsReturnController {
     }
 
     const dto = new InspectGoodsReturnDto();
-    dto.warehouseId = form.warehouseId;
     dto.items = items;
     return dto;
   }

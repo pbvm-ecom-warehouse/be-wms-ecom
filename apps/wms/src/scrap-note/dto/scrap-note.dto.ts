@@ -47,10 +47,6 @@ export class CreateScrapNoteItemDto {
 }
 
 export class CreateScrapNoteDto {
-  @ApiProperty({ example: '665f1a2b3c4d5e6f7a8b9c0d' })
-  @IsMongoId()
-  warehouseId!: string;
-
   @ApiPropertyOptional({ example: 'Kiểm tra định kỳ phát hiện hàng hỏng' })
   @IsOptional()
   @IsString()
@@ -72,10 +68,6 @@ export class CreateScrapNoteDto {
  * làm (pipe không parse JSON lồng trong multipart form field).
  */
 export class CreateScrapNoteFormDto {
-  @ApiProperty({ example: '665f1a2b3c4d5e6f7a8b9c0d' })
-  @IsMongoId()
-  warehouseId!: string;
-
   @ApiPropertyOptional({ example: 'Kiểm tra định kỳ phát hiện hàng hỏng' })
   @IsOptional()
   @IsString()
@@ -102,11 +94,6 @@ export class QueryScrapNoteDto {
   @IsOptional()
   @IsEnum(ScrapNoteStatus)
   status?: ScrapNoteStatus;
-
-  @ApiPropertyOptional({ example: '665f1a2b3c4d5e6f7a8b9c0d' })
-  @IsOptional()
-  @IsMongoId()
-  warehouseId?: string;
 
   @ApiPropertyOptional({ default: 1, minimum: 1 })
   @IsOptional()
@@ -170,13 +157,6 @@ export class ScrapNoteResponseDto {
   )
   @ApiProperty()
   id!: string;
-
-  @Expose()
-  @Transform(({ obj }: { obj: { warehouseId?: Types.ObjectId } }) =>
-    obj.warehouseId?.toString(),
-  )
-  @ApiProperty()
-  warehouseId!: string;
 
   @Expose()
   @ApiProperty({ enum: ScrapNoteStatus })

@@ -11,16 +11,11 @@ describe('GoodsReturnSchema', () => {
     expect(paths['status'].defaultValue).toBe(GoodsReturnStatus.DRAFT);
   });
 
-  it('warehouseId và createdBy mặc định null (không required)', () => {
-    const warehouseIdPath = GoodsReturnSchema.paths[
-      'warehouseId'
-    ] as unknown as { isRequired: boolean; defaultValue: unknown };
+  it('createdBy mặc định null (không required)', () => {
     const createdByPath = GoodsReturnSchema.paths['createdBy'] as unknown as {
       isRequired: boolean;
       defaultValue: unknown;
     };
-    expect(warehouseIdPath.isRequired).toBeFalsy();
-    expect(warehouseIdPath.defaultValue).toBeNull();
     expect(createdByPath.isRequired).toBeFalsy();
     expect(createdByPath.defaultValue).toBeNull();
   });
@@ -44,12 +39,9 @@ describe('GoodsReturnSchema', () => {
     expect(defaultValue).toEqual([]);
   });
 
-  it('có index orderId, warehouseId+status, status', () => {
+  it('có index orderId, status', () => {
     const indexes = GoodsReturnSchema.indexes();
     expect(indexes.some(([def]) => def['orderId'] === 1)).toBe(true);
-    expect(
-      indexes.some(([def]) => def['warehouseId'] === 1 && def['status'] === 1),
-    ).toBe(true);
     expect(
       indexes.some(([def]) => def['status'] === 1 && !('warehouseId' in def)),
     ).toBe(true);

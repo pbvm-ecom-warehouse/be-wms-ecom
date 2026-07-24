@@ -134,10 +134,6 @@ export class OrderResponseDto {
   fulfillmentStatus!: FulfillmentStatus;
 
   @Expose()
-  @ApiProperty({ example: null, nullable: true })
-  fulfillWarehouseId!: string | null;
-
-  @Expose()
   @ApiProperty({ example: false })
   hasPrintItems!: boolean;
 

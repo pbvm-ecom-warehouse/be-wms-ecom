@@ -13,7 +13,6 @@ describe('GoodsIssueRepository', () => {
   };
 
   const orderId = 'order-123';
-  const warehouseId = new Types.ObjectId();
   const itemId = new Types.ObjectId();
 
   beforeEach(() => {
@@ -45,7 +44,6 @@ describe('GoodsIssueRepository', () => {
       const recipient = { name: 'Nguyen Van A', phone: '0900000000' };
       await repo.createGoodsIssue({
         orderId,
-        warehouseId,
         lines: [{ itemId, sku: 'SKU-1', quantity: 10 }],
         shippingAddress,
         recipient,
@@ -55,7 +53,6 @@ describe('GoodsIssueRepository', () => {
       expect(model.create).toHaveBeenCalledWith([
         {
           orderId,
-          warehouseId,
           status: GoodsIssueStatus.PENDING,
           shippingAddress,
           recipient,

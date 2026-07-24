@@ -7,7 +7,7 @@ import { GoodsIssueRepository } from './goods-issue.repository';
 import { GoodsIssueService } from './goods-issue.service';
 import { GoodsIssueController } from './goods-issue.controller';
 import { OrderReadyConsumer } from './order-ready.consumer';
-import { WarehouseModule } from '../warehouse/warehouse.module';
+import { LocationModule } from '../location/location.module';
 import { StockModule } from '../stock/stock.module';
 
 @Module({
@@ -24,7 +24,7 @@ import { StockModule } from '../stock/stock.module';
     MongooseModule.forFeature([
       { name: GoodsIssue.name, schema: GoodsIssueSchema },
     ]),
-    WarehouseModule, // findShelfByCode
+    LocationModule, // findShelfByCode
     StockModule, // StockRepository + StockTransactionHelper
   ],
   providers: [GoodsIssueRepository, GoodsIssueService, OrderReadyConsumer],

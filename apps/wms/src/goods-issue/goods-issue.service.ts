@@ -15,7 +15,7 @@ import {
   type PickSuggestion,
 } from '../stock/stock.repository';
 import { StockService } from '../stock/stock.service';
-import { WarehouseRepository } from '../warehouse/warehouse.repository';
+import { LocationRepository } from '../location/location.repository';
 import { StockTransactionHelper } from '../stock/helpers/with-stock-transaction.helper';
 import { MovementType } from '../stock/schemas/stock-movement.schema';
 import { BarcodeService } from '../stock/barcode/barcode.service';
@@ -33,7 +33,7 @@ export class GoodsIssueService {
     private readonly repo: GoodsIssueRepository,
     private readonly stockRepo: StockRepository,
     private readonly stockService: StockService,
-    private readonly warehouseRepo: WarehouseRepository,
+    private readonly locationRepo: LocationRepository,
     private readonly stockTransactionHelper: StockTransactionHelper,
     private readonly barcodeSvc: BarcodeService,
     @InjectQueue(QUEUES.SHIPMENT) private readonly shipmentQueue: Queue,
@@ -49,7 +49,6 @@ export class GoodsIssueService {
    */
   async createFromOrderReady(
     orderId: string,
-    warehouseId: string,
     items: OrderReadyItem[],
     shippingAddress: Record<string, unknown>,
     recipient: { name: string; phone: string },
@@ -90,7 +89,6 @@ export class GoodsIssueService {
 
     await this.repo.createGoodsIssue({
       orderId,
-      warehouseId: new Types.ObjectId(warehouseId),
       lines,
       shippingAddress,
       recipient,
@@ -113,7 +111,6 @@ export class GoodsIssueService {
 
     return this.stockRepo.findAvailableStockForPick(
       new Types.ObjectId(itemId),
-      gi.warehouseId,
       isPerishable,
     );
   }
@@ -137,11 +134,8 @@ export class GoodsIssueService {
     const item = await this.stockRepo.findItemByIdDocument(itemId.toString());
     if (!item) throw new AppException('GOODS_ISSUE_ITEM_NOT_FOUND');
 
-    const shelf = await this.warehouseRepo.findShelfByCode(dto.shelfCode);
+    const shelf = await this.locationRepo.findShelfByCode(dto.shelfCode);
     if (!shelf) throw new AppException('GOODS_ISSUE_SHELF_NOT_FOUND');
-    if (shelf.warehouseId.toString() !== gi.warehouseId.toString()) {
-      throw new AppException('GOODS_ISSUE_SHELF_NOT_FOUND');
-    }
 
     const line = gi.items.find(
       (i) => i.itemId.toString() === item._id.toString(),
@@ -154,7 +148,6 @@ export class GoodsIssueService {
     const lotId = dto.lotId ? new Types.ObjectId(dto.lotId) : null;
     const inventory = await this.stockRepo.findInventory(
       item._id,
-      gi.warehouseId,
       shelf._id,
       lotId,
     );
@@ -166,7 +159,6 @@ export class GoodsIssueService {
     await this.stockTransactionHelper.withStockTransaction(async (session) => {
       await this.stockRepo.upsertInventory(
         item._id,
-        gi.warehouseId,
         shelf._id,
         lotId,
         -dto.quantity,
@@ -174,7 +166,6 @@ export class GoodsIssueService {
       );
       await this.stockRepo.upsertBalance(
         item._id,
-        gi.warehouseId,
         -dto.quantity,
         -dto.quantity,
         0,
@@ -183,7 +174,6 @@ export class GoodsIssueService {
       await this.stockRepo.insertMovement(
         {
           itemId: item._id,
-          warehouseId: gi.warehouseId,
           shelfId: shelf._id,
           lotId,
           type: MovementType.ISSUE,
@@ -204,7 +194,7 @@ export class GoodsIssueService {
     });
 
     // S4-04: kiểm tra ngưỡng thấp tồn — sau khi transaction commit.
-    await this.stockService.checkAndEmitStockLow(item._id, gi.warehouseId);
+    await this.stockService.checkAndEmitStockLow(item._id);
 
     const updated = await this.repo.findById(id);
     if (!updated) throw new AppException('GOODS_ISSUE_NOT_FOUND');

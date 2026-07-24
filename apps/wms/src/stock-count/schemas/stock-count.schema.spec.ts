@@ -10,14 +10,10 @@ describe('StockCountSchema', () => {
     expect(paths['status'].defaultValue).toBe(StockCountStatus.DRAFT);
   });
 
-  it('warehouseId và createdBy là required', () => {
-    const warehouseIdPath = StockCountSchema.paths[
-      'warehouseId'
-    ] as unknown as { isRequired: boolean };
+  it('createdBy là required', () => {
     const createdByPath = StockCountSchema.paths['createdBy'] as unknown as {
       isRequired: boolean;
     };
-    expect(warehouseIdPath.isRequired).toBe(true);
     expect(createdByPath.isRequired).toBe(true);
   });
 
@@ -30,12 +26,8 @@ describe('StockCountSchema', () => {
     expect(StockCountSchema.paths['items']).toBeDefined();
   });
 
-  it('có index warehouseId+status và status', () => {
+  it('có index status', () => {
     const indexes = StockCountSchema.indexes();
-    const compound = indexes.find(
-      ([def]) => def['warehouseId'] === 1 && def['status'] === 1,
-    );
-    expect(compound).toBeDefined();
     const statusOnly = indexes.find(
       ([def]) => def['status'] === 1 && !('warehouseId' in def),
     );

@@ -78,22 +78,14 @@ export const ERROR_CATALOG = {
     message: 'Đã có nhân viên trong hệ thống',
   },
 
-  // ── WMS — Warehouse Structure ──────────────────────────────────────────────
-  WAREHOUSE_NOT_FOUND: {
-    status: HttpStatus.NOT_FOUND,
-    message: 'Không tìm thấy kho',
-  },
-  WAREHOUSE_CODE_EXISTS: {
-    status: HttpStatus.CONFLICT,
-    message: 'Mã khu vực đã tồn tại trong kho này',
-  },
+  // ── WMS — Location Structure (Zone/Rack/Shelf) ──────────────────────────────
   ZONE_NOT_FOUND: {
     status: HttpStatus.NOT_FOUND,
     message: 'Không tìm thấy khu vực',
   },
   ZONE_CODE_EXISTS: {
     status: HttpStatus.CONFLICT,
-    message: 'Mã khu vực đã tồn tại trong kho này',
+    message: 'Mã khu vực đã tồn tại',
   },
   RACK_NOT_FOUND: {
     status: HttpStatus.NOT_FOUND,
@@ -146,6 +138,11 @@ export const ERROR_CATALOG = {
   PO_PRICE_MISSING: {
     status: HttpStatus.BAD_REQUEST,
     message: 'Thiếu đơn giá — SKU chưa có báo giá NCC, cần nhập tay',
+  },
+  PO_QTY_BELOW_MOQ: {
+    status: HttpStatus.BAD_REQUEST,
+    message:
+      'Số lượng đặt thấp hơn số lượng đặt tối thiểu (MOQ) của NCC cho SKU này',
   },
 
   // ── WMS — Goods Receipt Note ────────────────────────────────────────────
@@ -417,6 +414,11 @@ export const ERROR_CATALOG = {
   STOCK_ATTRIBUTE_CODE_IMMUTABLE: {
     status: HttpStatus.BAD_REQUEST,
     message: 'Không thể sửa code của option đã được sử dụng',
+  },
+  STOCK_ATTRIBUTE_CATEGORY_CODE_INVALID: {
+    status: HttpStatus.BAD_REQUEST,
+    message:
+      'Code không khớp với category nào trong sku-template registry của nhóm này',
   },
   STOCK_ITEM_BARCODE_CONFLICT: {
     status: HttpStatus.CONFLICT,

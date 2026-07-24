@@ -19,8 +19,7 @@ const makeStockRepo = () => ({
   insertMovement: jest.fn(),
 });
 
-const makeWarehouseRepo = () => ({
-  findWarehouseById: jest.fn(),
+const makeLocationRepo = () => ({
   findShelfById: jest.fn(),
 });
 
@@ -55,13 +54,12 @@ describe('ScrapNoteService', () => {
   let repo: ReturnType<typeof makeRepo>;
   let stockRepo: ReturnType<typeof makeStockRepo>;
   let stockService: ReturnType<typeof makeStockService>;
-  let warehouseRepo: ReturnType<typeof makeWarehouseRepo>;
+  let locationRepo: ReturnType<typeof makeLocationRepo>;
   let txHelper: ReturnType<typeof makeTxHelper>;
   let stockQueue: ReturnType<typeof makeStockQueue>;
   let cloudinary: ReturnType<typeof makeCloudinaryService>;
 
   const actorId = new Types.ObjectId().toString();
-  const warehouseId = new Types.ObjectId();
   const itemId = new Types.ObjectId();
   const shelfId = new Types.ObjectId();
   const lotId = new Types.ObjectId();
@@ -70,7 +68,7 @@ describe('ScrapNoteService', () => {
     repo = makeRepo();
     stockRepo = makeStockRepo();
     stockService = makeStockService();
-    warehouseRepo = makeWarehouseRepo();
+    locationRepo = makeLocationRepo();
     txHelper = makeTxHelper();
     stockQueue = makeStockQueue();
     cloudinary = makeCloudinaryService();
@@ -78,7 +76,7 @@ describe('ScrapNoteService', () => {
       repo as never,
       stockRepo as never,
       stockService as never,
-      warehouseRepo as never,
+      locationRepo as never,
       txHelper as never,
       stockQueue as never,
       cloudinary as never,
@@ -86,41 +84,17 @@ describe('ScrapNoteService', () => {
   });
 
   describe('createScrapNote', () => {
-    it('không tìm thấy warehouse → throw WAREHOUSE_NOT_FOUND, không tạo phiếu', async () => {
-      warehouseRepo.findWarehouseById.mockResolvedValue(null);
-
-      await expect(
-        svc.createScrapNote(
-          {
-            warehouseId: warehouseId.toString(),
-            items: [
-              {
-                itemId: itemId.toString(),
-                shelfId: shelfId.toString(),
-                quantity: 5,
-                reason: 'Vỡ',
-              },
-            ],
-          },
-          actorId,
-        ),
-      ).rejects.toThrow();
-      expect(repo.createScrapNote).not.toHaveBeenCalled();
-    });
-
     it('không tìm thấy shelf → throw SHELF_NOT_FOUND, không tạo phiếu', async () => {
-      warehouseRepo.findWarehouseById.mockResolvedValue({ _id: warehouseId });
       stockRepo.findItemById.mockResolvedValue({
         _id: itemId,
         sku: 'SKU-1',
         isPerishable: false,
       });
-      warehouseRepo.findShelfById.mockResolvedValue(null);
+      locationRepo.findShelfById.mockResolvedValue(null);
 
       await expect(
         svc.createScrapNote(
           {
-            warehouseId: warehouseId.toString(),
             items: [
               {
                 itemId: itemId.toString(),
@@ -137,8 +111,7 @@ describe('ScrapNoteService', () => {
     });
 
     it('tạo phiếu hợp lệ với dòng có lotId (hết hạn) và dòng không có lotId (hỏng)', async () => {
-      warehouseRepo.findWarehouseById.mockResolvedValue({ _id: warehouseId });
-      warehouseRepo.findShelfById.mockResolvedValue({ _id: shelfId });
+      locationRepo.findShelfById.mockResolvedValue({ _id: shelfId });
       stockRepo.findItemById.mockImplementation((id: string) =>
         Promise.resolve({
           _id: new Types.ObjectId(id),
@@ -151,7 +124,6 @@ describe('ScrapNoteService', () => {
 
       await svc.createScrapNote(
         {
-          warehouseId: warehouseId.toString(),
           items: [
             {
               itemId: itemId.toString(),
@@ -166,7 +138,6 @@ describe('ScrapNoteService', () => {
       );
 
       expect(repo.createScrapNote).toHaveBeenCalledWith(
-        warehouseId,
         undefined,
         expect.anything(),
         [
@@ -184,8 +155,7 @@ describe('ScrapNoteService', () => {
     });
 
     it('không có imagesByIndex → images rỗng, không gọi CloudinaryService', async () => {
-      warehouseRepo.findWarehouseById.mockResolvedValue({ _id: warehouseId });
-      warehouseRepo.findShelfById.mockResolvedValue({ _id: shelfId });
+      locationRepo.findShelfById.mockResolvedValue({ _id: shelfId });
       stockRepo.findItemById.mockResolvedValue({
         _id: itemId,
         sku: 'SKU-1',
@@ -196,7 +166,6 @@ describe('ScrapNoteService', () => {
 
       await svc.createScrapNote(
         {
-          warehouseId: warehouseId.toString(),
           items: [
             {
               itemId: itemId.toString(),
@@ -211,7 +180,6 @@ describe('ScrapNoteService', () => {
 
       expect(cloudinary.uploadImage).not.toHaveBeenCalled();
       expect(repo.createScrapNote).toHaveBeenCalledWith(
-        warehouseId,
         undefined,
         expect.anything(),
         [expect.objectContaining({ images: [] })],
@@ -219,8 +187,7 @@ describe('ScrapNoteService', () => {
     });
 
     it('có ảnh minh chứng cho dòng hủy → upload Cloudinary vào wms/scrap-note, lưu URL đúng dòng', async () => {
-      warehouseRepo.findWarehouseById.mockResolvedValue({ _id: warehouseId });
-      warehouseRepo.findShelfById.mockResolvedValue({ _id: shelfId });
+      locationRepo.findShelfById.mockResolvedValue({ _id: shelfId });
       stockRepo.findItemById.mockResolvedValue({
         _id: itemId,
         sku: 'SKU-1',
@@ -233,7 +200,6 @@ describe('ScrapNoteService', () => {
 
       await svc.createScrapNote(
         {
-          warehouseId: warehouseId.toString(),
           items: [
             {
               itemId: itemId.toString(),
@@ -252,7 +218,6 @@ describe('ScrapNoteService', () => {
         'wms/scrap-note',
       );
       expect(repo.createScrapNote).toHaveBeenCalledWith(
-        warehouseId,
         undefined,
         expect.anything(),
         [
@@ -266,8 +231,7 @@ describe('ScrapNoteService', () => {
     });
 
     it('ảnh minh chứng sai mimetype → throw VALIDATION_FAILED, không tạo phiếu', async () => {
-      warehouseRepo.findWarehouseById.mockResolvedValue({ _id: warehouseId });
-      warehouseRepo.findShelfById.mockResolvedValue({ _id: shelfId });
+      locationRepo.findShelfById.mockResolvedValue({ _id: shelfId });
       stockRepo.findItemById.mockResolvedValue({
         _id: itemId,
         sku: 'SKU-1',
@@ -282,7 +246,6 @@ describe('ScrapNoteService', () => {
       await expect(
         svc.createScrapNote(
           {
-            warehouseId: warehouseId.toString(),
             items: [
               {
                 itemId: itemId.toString(),
@@ -300,8 +263,7 @@ describe('ScrapNoteService', () => {
     });
 
     it('ảnh minh chứng vượt quá 5MB → throw VALIDATION_FAILED, không tạo phiếu', async () => {
-      warehouseRepo.findWarehouseById.mockResolvedValue({ _id: warehouseId });
-      warehouseRepo.findShelfById.mockResolvedValue({ _id: shelfId });
+      locationRepo.findShelfById.mockResolvedValue({ _id: shelfId });
       stockRepo.findItemById.mockResolvedValue({
         _id: itemId,
         sku: 'SKU-1',
@@ -316,7 +278,6 @@ describe('ScrapNoteService', () => {
       await expect(
         svc.createScrapNote(
           {
-            warehouseId: warehouseId.toString(),
             items: [
               {
                 itemId: itemId.toString(),
@@ -334,8 +295,7 @@ describe('ScrapNoteService', () => {
     });
 
     it('item isPerishable thiếu lotId → throw SCRAP_NOTE_ITEM_ISPERISHABLE_NO_LOT', async () => {
-      warehouseRepo.findWarehouseById.mockResolvedValue({ _id: warehouseId });
-      warehouseRepo.findShelfById.mockResolvedValue({ _id: shelfId });
+      locationRepo.findShelfById.mockResolvedValue({ _id: shelfId });
       stockRepo.findItemById.mockResolvedValue({
         _id: itemId,
         sku: 'SKU-1',
@@ -345,7 +305,6 @@ describe('ScrapNoteService', () => {
       await expect(
         svc.createScrapNote(
           {
-            warehouseId: warehouseId.toString(),
             items: [
               {
                 itemId: itemId.toString(),
@@ -362,8 +321,7 @@ describe('ScrapNoteService', () => {
     });
 
     it('số lượng đề xuất vượt tồn thật tại vị trí → throw SCRAP_NOTE_QTY_EXCEEDS', async () => {
-      warehouseRepo.findWarehouseById.mockResolvedValue({ _id: warehouseId });
-      warehouseRepo.findShelfById.mockResolvedValue({ _id: shelfId });
+      locationRepo.findShelfById.mockResolvedValue({ _id: shelfId });
       stockRepo.findItemById.mockResolvedValue({
         _id: itemId,
         sku: 'SKU-1',
@@ -374,7 +332,6 @@ describe('ScrapNoteService', () => {
       await expect(
         svc.createScrapNote(
           {
-            warehouseId: warehouseId.toString(),
             items: [
               {
                 itemId: itemId.toString(),
@@ -412,7 +369,6 @@ describe('ScrapNoteService', () => {
     it('dòng có lotId (hết hạn) → trừ onHand + expired, KHÔNG bắn stock.changed', async () => {
       repo.findById.mockResolvedValue({
         _id: 'sn1',
-        warehouseId,
         status: ScrapNoteStatus.DRAFT,
         items: [
           {
@@ -430,7 +386,6 @@ describe('ScrapNoteService', () => {
 
       expect(stockRepo.upsertInventory).toHaveBeenCalledWith(
         itemId,
-        warehouseId,
         shelfId,
         lotId,
         -5,
@@ -438,7 +393,6 @@ describe('ScrapNoteService', () => {
       );
       expect(stockRepo.upsertBalance).toHaveBeenCalledWith(
         itemId,
-        warehouseId,
         -5,
         0,
         -5,
@@ -459,7 +413,6 @@ describe('ScrapNoteService', () => {
     it('dòng không có lotId (hỏng) → trừ onHand only, CÓ bắn stock.changed', async () => {
       repo.findById.mockResolvedValue({
         _id: 'sn1',
-        warehouseId,
         status: ScrapNoteStatus.DRAFT,
         items: [
           {
@@ -477,7 +430,6 @@ describe('ScrapNoteService', () => {
 
       expect(stockRepo.upsertBalance).toHaveBeenCalledWith(
         itemId,
-        warehouseId,
         -5,
         0,
         0,
@@ -494,7 +446,6 @@ describe('ScrapNoteService', () => {
       const otherItemId = new Types.ObjectId();
       repo.findById.mockResolvedValue({
         _id: 'sn1',
-        warehouseId,
         status: ScrapNoteStatus.DRAFT,
         items: [
           {
@@ -529,7 +480,6 @@ describe('ScrapNoteService', () => {
     it('dòng skipAvailableSync=true (dù không có lotId) → KHÔNG bắn stock.changed', async () => {
       repo.findById.mockResolvedValue({
         _id: 'sn1',
-        warehouseId,
         status: ScrapNoteStatus.DRAFT,
         items: [
           {
@@ -552,7 +502,6 @@ describe('ScrapNoteService', () => {
     it('approveScrapNote gọi checkAndEmitStockLow 1 lần khi nhiều dòng cùng itemId (dedup)', async () => {
       repo.findById.mockResolvedValue({
         _id: 'sn1',
-        warehouseId,
         status: ScrapNoteStatus.DRAFT,
         items: [
           {
@@ -584,7 +533,6 @@ describe('ScrapNoteService', () => {
       const thirdItemId = new Types.ObjectId();
       repo.findById.mockResolvedValue({
         _id: 'sn1',
-        warehouseId,
         status: ScrapNoteStatus.DRAFT,
         items: [
           {
@@ -627,17 +575,14 @@ describe('ScrapNoteService', () => {
       expect(stockService.checkAndEmitStockLow).toHaveBeenNthCalledWith(
         1,
         itemId,
-        warehouseId,
       );
       expect(stockService.checkAndEmitStockLow).toHaveBeenNthCalledWith(
         2,
         otherItemId,
-        warehouseId,
       );
       expect(stockService.checkAndEmitStockLow).toHaveBeenNthCalledWith(
         3,
         thirdItemId,
-        warehouseId,
       );
     });
   });
@@ -649,7 +594,6 @@ describe('ScrapNoteService', () => {
       const session = {} as never;
 
       const result = await svc.createApprovedScrapNoteForReturn({
-        warehouseId,
         itemId,
         sku: 'SKU-1',
         shelfId,
@@ -660,7 +604,6 @@ describe('ScrapNoteService', () => {
       });
 
       expect(repo.createApprovedScrapNote).toHaveBeenCalledWith(
-        warehouseId,
         new Types.ObjectId(actorId),
         [
           {
@@ -677,7 +620,6 @@ describe('ScrapNoteService', () => {
       );
       expect(stockRepo.upsertInventory).toHaveBeenCalledWith(
         itemId,
-        warehouseId,
         shelfId,
         null,
         -4,
@@ -685,7 +627,6 @@ describe('ScrapNoteService', () => {
       );
       expect(stockRepo.upsertBalance).toHaveBeenCalledWith(
         itemId,
-        warehouseId,
         -4,
         0,
         0,

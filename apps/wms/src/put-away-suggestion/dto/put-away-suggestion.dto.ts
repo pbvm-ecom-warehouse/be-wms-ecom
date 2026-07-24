@@ -1,6 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Expose } from 'class-transformer';
-import { IsInt, IsMongoId, IsString, Min, MinLength } from 'class-validator';
+import { IsInt, IsString, Min, MinLength } from 'class-validator';
 
 export class QueryPutAwaySuggestionDto {
   @ApiProperty({ example: 'CUP-500ML-RED' })
@@ -12,10 +12,6 @@ export class QueryPutAwaySuggestionDto {
   @IsInt()
   @Min(1)
   qty!: number;
-
-  @ApiProperty({ example: '60d5ec49f1b2c72b3c8e4f01' })
-  @IsMongoId()
-  warehouseId!: string;
 }
 
 export class PutAwaySuggestionItemDto {

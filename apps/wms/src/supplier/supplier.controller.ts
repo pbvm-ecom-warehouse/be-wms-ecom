@@ -62,8 +62,9 @@ export class SupplierController {
   @ApiCreatedResponse({ type: SupplierItemResponseDto })
   async upsertSupplierItem(
     @Body() dto: CreateSupplierItemDto,
+    @CurrentUser('sub') actorId: string,
   ): Promise<SupplierItemResponseDto> {
-    const doc = await this.svc.upsertSupplierItem(dto);
+    const doc = await this.svc.upsertSupplierItem(dto, actorId);
     return plainToInstance(SupplierItemResponseDto, doc.toObject(), TO_OPTS);
   }
 
@@ -120,8 +121,9 @@ export class SupplierController {
   async updateSupplierItem(
     @Param('id') id: string,
     @Body() dto: UpdateSupplierItemDto,
+    @CurrentUser('sub') actorId: string,
   ): Promise<SupplierItemResponseDto> {
-    const doc = await this.svc.updateSupplierItem(id, dto);
+    const doc = await this.svc.updateSupplierItem(id, dto, actorId);
     return plainToInstance(SupplierItemResponseDto, doc.toObject(), TO_OPTS);
   }
 

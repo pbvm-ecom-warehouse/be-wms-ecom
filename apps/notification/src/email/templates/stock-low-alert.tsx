@@ -23,7 +23,6 @@ const SANS = "-apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif";
 
 interface StockLowAlertProps {
   sku: string;
-  warehouseId: string;
   available: number;
   minQuantity: number;
 }
@@ -31,7 +30,6 @@ interface StockLowAlertProps {
 // Cảnh báo tồn kho thấp (UC-N04) — MANAGER nhận khi available < minQuantity.
 export function StockLowAlertEmail({
   sku,
-  warehouseId,
   available,
   minQuantity,
 }: StockLowAlertProps): ReactElement {
@@ -112,8 +110,7 @@ export function StockLowAlertEmail({
                 fontFamily: SANS,
               }}
             >
-              Kho <strong style={{ color: INK }}>{warehouseId}</strong> đang có
-              tồn dưới ngưỡng tối thiểu.
+              Mặt hàng này đang có tồn dưới ngưỡng tối thiểu.
             </Text>
 
             <table

@@ -6,10 +6,6 @@ export class Shelf {
   @Prop({ type: SchemaTypes.ObjectId, required: true })
   rackId!: Types.ObjectId;
 
-  /** Denormalized từ Rack.zoneId → Zone.warehouseId — tra staging shelf nhanh, không join 3 tầng */
-  @Prop({ type: SchemaTypes.ObjectId, required: true })
-  warehouseId!: Types.ObjectId;
-
   @Prop({ required: true })
   level!: number;
 
@@ -52,4 +48,12 @@ ShelfSchema.index(
   { code: 1 },
   { unique: true, partialFilterExpression: { deletedAt: null } },
 );
-ShelfSchema.index({ warehouseId: 1, isStaging: 1 });
+// App = 1 kho duy nhất → tối đa 1 staging shelf toàn hệ thống (trước đây chỉ
+// là quy ước ngầm scoped theo warehouseId, giờ siết thành ràng buộc DB thật).
+ShelfSchema.index(
+  { isStaging: 1 },
+  {
+    unique: true,
+    partialFilterExpression: { isStaging: true, deletedAt: null },
+  },
+);

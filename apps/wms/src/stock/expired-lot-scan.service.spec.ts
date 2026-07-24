@@ -11,7 +11,6 @@ describe('ExpiredLotScanService', () => {
 
   const lotId = new Types.ObjectId();
   const itemId = new Types.ObjectId();
-  const warehouseId = new Types.ObjectId();
 
   beforeEach(() => {
     lotModel = {
@@ -38,24 +37,17 @@ describe('ExpiredLotScanService', () => {
   });
 
   describe('scanExpiredLots', () => {
-    it('1 lô hết hạn, tồn ở 1 kho → tăng expired 1 lần, phát 1 job stock.expired', async () => {
+    it('1 lô hết hạn → tăng expired 1 lần, phát 1 job stock.expired', async () => {
       lotModel.find.mockReturnValue({
         exec: jest.fn().mockResolvedValue([{ _id: lotId }]),
       });
       stockRepo.sumInventoryByLot.mockResolvedValue([
-        { itemId, warehouseId, sku: 'SKU-1', qty: 5 },
+        { itemId, sku: 'SKU-1', qty: 5 },
       ]);
 
       await svc.scanExpiredLots();
 
-      expect(stockRepo.upsertBalance).toHaveBeenCalledWith(
-        itemId,
-        warehouseId,
-        0,
-        0,
-        5,
-        {},
-      );
+      expect(stockRepo.upsertBalance).toHaveBeenCalledWith(itemId, 0, 0, 5, {});
       expect(lotModel.updateOne).toHaveBeenCalledWith(
         { _id: lotId },
         { status: LotStatus.EXPIRED },
@@ -69,14 +61,14 @@ describe('ExpiredLotScanService', () => {
       );
     });
 
-    it('1 lô hết hạn, tồn rải rác 2 kho → tăng expired 2 lần, chỉ 1 job stock.expired với delta tổng', async () => {
-      const warehouseId2 = new Types.ObjectId();
+    it('1 lô hết hạn, tồn rải rác nhiều item cùng sku → tăng expired nhiều lần, chỉ 1 job stock.expired với delta tổng', async () => {
+      const itemId2 = new Types.ObjectId();
       lotModel.find.mockReturnValue({
         exec: jest.fn().mockResolvedValue([{ _id: lotId }]),
       });
       stockRepo.sumInventoryByLot.mockResolvedValue([
-        { itemId, warehouseId, sku: 'SKU-1', qty: 5 },
-        { itemId, warehouseId: warehouseId2, sku: 'SKU-1', qty: 3 },
+        { itemId, sku: 'SKU-1', qty: 5 },
+        { itemId: itemId2, sku: 'SKU-1', qty: 3 },
       ]);
 
       await svc.scanExpiredLots();
@@ -85,7 +77,6 @@ describe('ExpiredLotScanService', () => {
       expect(stockRepo.upsertBalance).toHaveBeenNthCalledWith(
         1,
         itemId,
-        warehouseId,
         0,
         0,
         5,
@@ -93,8 +84,7 @@ describe('ExpiredLotScanService', () => {
       );
       expect(stockRepo.upsertBalance).toHaveBeenNthCalledWith(
         2,
-        itemId,
-        warehouseId2,
+        itemId2,
         0,
         0,
         3,

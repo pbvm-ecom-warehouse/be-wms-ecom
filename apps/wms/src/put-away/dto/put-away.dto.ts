@@ -39,11 +39,6 @@ export class ConfirmPutAwayLineDto {
 }
 
 export class QueryPutAwayTaskDto {
-  @ApiPropertyOptional({ description: 'Lọc theo kho' })
-  @IsOptional()
-  @IsMongoId()
-  warehouseId?: string;
-
   @ApiPropertyOptional({ enum: PutAwayTaskStatus })
   @IsOptional()
   @IsEnum(PutAwayTaskStatus)
@@ -103,13 +98,6 @@ export class PutAwayTaskResponseDto {
   )
   @ApiProperty()
   grnId!: string;
-
-  @Expose()
-  @Transform(({ obj }: { obj: { warehouseId?: Types.ObjectId } }) =>
-    obj.warehouseId?.toString(),
-  )
-  @ApiProperty()
-  warehouseId!: string;
 
   @Expose()
   @ApiProperty({ enum: PutAwayTaskStatus })

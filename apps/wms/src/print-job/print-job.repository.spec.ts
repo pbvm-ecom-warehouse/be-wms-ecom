@@ -13,7 +13,6 @@ describe('PrintJobRepository', () => {
   };
 
   const orderId = 'order-123';
-  const warehouseId = new Types.ObjectId();
   const inputItemId = new Types.ObjectId();
   const outputItemId = new Types.ObjectId();
 
@@ -45,7 +44,6 @@ describe('PrintJobRepository', () => {
       model.create.mockResolvedValue([{ _id: 'pj1' }]);
       await repo.createPrintJob(
         orderId,
-        warehouseId,
         [
           {
             inputItemId,
@@ -61,7 +59,6 @@ describe('PrintJobRepository', () => {
         [
           {
             orderId,
-            warehouseId,
             status: PrintJobStatus.PENDING,
             items: [
               {

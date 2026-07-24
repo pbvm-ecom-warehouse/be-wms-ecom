@@ -30,7 +30,11 @@ export class CreatePurchaseOrderItemDto {
   @MinLength(1)
   sku!: string;
 
-  @ApiProperty({ example: 100 })
+  @ApiProperty({
+    example: 100,
+    description:
+      'Nếu SKU đã có SupplierItem.minOrderQty với NCC này, expectedQty phải >= minOrderQty, nếu không PO bị từ chối (PO_QTY_BELOW_MOQ).',
+  })
   @IsNumber()
   @Min(0)
   expectedQty!: number;
@@ -42,7 +46,8 @@ export class CreatePurchaseOrderItemDto {
 
   @ApiPropertyOptional({
     example: 15000,
-    description: 'Để trống → tự điền từ SupplierItem.purchasePrice',
+    description:
+      'Để trống → tự điền từ SupplierItem.purchasePrice. Nhập tay vẫn được chấp nhận (giá thương lượng theo đơn); nếu lệch quá 20% so với báo giá đã đăng ký, hệ thống chỉ ghi log cảnh báo, không chặn.',
   })
   @IsOptional()
   @IsNumber()
@@ -55,11 +60,10 @@ export class CreatePurchaseOrderDto {
   @IsMongoId()
   supplierId!: string;
 
-  @ApiProperty({ description: 'Warehouse._id (ObjectId)', example: '665f...' })
-  @IsMongoId()
-  warehouseId!: string;
-
-  @ApiPropertyOptional({ description: 'Ngày dự kiến nhận hàng' })
+  @ApiPropertyOptional({
+    description:
+      'Ngày dự kiến nhận hàng. Để trống → tự tính = hôm nay + leadTimeDays lớn nhất trong các SupplierItem của đơn (nếu có khai báo).',
+  })
   @IsOptional()
   @IsString()
   expectedDate?: string;
@@ -147,13 +151,6 @@ export class PurchaseOrderResponseDto {
   )
   @ApiProperty()
   supplierId!: string;
-
-  @Expose()
-  @Transform(({ obj }: { obj: { warehouseId?: Types.ObjectId } }) =>
-    obj.warehouseId?.toString(),
-  )
-  @ApiProperty()
-  warehouseId!: string;
 
   @Expose()
   @ApiProperty({ enum: PurchaseOrderStatus })

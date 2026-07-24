@@ -28,10 +28,7 @@ export async function seed(): Promise<void> {
         `Tạo ECOM_MANAGER: ${SEED_MANAGER.email} / ${SEED_MANAGER.password}`,
       );
     } catch (err) {
-      if (
-        err instanceof AppException &&
-        err.code === 'AUTH_EMAIL_CONFLICT'
-      ) {
+      if (err instanceof AppException && err.code === 'AUTH_EMAIL_CONFLICT') {
         logger.log(`${SEED_MANAGER.email} đã tồn tại — bỏ qua.`);
       } else {
         throw err;

@@ -31,11 +31,7 @@ export class ReservationConsumer extends WorkerHost {
         this.logger.log(
           `Nhận stock.reserve_requested cho đơn ${data.orderId}.`,
         );
-        await this.reservationService.reserveForOrder(
-          data.orderId,
-          data.items,
-          data.preferWarehouse,
-        );
+        await this.reservationService.reserveForOrder(data.orderId, data.items);
         break;
       }
       case EVENTS.ORDER_CANCELLED: {

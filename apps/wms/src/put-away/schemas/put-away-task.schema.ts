@@ -40,9 +40,6 @@ export class PutAwayTask {
   @Prop({ type: Types.ObjectId, required: true })
   grnId!: Types.ObjectId;
 
-  @Prop({ type: Types.ObjectId, required: true })
-  warehouseId!: Types.ObjectId;
-
   @Prop({ enum: PutAwayTaskStatus, default: PutAwayTaskStatus.PENDING })
   status!: PutAwayTaskStatus;
 
@@ -56,4 +53,4 @@ export class PutAwayTask {
 export type PutAwayTaskDocument = HydratedDocument<PutAwayTask>;
 export const PutAwayTaskSchema = SchemaFactory.createForClass(PutAwayTask);
 PutAwayTaskSchema.index({ grnId: 1 });
-PutAwayTaskSchema.index({ warehouseId: 1, status: 1 });
+PutAwayTaskSchema.index({ status: 1 });

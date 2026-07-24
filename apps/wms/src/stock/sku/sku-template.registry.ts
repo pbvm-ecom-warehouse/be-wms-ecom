@@ -149,3 +149,22 @@ export function findRootTemplates(itemType: ItemType): SkuTemplate[] {
 export function findTemplateById(templateId: string): SkuTemplate | undefined {
   return SKU_TEMPLATES.find((t) => t.templateId === templateId);
 }
+
+/**
+ * Tập code hợp lệ cho 1 category key (MATERIAL_CATEGORY/PACKAGING_CATEGORY) —
+ * dùng để validate lúc ADMIN tạo attribute-option, tránh tạo option "mồ côi"
+ * không khớp category nào trong SKU_TEMPLATES (xem AttributeOptionService.create).
+ */
+export function findValidCategoryCodes(key: AttributeOptionKey): string[] {
+  const itemType = (Object.keys(CATEGORY_CODE_KEY) as ItemType[]).find(
+    (type) => CATEGORY_CODE_KEY[type] === key,
+  );
+  if (!itemType) return [];
+  return Array.from(
+    new Set(
+      SKU_TEMPLATES.filter(
+        (t) => t.itemType === itemType && t.category !== null,
+      ).map((t) => t.category as string),
+    ),
+  );
+}

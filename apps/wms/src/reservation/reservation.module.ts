@@ -4,7 +4,7 @@ import { QUEUES } from '@app/events';
 import { ReservationService } from './reservation.service';
 import { ReservationConsumer } from './reservation.consumer';
 import { StockModule } from '../stock/stock.module';
-import { WarehouseModule } from '../warehouse/warehouse.module';
+import { LocationModule } from '../location/location.module';
 import { GoodsIssueModule } from '../goods-issue/goods-issue.module';
 
 @Module({
@@ -17,7 +17,7 @@ import { GoodsIssueModule } from '../goods-issue/goods-issue.module';
       { name: QUEUES.ORDER_REPLY },
     ),
     StockModule, // StockRepository + StockTransactionHelper
-    WarehouseModule, // findAllActiveWarehouseIds + findStagingShelfByWarehouse
+    LocationModule, // findStagingShelf
     GoodsIssueModule, // GoodsIssueRepository — kiểm tra GoodsIssue tồn tại trước khi release
   ],
   providers: [ReservationService, ReservationConsumer],

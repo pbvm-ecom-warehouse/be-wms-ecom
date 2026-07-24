@@ -6,6 +6,7 @@ import {
   CreateAttributeOptionData,
 } from './attribute-option.repository';
 import { AttributeOptionKey } from '../schemas/attribute-option.schema';
+import { findValidCategoryCodes } from '../sku/sku-template.registry';
 
 /**
  * Gợi ý code từ name: bỏ dấu tiếng Việt, uppercase, ghép chữ cái đầu mỗi từ
@@ -55,6 +56,14 @@ export class AttributeOptionService {
   }
 
   async create(dto: CreateAttributeOptionDto, actorId: string) {
+    const validCategoryCodes = findValidCategoryCodes(dto.key);
+    if (
+      validCategoryCodes.length > 0 &&
+      !validCategoryCodes.includes(dto.code)
+    ) {
+      throw new AppException('STOCK_ATTRIBUTE_CATEGORY_CODE_INVALID');
+    }
+
     const existing = await this.repo.findByKeyAndCode(dto.key, dto.code);
     if (existing) {
       throw new AppException('STOCK_ATTRIBUTE_CODE_CONFLICT');

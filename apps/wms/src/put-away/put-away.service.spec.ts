@@ -19,13 +19,13 @@ const makeBarcodeService = () => ({
   findItemIdByCode: jest.fn(),
 });
 
-// findShelfByCode giờ gọi thẳng WarehouseRepository (trả về document hoặc null,
+// findShelfByCode giờ gọi thẳng LocationRepository (trả về document hoặc null,
 // không tự throw) — PutAwayService tự throw PUTAWAY_SHELF_NOT_FOUND khi null.
-const makeWarehouseRepo = () => ({
+const makeLocationRepo = () => ({
   findShelfByCode: jest.fn(),
 });
 
-const makeWarehouseService = () => ({
+const makeLocationService = () => ({
   findStagingShelf: jest.fn(),
 });
 
@@ -37,28 +37,27 @@ describe('PutAwayService', () => {
   let svc: PutAwayService;
   let repo: ReturnType<typeof makeRepo>;
   let stockRepo: ReturnType<typeof makeStockRepo>;
-  let warehouseRepo: ReturnType<typeof makeWarehouseRepo>;
-  let warehouseService: ReturnType<typeof makeWarehouseService>;
+  let locationRepo: ReturnType<typeof makeLocationRepo>;
+  let locationService: ReturnType<typeof makeLocationService>;
   let txHelper: ReturnType<typeof makeTxHelper>;
   let barcodeSvc: ReturnType<typeof makeBarcodeService>;
 
   const actorId = new Types.ObjectId().toString();
   const grnId = new Types.ObjectId();
-  const warehouseId = new Types.ObjectId();
   const itemId = new Types.ObjectId();
 
   beforeEach(() => {
     repo = makeRepo();
     stockRepo = makeStockRepo();
-    warehouseRepo = makeWarehouseRepo();
-    warehouseService = makeWarehouseService();
+    locationRepo = makeLocationRepo();
+    locationService = makeLocationService();
     txHelper = makeTxHelper();
     barcodeSvc = makeBarcodeService();
     svc = new PutAwayService(
       repo as never,
       stockRepo as never,
-      warehouseRepo as never,
-      warehouseService as never,
+      locationRepo as never,
+      locationService as never,
       txHelper as never,
       barcodeSvc as never,
     );
@@ -71,7 +70,6 @@ describe('PutAwayService', () => {
 
       await svc.createTaskFromGrn(
         grnId,
-        warehouseId,
         [{ itemId: itemId.toString(), lotId: null, quantity: 20 }],
         actorId,
         session,
@@ -79,7 +77,6 @@ describe('PutAwayService', () => {
 
       expect(repo.createTask).toHaveBeenCalledWith(
         grnId,
-        warehouseId,
         [{ itemId, lotId: null, quantity: 20 }],
         actorId,
         session,
@@ -94,7 +91,6 @@ describe('PutAwayService', () => {
 
     const baseTask = () => ({
       _id: taskId,
-      warehouseId,
       items: [{ itemId, lotId: null, quantity: 20, remainingQty: 20 }],
     });
 
@@ -124,12 +120,12 @@ describe('PutAwayService', () => {
 
     it('throw PUTAWAY_SHELF_NOT_FOUND khi shelf code không khớp shelf nào', async () => {
       // Gap reviewer chỉ ra: nhánh shelf-not-found trước đây rơi vào SHELF_NOT_FOUND
-      // (generic, cross-cutting) do gọi qua WarehouseService.findShelfByCode. Đúng
+      // (generic, cross-cutting) do gọi qua LocationService.findShelfByCode. Đúng
       // spec (dòng 77), phải throw PUTAWAY_SHELF_NOT_FOUND (domain riêng của put-away).
       repo.findTaskById.mockResolvedValue(baseTask());
       barcodeSvc.findItemIdByCode.mockResolvedValue(itemId);
       stockRepo.findItemByIdDocument.mockResolvedValue({ _id: itemId });
-      warehouseRepo.findShelfByCode.mockResolvedValue(null);
+      locationRepo.findShelfByCode.mockResolvedValue(null);
       await expect(
         svc.confirmLine(
           taskId,
@@ -139,39 +135,13 @@ describe('PutAwayService', () => {
       ).rejects.toMatchObject({ code: 'PUTAWAY_SHELF_NOT_FOUND' });
     });
 
-    it('throw PUTAWAY_SHELF_NOT_FOUND khi shelf tìm được thuộc kho KHÁC với task.warehouseId', async () => {
-      // Bug tìm thấy ở final review: findShelfByCode tra theo code toàn cục
-      // (unique toàn hệ thống), KHÔNG lọc theo warehouseId. Nếu RECEIVER quét
-      // nhầm shelf hợp lệ nhưng thuộc kho khác, trước đây vẫn cho qua vì không
-      // phải staging → ghi InventoryStock với warehouseId=task.warehouseId
-      // nhưng shelfId thực tế ở kho khác → dữ liệu tồn kho mâu thuẫn.
-      // Tái dùng PUTAWAY_SHELF_NOT_FOUND vì với kho của task, shelf này coi như
-      // "không tồn tại"/không hợp lệ — không tạo code mới.
-      repo.findTaskById.mockResolvedValue(baseTask());
-      barcodeSvc.findItemIdByCode.mockResolvedValue(itemId);
-      stockRepo.findItemByIdDocument.mockResolvedValue({ _id: itemId });
-      warehouseRepo.findShelfByCode.mockResolvedValue({
-        _id: shelfId,
-        isStaging: false,
-        warehouseId: new Types.ObjectId(), // kho khác với task.warehouseId
-      });
-      await expect(
-        svc.confirmLine(
-          taskId,
-          { itemBarcode: 'X', shelfCode: 'OTHER-WH-A1', quantity: 5 },
-          actorId,
-        ),
-      ).rejects.toMatchObject({ code: 'PUTAWAY_SHELF_NOT_FOUND' });
-    });
-
     it('throw PUTAWAY_SHELF_IS_STAGING khi quét đúng shelf staging', async () => {
       repo.findTaskById.mockResolvedValue(baseTask());
       barcodeSvc.findItemIdByCode.mockResolvedValue(itemId);
       stockRepo.findItemByIdDocument.mockResolvedValue({ _id: itemId });
-      warehouseRepo.findShelfByCode.mockResolvedValue({
+      locationRepo.findShelfByCode.mockResolvedValue({
         _id: shelfId,
         isStaging: true,
-        warehouseId,
       });
       await expect(
         svc.confirmLine(
@@ -194,7 +164,6 @@ describe('PutAwayService', () => {
       // chứa gì.
       const taskWithNullLotLine = {
         _id: taskId,
-        warehouseId,
         items: [{ itemId, lotId: null, quantity: 20, remainingQty: 20 }],
       };
       repo.findTaskById.mockResolvedValue(taskWithNullLotLine);
@@ -203,10 +172,9 @@ describe('PutAwayService', () => {
         _id: itemId,
         isPerishable: true,
       });
-      warehouseRepo.findShelfByCode.mockResolvedValue({
+      locationRepo.findShelfByCode.mockResolvedValue({
         _id: shelfId,
         isStaging: false,
-        warehouseId,
       });
       await expect(
         svc.confirmLine(
@@ -221,10 +189,9 @@ describe('PutAwayService', () => {
       repo.findTaskById.mockResolvedValue(baseTask());
       barcodeSvc.findItemIdByCode.mockResolvedValue(itemId);
       stockRepo.findItemByIdDocument.mockResolvedValue({ _id: itemId });
-      warehouseRepo.findShelfByCode.mockResolvedValue({
+      locationRepo.findShelfByCode.mockResolvedValue({
         _id: shelfId,
         isStaging: false,
-        warehouseId,
       });
       await expect(
         svc.confirmLine(
@@ -244,10 +211,9 @@ describe('PutAwayService', () => {
       repo.findTaskById.mockResolvedValue(baseTask());
       barcodeSvc.findItemIdByCode.mockResolvedValue(itemId);
       stockRepo.findItemByIdDocument.mockResolvedValue({ _id: itemId });
-      warehouseRepo.findShelfByCode.mockResolvedValue({
+      locationRepo.findShelfByCode.mockResolvedValue({
         _id: shelfId,
         isStaging: false,
-        warehouseId,
       });
       await expect(
         svc.confirmLine(
@@ -264,12 +230,11 @@ describe('PutAwayService', () => {
         .mockResolvedValueOnce({ ...baseTask(), status: 'COMPLETED' });
       barcodeSvc.findItemIdByCode.mockResolvedValue(itemId);
       stockRepo.findItemByIdDocument.mockResolvedValue({ _id: itemId });
-      warehouseRepo.findShelfByCode.mockResolvedValue({
+      locationRepo.findShelfByCode.mockResolvedValue({
         _id: shelfId,
         isStaging: false,
-        warehouseId,
       });
-      warehouseService.findStagingShelf.mockResolvedValue({
+      locationService.findStagingShelf.mockResolvedValue({
         _id: stagingShelfId,
       });
 
@@ -282,7 +247,6 @@ describe('PutAwayService', () => {
       expect(stockRepo.upsertInventory).toHaveBeenNthCalledWith(
         1,
         itemId,
-        warehouseId,
         stagingShelfId,
         null,
         -12,
@@ -291,7 +255,6 @@ describe('PutAwayService', () => {
       expect(stockRepo.upsertInventory).toHaveBeenNthCalledWith(
         2,
         itemId,
-        warehouseId,
         shelfId,
         null,
         12,

@@ -16,7 +16,6 @@ export interface CreateGoodsReturnLineInput {
 
 export interface QueryGoodsReturnInput {
   status?: GoodsReturnStatus;
-  warehouseId?: Types.ObjectId;
   orderId?: string;
   page?: number;
   limit?: number;
@@ -55,7 +54,6 @@ export class GoodsReturnRepository {
       {
         orderId,
         note,
-        warehouseId: null,
         status: GoodsReturnStatus.DRAFT,
         createdBy,
         items: lines.map((l) => ({
@@ -79,7 +77,6 @@ export class GoodsReturnRepository {
     const limit = query.limit ?? 20;
     const filter: Record<string, unknown> = {};
     if (query.status) filter['status'] = query.status;
-    if (query.warehouseId) filter['warehouseId'] = query.warehouseId;
     if (query.orderId) filter['orderId'] = query.orderId;
 
     const [data, total] = await Promise.all([
@@ -95,21 +92,19 @@ export class GoodsReturnRepository {
   }
 
   /**
-   * Gán warehouseId + phân loại từng dòng, chuyển INSPECTED. createdBy chỉ
-   * ghi đè nếu phiếu chưa có actor (tự sinh từ event) — $setOnInsert không
-   * áp dụng cho update nên dùng aggregation pipeline update để điều kiện hoá;
-   * đơn giản hơn: luôn set lại createdBy vì actor gọi inspect() luôn là
-   * người "nhận việc" hợp lệ dù phiếu đã có createdBy từ trước (tạo tay).
+   * Phân loại từng dòng, chuyển INSPECTED. createdBy chỉ ghi đè nếu phiếu
+   * chưa có actor (tự sinh từ event) — $setOnInsert không áp dụng cho update
+   * nên dùng aggregation pipeline update để điều kiện hoá; đơn giản hơn:
+   * luôn set lại createdBy vì actor gọi inspect() luôn là người "nhận việc"
+   * hợp lệ dù phiếu đã có createdBy từ trước (tạo tay).
    */
   async setInspected(
     id: string,
-    warehouseId: Types.ObjectId,
     createdBy: Types.ObjectId,
     lines: InspectLineInput[],
   ): Promise<void> {
     const doc = await this.model.findOne({ _id: id }).exec();
     if (!doc) return;
-    doc.warehouseId = warehouseId;
     doc.createdBy = createdBy;
     doc.status = GoodsReturnStatus.INSPECTED;
     for (const line of lines) {

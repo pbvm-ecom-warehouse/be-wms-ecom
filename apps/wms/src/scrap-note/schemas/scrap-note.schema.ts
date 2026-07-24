@@ -64,9 +64,6 @@ const ScrapNoteItemSchema = SchemaFactory.createForClass(ScrapNoteItem);
  */
 @Schema({ collection: 'scrap_notes', timestamps: true })
 export class ScrapNote {
-  @Prop({ type: Types.ObjectId, required: true })
-  warehouseId!: Types.ObjectId;
-
   @Prop({ enum: ScrapNoteStatus, default: ScrapNoteStatus.DRAFT })
   status!: ScrapNoteStatus;
 
@@ -92,5 +89,4 @@ export class ScrapNote {
 export type ScrapNoteDocument = HydratedDocument<ScrapNote>;
 export const ScrapNoteSchema = SchemaFactory.createForClass(ScrapNote);
 
-ScrapNoteSchema.index({ warehouseId: 1, status: 1 });
 ScrapNoteSchema.index({ status: 1 });

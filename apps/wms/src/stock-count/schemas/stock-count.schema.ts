@@ -57,9 +57,6 @@ const StockCountItemSchema = SchemaFactory.createForClass(StockCountItem);
  */
 @Schema({ collection: 'stock_counts', timestamps: true })
 export class StockCount {
-  @Prop({ type: Types.ObjectId, required: true })
-  warehouseId!: Types.ObjectId;
-
   /** null = kiểm toàn kho */
   @Prop({ type: Types.ObjectId, default: null })
   zoneId!: Types.ObjectId | null;
@@ -93,5 +90,4 @@ export class StockCount {
 export type StockCountDocument = HydratedDocument<StockCount>;
 export const StockCountSchema = SchemaFactory.createForClass(StockCount);
 
-StockCountSchema.index({ warehouseId: 1, status: 1 });
 StockCountSchema.index({ status: 1 });

@@ -76,10 +76,6 @@ export class InspectGoodsReturnItemDto {
 }
 
 export class InspectGoodsReturnDto {
-  @ApiProperty({ example: '665f1a2b3c4d5e6f7a8b9c0d' })
-  @IsMongoId()
-  warehouseId!: string;
-
   @ApiProperty({ type: [InspectGoodsReturnItemDto] })
   @IsArray()
   @ArrayMinSize(1)
@@ -96,10 +92,6 @@ export class InspectGoodsReturnDto {
  * làm (pipe không parse JSON lồng trong multipart form field).
  */
 export class InspectGoodsReturnFormDto {
-  @ApiProperty({ example: '665f1a2b3c4d5e6f7a8b9c0d' })
-  @IsMongoId()
-  warehouseId!: string;
-
   @ApiProperty({
     description: 'JSON string của mảng InspectGoodsReturnItemDto',
     example: '[{"itemId":"665f...","condition":"DAMAGED","shelfId":"665f..."}]',
@@ -113,11 +105,6 @@ export class QueryGoodsReturnDto {
   @IsOptional()
   @IsEnum(GoodsReturnStatus)
   status?: GoodsReturnStatus;
-
-  @ApiPropertyOptional({ example: '665f1a2b3c4d5e6f7a8b9c0d' })
-  @IsOptional()
-  @IsMongoId()
-  warehouseId?: string;
 
   @ApiPropertyOptional({ example: '665f1a2b3c4d5e6f7a8b9c0d' })
   @IsOptional()
@@ -197,13 +184,6 @@ export class GoodsReturnResponseDto {
   @Expose()
   @ApiPropertyOptional()
   orderId?: string;
-
-  @Expose()
-  @Transform(({ obj }: { obj: { warehouseId?: Types.ObjectId | null } }) =>
-    obj.warehouseId ? obj.warehouseId.toString() : null,
-  )
-  @ApiPropertyOptional()
-  warehouseId!: string | null;
 
   @Expose()
   @ApiProperty({ enum: GoodsReturnStatus })

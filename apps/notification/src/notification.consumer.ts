@@ -107,14 +107,15 @@ export class NotificationConsumer extends WorkerHost {
         }
         if (this.firebase.isEnabled()) {
           await this.firebase.getMessaging().send({
-            topic: `stock_alert_${payload.warehouseId}`,
+            // single-warehouse: không còn scope topic theo warehouseId, dùng
+            // 1 topic chung cho toàn hệ thống.
+            topic: 'stock_alert',
             notification: {
               title: `Tồn kho thấp — ${payload.sku}`,
               body: `Còn ${payload.available}/${payload.minQuantity}`,
             },
             data: {
               sku: payload.sku,
-              warehouseId: payload.warehouseId,
               available: String(payload.available),
             },
           });

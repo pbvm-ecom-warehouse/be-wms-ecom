@@ -1,4 +1,4 @@
-import { IsEnum, IsMongoId, IsOptional, IsString } from 'class-validator';
+import { IsEnum, IsOptional, IsString } from 'class-validator';
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { OffsetPaginationQuery } from '@app/common';
 import { WmsRole } from '@app/auth';
@@ -14,11 +14,6 @@ export class QueryUsersDto extends OffsetPaginationQuery {
   @IsOptional()
   @IsEnum(UserStatus)
   status?: UserStatus;
-
-  @ApiPropertyOptional({ description: 'Mongo ObjectId của kho' })
-  @IsOptional()
-  @IsMongoId()
-  warehouseId?: string;
 
   @ApiPropertyOptional({ description: 'Tìm theo username, name hoặc email' })
   @IsOptional()

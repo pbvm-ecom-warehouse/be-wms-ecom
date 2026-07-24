@@ -16,14 +16,6 @@ export class StockReportItemDto {
 
   @Expose()
   @ApiProperty()
-  warehouseId!: string;
-
-  @Expose()
-  @ApiProperty()
-  warehouseName!: string;
-
-  @Expose()
-  @ApiProperty()
   onHand!: number;
 
   @Expose()
@@ -55,14 +47,6 @@ export class LotReportItemDto {
   @Expose()
   @ApiProperty()
   expiryDate!: Date;
-
-  @Expose()
-  @ApiProperty()
-  warehouseId!: string;
-
-  @Expose()
-  @ApiProperty()
-  warehouseName!: string;
 
   @Expose()
   @ApiProperty()

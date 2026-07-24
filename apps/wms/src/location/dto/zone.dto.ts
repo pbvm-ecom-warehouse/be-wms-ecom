@@ -1,13 +1,9 @@
 import { ApiProperty, PartialType } from '@nestjs/swagger';
 import { Expose, Transform } from 'class-transformer';
-import { IsMongoId, IsString, MinLength } from 'class-validator';
+import { IsString, MinLength } from 'class-validator';
 import { Types } from 'mongoose';
 
 export class CreateZoneDto {
-  @ApiProperty({ example: '60d5ec49f1b2c72b3c8e4f01' })
-  @IsMongoId()
-  warehouseId!: string;
-
   @ApiProperty({ example: 'Khu A' })
   @IsString()
   @MinLength(1)
@@ -28,13 +24,6 @@ export class ZoneResponseDto {
   )
   @ApiProperty()
   id!: string;
-
-  @Expose()
-  @Transform(({ obj }: { obj: { warehouseId?: Types.ObjectId } }) =>
-    obj.warehouseId?.toString(),
-  )
-  @ApiProperty()
-  warehouseId!: string;
 
   @Expose()
   @ApiProperty()

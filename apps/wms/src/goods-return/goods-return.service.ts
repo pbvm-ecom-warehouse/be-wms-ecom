@@ -19,7 +19,7 @@ import {
 } from './schemas/goods-return.schema';
 import { StockRepository } from '../stock/stock.repository';
 import { StockService } from '../stock/stock.service';
-import { WarehouseRepository } from '../warehouse/warehouse.repository';
+import { LocationRepository } from '../location/location.repository';
 import { ScrapNoteService } from '../scrap-note/scrap-note.service';
 import { StockTransactionHelper } from '../stock/helpers/with-stock-transaction.helper';
 import { MovementType } from '../stock/schemas/stock-movement.schema';
@@ -47,7 +47,7 @@ export class GoodsReturnService {
     private readonly repo: GoodsReturnRepository,
     private readonly stockRepo: StockRepository,
     private readonly stockService: StockService,
-    private readonly warehouseRepo: WarehouseRepository,
+    private readonly locationRepo: LocationRepository,
     private readonly scrapNoteService: ScrapNoteService,
     private readonly stockTransactionHelper: StockTransactionHelper,
     @InjectQueue(QUEUES.STOCK) private readonly stockQueue: Queue,
@@ -59,7 +59,7 @@ export class GoodsReturnService {
    * orderId — event redeliver không tạo phiếu trùng. Sku không khớp
    * WarehouseItem bị bỏ qua (log warning) thay vì chặn cả phiếu, giống
    * GoodsIssueService.createFromOrderReady — retry BullMQ sẽ lặp lại lỗi y
-   * hệt nếu throw ở đây. warehouseId để null — RECEIVER gán lúc inspect.
+   * hệt nếu throw ở đây.
    */
   async createFromOrderReturned(
     orderId: string,
@@ -151,12 +151,6 @@ export class GoodsReturnService {
       throw new AppException('GOODS_RETURN_ALREADY_DECIDED');
     }
 
-    const warehouseId = new Types.ObjectId(dto.warehouseId);
-    const warehouse = await this.warehouseRepo.findWarehouseById(
-      dto.warehouseId,
-    );
-    if (!warehouse) throw new AppException('WAREHOUSE_NOT_FOUND');
-
     const lines: {
       itemId: Types.ObjectId;
       condition: GoodsReturnItemCondition;
@@ -171,7 +165,7 @@ export class GoodsReturnService {
       );
       if (!existingLine) throw new AppException('GOODS_RETURN_ITEM_NOT_FOUND');
 
-      const shelf = await this.warehouseRepo.findShelfById(itemDto.shelfId);
+      const shelf = await this.locationRepo.findShelfById(itemDto.shelfId);
       if (!shelf) throw new AppException('SHELF_NOT_FOUND');
 
       const item = await this.stockRepo.findItemById(itemDto.itemId);
@@ -208,12 +202,7 @@ export class GoodsReturnService {
       throw new AppException('GOODS_RETURN_ITEM_NOT_FOUND');
     }
 
-    await this.repo.setInspected(
-      id,
-      warehouseId,
-      new Types.ObjectId(actorId),
-      lines,
-    );
+    await this.repo.setInspected(id, new Types.ObjectId(actorId), lines);
 
     const updated = await this.repo.findById(id);
     if (!updated) throw new AppException('GOODS_RETURN_NOT_FOUND');
@@ -256,12 +245,9 @@ export class GoodsReturnService {
     const scrapNoteIdByItemId = new Map<string, Types.ObjectId>();
     // S4-04: mọi dòng (GOOD và DAMAGED) đều chạm upsertBalance ở dưới — dòng DAMAGED
     // còn bị ScrapNoteService bù trừ ngay sau trong CÙNG transaction, nhưng vì
-    // checkAndEmitStockLow đọc lại balance sau commit nên chỉ cần set map 1 lần ở
+    // checkAndEmitStockLow đọc lại balance sau commit nên chỉ cần set 1 lần ở
     // đây, không cần biết chi tiết bên trong ScrapNoteService.
-    const touchedBalances = new Map<
-      string,
-      { itemId: Types.ObjectId; warehouseId: Types.ObjectId }
-    >();
+    const touchedItemIds = new Set<string>();
 
     await this.stockTransactionHelper.withStockTransaction(async (session) => {
       for (const line of goodsReturn.items) {
@@ -269,7 +255,6 @@ export class GoodsReturnService {
 
         await this.stockRepo.upsertInventory(
           line.itemId,
-          goodsReturn.warehouseId!,
           line.shelfId,
           line.lotId,
           line.quantity,
@@ -277,20 +262,15 @@ export class GoodsReturnService {
         );
         await this.stockRepo.upsertBalance(
           line.itemId,
-          goodsReturn.warehouseId!,
           line.quantity,
           0,
           0,
           session,
         );
-        touchedBalances.set(
-          `${line.itemId.toString()}:${goodsReturn.warehouseId!.toString()}`,
-          { itemId: line.itemId, warehouseId: goodsReturn.warehouseId! },
-        );
+        touchedItemIds.add(line.itemId.toString());
         await this.stockRepo.insertMovement(
           {
             itemId: line.itemId,
-            warehouseId: goodsReturn.warehouseId!,
             shelfId: line.shelfId,
             lotId: line.lotId,
             type: MovementType.RETURN_IN,
@@ -305,7 +285,6 @@ export class GoodsReturnService {
         if (line.condition === GoodsReturnItemCondition.DAMAGED) {
           const scrapNoteId =
             await this.scrapNoteService.createApprovedScrapNoteForReturn({
-              warehouseId: goodsReturn.warehouseId!,
               itemId: line.itemId,
               sku: line.sku,
               shelfId: line.shelfId,
@@ -331,8 +310,10 @@ export class GoodsReturnService {
       const jobId = `goods_return:${id}:${line.sku}`;
       await this.stockQueue.add(EVENTS.STOCK_CHANGED, payload, { jobId });
     }
-    for (const { itemId, warehouseId } of touchedBalances.values()) {
-      await this.stockService.checkAndEmitStockLow(itemId, warehouseId);
+    for (const itemIdStr of touchedItemIds) {
+      await this.stockService.checkAndEmitStockLow(
+        new Types.ObjectId(itemIdStr),
+      );
     }
 
     const updated = await this.repo.findById(id);

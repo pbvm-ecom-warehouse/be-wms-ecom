@@ -128,6 +128,20 @@ export class SupplierItemResponseDto {
   isActive!: boolean;
 
   @Expose()
+  @Transform(({ obj }: { obj: { createdBy?: Types.ObjectId } }) =>
+    obj.createdBy?.toString(),
+  )
+  @ApiPropertyOptional()
+  createdBy?: string;
+
+  @Expose()
+  @Transform(({ obj }: { obj: { updatedBy?: Types.ObjectId } }) =>
+    obj.updatedBy?.toString(),
+  )
+  @ApiPropertyOptional()
+  updatedBy?: string;
+
+  @Expose()
   @ApiProperty()
   updatedAt!: Date;
 }

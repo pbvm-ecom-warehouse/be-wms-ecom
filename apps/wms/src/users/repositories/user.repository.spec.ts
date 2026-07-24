@@ -60,7 +60,7 @@ describe('UserRepository', () => {
       );
     });
 
-    it('filter theo role/status/warehouseId khi có truyền', async () => {
+    it('filter theo role/status khi có truyền', async () => {
       const model = makeModel();
       model.__chain.exec.mockResolvedValue([]);
       (model.countDocuments({}).exec as jest.Mock).mockResolvedValue(0);
@@ -71,7 +71,6 @@ describe('UserRepository', () => {
         limit: 10,
         role: 'PICKER',
         status: UserStatus.LOCKED,
-        warehouseId: 'wh1',
       });
 
       expect(model.find).toHaveBeenCalledWith(
@@ -79,7 +78,6 @@ describe('UserRepository', () => {
           deletedAt: null,
           role: 'PICKER',
           status: UserStatus.LOCKED,
-          warehouseId: 'wh1',
         }),
       );
       expect(model.__chain.skip).toHaveBeenCalledWith(10); // (page-1)*limit

@@ -1,10 +1,4 @@
-import {
-  IsEmail,
-  IsMongoId,
-  IsOptional,
-  IsPhoneNumber,
-  IsString,
-} from 'class-validator';
+import { IsEmail, IsOptional, IsPhoneNumber, IsString } from 'class-validator';
 import { ApiPropertyOptional } from '@nestjs/swagger';
 
 export class UpdateUserDto {
@@ -22,9 +16,4 @@ export class UpdateUserDto {
   @IsOptional()
   @IsPhoneNumber()
   phone?: string;
-
-  @ApiPropertyOptional({ description: 'Mongo ObjectId của kho mặc định' })
-  @IsOptional()
-  @IsMongoId()
-  warehouseId?: string;
 }

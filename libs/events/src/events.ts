@@ -70,14 +70,10 @@ export interface StockExpiredPayload {
 export interface StockReserveRequestedPayload {
   orderId: string;
   items: { sku: string; quantity: number }[];
-  /** ưu tiên kho khi giữ tồn (vd 'CENTRAL'); WMS tự chọn kho có đủ available. */
-  preferWarehouse?: string;
 }
 
 export interface StockReservedPayload {
   orderId: string;
-  /** kho đã giữ tồn — Ecom lưu vào order.fulfillWarehouseId. */
-  fulfillWarehouseId: string;
 }
 
 export interface StockReserveFailedPayload {
@@ -88,7 +84,6 @@ export interface StockReserveFailedPayload {
 
 export interface OrderReadyToFulfillPayload {
   orderId: string;
-  fulfillWarehouseId: string;
   items: { sku: string; quantity: number }[];
   shippingAddress: Record<string, unknown>;
   recipient: { name: string; phone: string };
@@ -113,7 +108,6 @@ export interface GoodsIssuedPayload {
 
 export interface PrintRequestedPayload {
   orderId: string;
-  warehouseId: string;
   items: {
     sku: string;
     quantity: number;
@@ -135,7 +129,6 @@ export interface ShipmentEventPayload {
 
 export interface StockLowPayload {
   sku: string;
-  warehouseId: string;
   available: number;
   minQuantity: number;
 }

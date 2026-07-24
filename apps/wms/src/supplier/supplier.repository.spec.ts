@@ -112,6 +112,43 @@ describe('SupplierRepository', () => {
     });
   });
 
+  describe('createSupplierItem', () => {
+    it('set createdBy và updatedBy = actorId khi tạo báo giá mới', async () => {
+      const fakeDoc = { itemId, supplierId, createdBy: actorId };
+      supplierItemModel.create.mockResolvedValue(fakeDoc);
+      const result = await repo.createSupplierItem(
+        { itemId, supplierId, purchasePrice: 10000 },
+        actorId,
+      );
+      expect(supplierItemModel.create).toHaveBeenCalledWith({
+        itemId: expect.any(Types.ObjectId),
+        supplierId: expect.any(Types.ObjectId),
+        purchasePrice: 10000,
+        createdBy: expect.any(Types.ObjectId),
+        updatedBy: expect.any(Types.ObjectId),
+      });
+      expect(result).toEqual(fakeDoc);
+    });
+  });
+
+  describe('updateSupplierItem', () => {
+    it('set updatedBy = actorId khi sửa báo giá (truy vết ai sửa purchasePrice)', async () => {
+      const fakeDoc = { itemId, supplierId, purchasePrice: 12000 };
+      supplierItemModel.exec.mockResolvedValue(fakeDoc);
+      const result = await repo.updateSupplierItem(
+        'itemDocId',
+        { purchasePrice: 12000 },
+        actorId,
+      );
+      expect(supplierItemModel.findOneAndUpdate).toHaveBeenCalledWith(
+        { _id: 'itemDocId' },
+        { purchasePrice: 12000, updatedBy: expect.any(Types.ObjectId) },
+        { new: true },
+      );
+      expect(result).toEqual(fakeDoc);
+    });
+  });
+
   describe('softDeleteSupplier', () => {
     it('trả về true khi modifiedCount > 0', async () => {
       supplierModel.exec.mockResolvedValue({ modifiedCount: 1 });
