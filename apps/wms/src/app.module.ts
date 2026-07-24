@@ -70,7 +70,7 @@ import { validateEnv } from './config/env.validation';
     StockCountModule, // UC-06: MANAGER tạo phiếu kiểm kho, COUNTER đếm thực, duyệt sinh ADJUST + stock.changed
     ScrapNoteModule, // UC-08: COUNTER/RECEIVER đề xuất hủy hàng hết hạn/hỏng, MANAGER duyệt/từ chối
     GoodsReturnModule, // UC-09: nhận order.returned, sinh GoodsReturn, RECEIVER inspect/confirm/cancel
-    ReportModule, // S4-03: báo cáo tồn (theo SKU+kho, theo lô) + hiệu suất kho, read-only — [ADMIN, MANAGER]
+    ReportModule, // S4-03: báo cáo tồn (theo SKU, theo lô) + hiệu suất kho, read-only — [ADMIN, MANAGER]
     ShippingModule, // P7: carriers + shipments, auto-sinh sau goods.issued, phát shipment.shipped/delivered/returned
   ],
   controllers: [AppController],

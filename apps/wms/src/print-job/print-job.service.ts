@@ -154,7 +154,7 @@ export class PrintJobService {
       }
     }
 
-    // S4-04: kiểm tra ngưỡng thấp tồn cho từng (item, warehouse) đã reserve —
+    // S4-04: kiểm tra ngưỡng thấp tồn cho từng item đã reserve —
     // sau khi transaction commit.
     for (const { itemId } of touchedBalances.values()) {
       await this.stockService.checkAndEmitStockLow(itemId);
