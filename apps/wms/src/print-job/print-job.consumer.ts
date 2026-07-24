@@ -25,7 +25,6 @@ export class PrintJobConsumer extends WorkerHost {
         );
         await this.printJobService.createFromPrintRequested(
           data.orderId,
-          data.warehouseId,
           data.items,
         );
         break;

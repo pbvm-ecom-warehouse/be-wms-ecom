@@ -43,7 +43,6 @@ export class PrintJobRepository {
   // để tránh reserve "mồ côi" khi tạo PrintJob thất bại giữa chừng.
   async createPrintJob(
     orderId: string,
-    warehouseId: Types.ObjectId,
     lines: CreatePrintJobLineInput[],
     session: ClientSession,
   ): Promise<PrintJobDocument> {
@@ -51,7 +50,6 @@ export class PrintJobRepository {
       [
         {
           orderId,
-          warehouseId,
           status: PrintJobStatus.PENDING,
           items: lines.map((l) => ({
             inputItemId: l.inputItemId,

@@ -133,13 +133,6 @@ export class PrintJobResponseDto {
   orderId!: string;
 
   @Expose()
-  @Transform(({ obj }: { obj: { warehouseId?: Types.ObjectId } }) =>
-    obj.warehouseId?.toString(),
-  )
-  @ApiProperty()
-  warehouseId!: string;
-
-  @Expose()
   @ApiProperty({ enum: PrintJobStatus })
   status!: PrintJobStatus;
 

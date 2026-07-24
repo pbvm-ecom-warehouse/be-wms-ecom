@@ -21,7 +21,7 @@ import {
 import { StockRepository } from '../stock/stock.repository';
 import { StockService } from '../stock/stock.service';
 import { ItemType } from '../stock/schemas/warehouse-item.schema';
-import { WarehouseRepository } from '../warehouse/warehouse.repository';
+import { LocationRepository } from '../location/location.repository';
 import { StockTransactionHelper } from '../stock/helpers/with-stock-transaction.helper';
 import { MovementType } from '../stock/schemas/stock-movement.schema';
 import { BarcodeService } from '../stock/barcode/barcode.service';
@@ -50,7 +50,7 @@ export class PrintJobService {
     private readonly repo: PrintJobRepository,
     private readonly stockRepo: StockRepository,
     private readonly stockService: StockService,
-    private readonly warehouseRepo: WarehouseRepository,
+    private readonly locationRepo: LocationRepository,
     private readonly stockTransactionHelper: StockTransactionHelper,
     private readonly barcodeSvc: BarcodeService,
     // reserve CUP_BLANK bắn stock.changed lên QUEUES.STOCK (khớp
@@ -73,7 +73,6 @@ export class PrintJobService {
    */
   async createFromPrintRequested(
     orderId: string,
-    warehouseId: string,
     items: PrintRequestedItem[],
   ): Promise<void> {
     const existing = await this.repo.findByOrderId(orderId);
@@ -84,7 +83,6 @@ export class PrintJobService {
       return;
     }
 
-    const whId = new Types.ObjectId(warehouseId);
     const lines: ResolvedLine[] = [];
 
     for (const item of items) {
@@ -92,10 +90,7 @@ export class PrintJobService {
       if (!resolved) continue;
 
       const { inputItemId, outputItemId } = resolved;
-      const balance = await this.stockRepo.findBalanceByItemAndWarehouse(
-        inputItemId,
-        whId,
-      );
+      const balance = await this.stockRepo.findBalance(inputItemId);
       const available = balance
         ? balance.onHand - balance.reserved - balance.expired
         : 0;
@@ -128,28 +123,23 @@ export class PrintJobService {
     // PrintJob thất bại giữa chừng thì reserve cũng phải rollback theo, tránh
     // giữ tồn "mồ côi" không có PrintJob nào tham chiếu tới (và bị reserve
     // lại lần nữa khi BullMQ retry event print.requested).
-    const touchedBalances = new Map<
-      string,
-      { itemId: Types.ObjectId; warehouseId: Types.ObjectId }
-    >();
+    const touchedBalances = new Map<string, { itemId: Types.ObjectId }>();
     await this.stockTransactionHelper.withStockTransaction(async (session) => {
       for (const line of lines) {
         if (line.reservedQty > 0) {
           await this.stockRepo.upsertBalance(
             line.inputItemId,
-            whId,
             0,
             line.reservedQty,
             0,
             session,
           );
-          touchedBalances.set(
-            `${line.inputItemId.toString()}:${whId.toString()}`,
-            { itemId: line.inputItemId, warehouseId: whId },
-          );
+          touchedBalances.set(line.inputItemId.toString(), {
+            itemId: line.inputItemId,
+          });
         }
       }
-      await this.repo.createPrintJob(orderId, whId, lines, session);
+      await this.repo.createPrintJob(orderId, lines, session);
     });
 
     // Emit stock.changed CHỈ SAU KHI transaction đã commit thành công — job
@@ -166,8 +156,8 @@ export class PrintJobService {
 
     // S4-04: kiểm tra ngưỡng thấp tồn cho từng (item, warehouse) đã reserve —
     // sau khi transaction commit.
-    for (const { itemId, warehouseId } of touchedBalances.values()) {
-      await this.stockService.checkAndEmitStockLow(itemId, warehouseId);
+    for (const { itemId } of touchedBalances.values()) {
+      await this.stockService.checkAndEmitStockLow(itemId);
     }
   }
 
@@ -256,11 +246,8 @@ export class PrintJobService {
     const item = await this.stockRepo.findItemByIdDocument(itemId.toString());
     if (!item) throw new AppException('PRINT_JOB_ITEM_NOT_FOUND');
 
-    const shelf = await this.warehouseRepo.findShelfByCode(dto.shelfCode);
+    const shelf = await this.locationRepo.findShelfByCode(dto.shelfCode);
     if (!shelf) throw new AppException('PRINT_JOB_SHELF_NOT_FOUND');
-    if (shelf.warehouseId.toString() !== job.warehouseId.toString()) {
-      throw new AppException('PRINT_JOB_SHELF_NOT_FOUND');
-    }
 
     const line = job.items.find(
       (i) =>
@@ -274,7 +261,6 @@ export class PrintJobService {
 
     const inventory = await this.stockRepo.findInventory(
       item._id,
-      job.warehouseId,
       shelf._id,
       null,
     );
@@ -285,7 +271,6 @@ export class PrintJobService {
     await this.stockTransactionHelper.withStockTransaction(async (session) => {
       await this.stockRepo.upsertInventory(
         item._id,
-        job.warehouseId,
         shelf._id,
         null,
         -dto.quantity,
@@ -293,7 +278,6 @@ export class PrintJobService {
       );
       await this.stockRepo.upsertBalance(
         item._id,
-        job.warehouseId,
         -dto.quantity,
         -dto.quantity,
         0,
@@ -302,7 +286,6 @@ export class PrintJobService {
       await this.stockRepo.insertMovement(
         {
           itemId: item._id,
-          warehouseId: job.warehouseId,
           shelfId: shelf._id,
           lotId: null,
           type: MovementType.PRINT_CONSUME,
@@ -323,7 +306,7 @@ export class PrintJobService {
     });
 
     // S4-04: kiểm tra ngưỡng thấp tồn — sau khi transaction commit.
-    await this.stockService.checkAndEmitStockLow(item._id, job.warehouseId);
+    await this.stockService.checkAndEmitStockLow(item._id);
 
     const updated = await this.repo.findById(id);
     if (!updated) throw new AppException('PRINT_JOB_NOT_FOUND');
@@ -356,11 +339,8 @@ export class PrintJobService {
       throw new AppException('PRINT_JOB_ITEM_ALREADY_COMPLETED');
     }
 
-    const shelf = await this.warehouseRepo.findShelfByCode(dto.shelfCode);
+    const shelf = await this.locationRepo.findShelfByCode(dto.shelfCode);
     if (!shelf) throw new AppException('PRINT_JOB_SHELF_NOT_FOUND');
-    if (shelf.warehouseId.toString() !== job.warehouseId.toString()) {
-      throw new AppException('PRINT_JOB_SHELF_NOT_FOUND');
-    }
     if (dto.quantity !== line.reservedQty) {
       throw new AppException('PRINT_JOB_QTY_EXCEEDS');
     }
@@ -369,7 +349,6 @@ export class PrintJobService {
     await this.stockTransactionHelper.withStockTransaction(async (session) => {
       await this.stockRepo.upsertInventory(
         line.outputItemId,
-        job.warehouseId,
         shelf._id,
         null,
         dto.quantity,
@@ -377,7 +356,6 @@ export class PrintJobService {
       );
       await this.stockRepo.upsertBalance(
         line.outputItemId,
-        job.warehouseId,
         dto.quantity,
         dto.quantity,
         0,
@@ -386,7 +364,6 @@ export class PrintJobService {
       await this.stockRepo.insertMovement(
         {
           itemId: line.outputItemId,
-          warehouseId: job.warehouseId,
           shelfId: shelf._id,
           lotId: null,
           type: MovementType.PRINT_OUTPUT,
@@ -413,10 +390,7 @@ export class PrintJobService {
     });
 
     // S4-04: kiểm tra ngưỡng thấp tồn — sau khi transaction commit.
-    await this.stockService.checkAndEmitStockLow(
-      line.outputItemId,
-      job.warehouseId,
-    );
+    await this.stockService.checkAndEmitStockLow(line.outputItemId);
 
     const updated = await this.repo.findById(id);
     if (!updated) throw new AppException('PRINT_JOB_NOT_FOUND');
