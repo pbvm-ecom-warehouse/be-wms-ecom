@@ -200,7 +200,6 @@ model Order {
   paymentStatus      PaymentStatus     @default(UNPAID)
   orderStatus        OrderStatus       @default(PLACED)
   fulfillmentStatus  FulfillmentStatus @default(NONE)
-  fulfillWarehouseId String?           @db.ObjectId // CROSS-APP ref → wms warehouses.id (1 kho/đơn)
   hasPrintItems      Boolean           @default(false)
   paymentDeadline    DateTime?
   cancelReason       String?

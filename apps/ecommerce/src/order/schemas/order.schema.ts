@@ -118,10 +118,6 @@ export class Order {
   })
   fulfillmentStatus: FulfillmentStatus;
 
-  /** WMS kho đã giữ tồn */
-  @Prop({ type: String, default: null })
-  fulfillWarehouseId: string | null;
-
   @Prop({ default: false })
   hasPrintItems: boolean;
 
