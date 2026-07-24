@@ -25,6 +25,7 @@
     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
     "test:e2e": "jest --config ./apps/wms/test/jest-e2e.json",
     "seed:wms": "ts-node -r tsconfig-paths/register apps/wms/src/seed/seed.ts",
+    "seed:ecom": "ts-node -r tsconfig-paths/register apps/ecommerce/src/seed/seed.ts",
     "backfill:barcode-registry": "ts-node -r tsconfig-paths/register apps/wms/scripts/backfill-barcode-registry.ts"
   },
   "dependencies": {
