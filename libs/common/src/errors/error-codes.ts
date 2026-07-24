@@ -415,6 +415,11 @@ export const ERROR_CATALOG = {
     status: HttpStatus.BAD_REQUEST,
     message: 'Không thể sửa code của option đã được sử dụng',
   },
+  STOCK_ATTRIBUTE_CATEGORY_CODE_INVALID: {
+    status: HttpStatus.BAD_REQUEST,
+    message:
+      'Code không khớp với category nào trong sku-template registry của nhóm này',
+  },
   STOCK_ITEM_BARCODE_CONFLICT: {
     status: HttpStatus.CONFLICT,
     message: 'Barcode bị trùng, thử lại thao tác',

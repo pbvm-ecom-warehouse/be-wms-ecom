@@ -72,6 +72,53 @@ describe('AttributeOptionService', () => {
       });
       expect(repo.create).not.toHaveBeenCalled();
     });
+
+    it('tạo option MATERIAL_CATEGORY khi code khớp category trong sku-template registry', async () => {
+      const categoryDto = {
+        key: AttributeOptionKey.MATERIAL_CATEGORY,
+        name: 'Trà',
+        code: 'TEA',
+      };
+      repo.findByKeyAndCode.mockResolvedValue(null);
+      repo.create.mockResolvedValue({
+        _id: new Types.ObjectId(),
+        ...categoryDto,
+      });
+
+      await svc.create(categoryDto, actorId);
+
+      expect(repo.create).toHaveBeenCalledWith(
+        categoryDto,
+        new Types.ObjectId(actorId),
+      );
+    });
+
+    it('throw STOCK_ATTRIBUTE_CATEGORY_CODE_INVALID khi code MATERIAL_CATEGORY không khớp registry', async () => {
+      const invalidDto = {
+        key: AttributeOptionKey.MATERIAL_CATEGORY,
+        name: 'Nước ép',
+        code: 'JUICE',
+      };
+
+      await expect(svc.create(invalidDto, actorId)).rejects.toMatchObject({
+        code: 'STOCK_ATTRIBUTE_CATEGORY_CODE_INVALID',
+      });
+      expect(repo.findByKeyAndCode).not.toHaveBeenCalled();
+      expect(repo.create).not.toHaveBeenCalled();
+    });
+
+    it('throw STOCK_ATTRIBUTE_CATEGORY_CODE_INVALID khi code PACKAGING_CATEGORY không khớp registry', async () => {
+      const invalidDto = {
+        key: AttributeOptionKey.PACKAGING_CATEGORY,
+        name: 'Khay',
+        code: 'TRAY',
+      };
+
+      await expect(svc.create(invalidDto, actorId)).rejects.toMatchObject({
+        code: 'STOCK_ATTRIBUTE_CATEGORY_CODE_INVALID',
+      });
+      expect(repo.create).not.toHaveBeenCalled();
+    });
   });
 
   describe('update', () => {

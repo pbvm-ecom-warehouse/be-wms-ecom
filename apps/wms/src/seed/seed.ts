@@ -40,6 +40,27 @@ const SEED_ATTRIBUTE_OPTIONS: {
   { key: AttributeOptionKey.MATERIAL_TYPE, name: 'Trà đen', code: 'BLK' },
   { key: AttributeOptionKey.FLAVOR, name: 'Nguyên bản', code: 'ORG' },
   { key: AttributeOptionKey.SPEC, name: '500g', code: '500G' },
+  // Category value — code phải khớp SkuTemplate.category trong
+  // sku-template.registry.ts (AttributeOptionService.create validate điều
+  // này), thiếu thì bước chọn category khi tạo item MATERIAL/PACKAGING sẽ rỗng.
+  { key: AttributeOptionKey.MATERIAL_CATEGORY, name: 'Trà', code: 'TEA' },
+  { key: AttributeOptionKey.MATERIAL_CATEGORY, name: 'Sữa', code: 'MILK' },
+  { key: AttributeOptionKey.MATERIAL_CATEGORY, name: 'Đường', code: 'SUGAR' },
+  {
+    key: AttributeOptionKey.MATERIAL_CATEGORY,
+    name: 'Topping',
+    code: 'TOPPING',
+  },
+  { key: AttributeOptionKey.MATERIAL_CATEGORY, name: 'Syrup', code: 'SYRUP' },
+  { key: AttributeOptionKey.MATERIAL_CATEGORY, name: 'Bột', code: 'POWDER' },
+  { key: AttributeOptionKey.PACKAGING_CATEGORY, name: 'Nắp ly', code: 'LID' },
+  {
+    key: AttributeOptionKey.PACKAGING_CATEGORY,
+    name: 'Ống hút',
+    code: 'STRAW',
+  },
+  { key: AttributeOptionKey.PACKAGING_CATEGORY, name: 'Túi', code: 'BAG' },
+  { key: AttributeOptionKey.PACKAGING_CATEGORY, name: 'Hộp', code: 'BOX' },
 ];
 
 /**
@@ -115,12 +136,14 @@ async function seedUsers(
 }
 
 /**
- * Seed option thuộc tính tối thiểu để seedWarehouseAndItems build được SKU
- * qua template thật (issue #25) — không seed đủ 14 key, chỉ seed đúng những
- * option 2 item demo (MATERIAL_TEA, CUP_BLANK) cần. Idempotent qua unique
- * {key, code} — AttributeOptionService.create tự throw STOCK_ATTRIBUTE_CODE_CONFLICT
- * nếu đã tồn tại, bắt và bỏ qua (không phải lỗi seed, là trạng thái mong đợi
- * khi seed chạy lại).
+ * Seed option thuộc tính để seedWarehouseAndItems build được SKU qua template
+ * thật (issue #25), cộng với toàn bộ category value (MATERIAL_CATEGORY/
+ * PACKAGING_CATEGORY) mà sku-template.registry.ts cần — thiếu category value
+ * nào thì bước chọn category khi tạo item MATERIAL/PACKAGING qua UI sẽ rỗng
+ * cho category đó. Idempotent qua unique {key, code} —
+ * AttributeOptionService.create tự throw STOCK_ATTRIBUTE_CODE_CONFLICT nếu đã
+ * tồn tại, bắt và bỏ qua (không phải lỗi seed, là trạng thái mong đợi khi seed
+ * chạy lại).
  */
 async function seedAttributeOptions(
   app: INestApplicationContext,
