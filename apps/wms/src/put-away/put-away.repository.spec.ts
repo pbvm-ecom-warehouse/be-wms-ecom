@@ -26,7 +26,6 @@ describe('PutAwayRepository', () => {
   describe('createTask', () => {
     it('tạo PutAwayTask với status PENDING và items truyền vào', async () => {
       const grnId = new Types.ObjectId();
-      const warehouseId = new Types.ObjectId();
       const itemId = new Types.ObjectId();
       const actorId = new Types.ObjectId().toString();
       const session = {} as never;
@@ -34,7 +33,6 @@ describe('PutAwayRepository', () => {
 
       await repo.createTask(
         grnId,
-        warehouseId,
         [{ itemId, lotId: null, quantity: 20 }],
         actorId,
         session,
@@ -44,7 +42,6 @@ describe('PutAwayRepository', () => {
         [
           {
             grnId,
-            warehouseId,
             status: PutAwayTaskStatus.PENDING,
             items: [{ itemId, lotId: null, quantity: 20, remainingQty: 20 }],
             createdBy: new Types.ObjectId(actorId),

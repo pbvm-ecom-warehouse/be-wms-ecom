@@ -3,12 +3,12 @@ import { PutAwaySuggestionService } from './put-away-suggestion.service';
 
 const makeStockRepo = () => ({
   findItemBySku: jest.fn(),
-  findOccupiedVolumeByWarehouse: jest.fn(),
+  findOccupiedVolume: jest.fn(),
   findShelfIdsWithItem: jest.fn(),
 });
 
-const makeWarehouseRepo = () => ({
-  findShelvesByWarehouse: jest.fn(),
+const makeLocationRepo = () => ({
+  findShelves: jest.fn(),
 });
 
 const makeConfigService = (fillFactor = 0.75) => ({
@@ -18,25 +18,23 @@ const makeConfigService = (fillFactor = 0.75) => ({
 describe('PutAwaySuggestionService', () => {
   let svc: PutAwaySuggestionService;
   let stockRepo: ReturnType<typeof makeStockRepo>;
-  let warehouseRepo: ReturnType<typeof makeWarehouseRepo>;
+  let locationRepo: ReturnType<typeof makeLocationRepo>;
   let configService: ReturnType<typeof makeConfigService>;
-
-  const warehouseId = new Types.ObjectId().toString();
 
   beforeEach(() => {
     stockRepo = makeStockRepo();
-    warehouseRepo = makeWarehouseRepo();
+    locationRepo = makeLocationRepo();
     configService = makeConfigService();
     svc = new PutAwaySuggestionService(
       stockRepo as never,
-      warehouseRepo as never,
+      locationRepo as never,
       configService as never,
     );
   });
 
   it('throw PUTAWAY_ITEM_NOT_FOUND khi sku không tồn tại', async () => {
     stockRepo.findItemBySku.mockResolvedValue(null);
-    await expect(svc.suggest('SKU-X', 10, warehouseId)).rejects.toMatchObject({
+    await expect(svc.suggest('SKU-X', 10)).rejects.toMatchObject({
       code: 'PUTAWAY_ITEM_NOT_FOUND',
     });
   });
@@ -48,7 +46,7 @@ describe('PutAwaySuggestionService', () => {
       width: 10,
       height: 10,
     });
-    const result = await svc.suggest('SKU-X', 10, warehouseId);
+    const result = await svc.suggest('SKU-X', 10);
     expect(result).toEqual({ suggestions: [], warning: 'ITEM_NO_DIMENSIONS' });
   });
 
@@ -60,7 +58,7 @@ describe('PutAwaySuggestionService', () => {
       width: 200,
       height: 200,
     });
-    warehouseRepo.findShelvesByWarehouse.mockResolvedValue([
+    locationRepo.findShelves.mockResolvedValue([
       {
         _id: new Types.ObjectId(),
         code: 'A1-1',
@@ -71,7 +69,7 @@ describe('PutAwaySuggestionService', () => {
       },
     ]);
 
-    const result = await svc.suggest('SKU-BIG', 5, warehouseId);
+    const result = await svc.suggest('SKU-BIG', 5);
     expect(result).toEqual({ suggestions: [], warning: 'NO_SHELF_FITS' });
   });
 
@@ -99,12 +97,9 @@ describe('PutAwaySuggestionService', () => {
       innerHeight: 100,
       fillFactor: null,
     };
-    warehouseRepo.findShelvesByWarehouse.mockResolvedValue([
-      shelfSameSku,
-      shelfEmpty,
-    ]);
+    locationRepo.findShelves.mockResolvedValue([shelfSameSku, shelfEmpty]);
     // shelfSameSku đã chiếm 1 chút thể tích (bởi chính SKU này) — vẫn còn đủ chỗ.
-    stockRepo.findOccupiedVolumeByWarehouse.mockResolvedValue(
+    stockRepo.findOccupiedVolume.mockResolvedValue(
       new Map([[shelfSameSku._id.toString(), 1000]]),
     );
     // findShelfIdsWithItem xác định chính xác shelf nào có ĐÚNG itemId này
@@ -113,7 +108,7 @@ describe('PutAwaySuggestionService', () => {
       new Set([shelfSameSku._id.toString()]),
     );
 
-    const result = await svc.suggest('SKU-A', 10, warehouseId);
+    const result = await svc.suggest('SKU-A', 10);
 
     expect(result.warning).toBeNull();
     expect(result.suggestions).toHaveLength(1);
@@ -144,17 +139,14 @@ describe('PutAwaySuggestionService', () => {
       innerHeight: 50, // usableVolume = 125_000
       fillFactor: 1,
     };
-    warehouseRepo.findShelvesByWarehouse.mockResolvedValue([
-      shelfLoose,
-      shelfTight,
-    ]);
-    stockRepo.findOccupiedVolumeByWarehouse.mockResolvedValue(new Map());
+    locationRepo.findShelves.mockResolvedValue([shelfLoose, shelfTight]);
+    stockRepo.findOccupiedVolume.mockResolvedValue(new Map());
     stockRepo.findShelfIdsWithItem.mockResolvedValue(new Set());
 
     // qty=10 → cần capacity >= 10 (10 * 1000 = 10_000 cm³).
     // shelfLoose free=1_000_000 → capacity 1000. shelfTight free=125_000 → capacity 125.
     // Cả 2 đủ chứa qty=10 → chọn free nhỏ nhất = shelfTight.
-    const result = await svc.suggest('SKU-A', 10, warehouseId);
+    const result = await svc.suggest('SKU-A', 10);
 
     expect(result.warning).toBeNull();
     expect(result.suggestions[0].shelfCode).toBe('A1-2');
@@ -188,12 +180,12 @@ describe('PutAwaySuggestionService', () => {
       innerHeight: 10, // usableVolume = 20_000 → capacity 20
       fillFactor: 1,
     };
-    warehouseRepo.findShelvesByWarehouse.mockResolvedValue([shelfA, shelfB]);
-    stockRepo.findOccupiedVolumeByWarehouse.mockResolvedValue(new Map());
+    locationRepo.findShelves.mockResolvedValue([shelfA, shelfB]);
+    stockRepo.findOccupiedVolume.mockResolvedValue(new Map());
     stockRepo.findShelfIdsWithItem.mockResolvedValue(new Set());
 
     // qty=45: không shelf đơn nào đủ (30 và 20 đều < 45), tổng 50 >= 45.
-    const result = await svc.suggest('SKU-A', 45, warehouseId);
+    const result = await svc.suggest('SKU-A', 45);
 
     expect(result.warning).toBeNull();
     expect(result.suggestions).toEqual([
@@ -220,11 +212,11 @@ describe('PutAwaySuggestionService', () => {
       innerHeight: 10,
       fillFactor: 1,
     };
-    warehouseRepo.findShelvesByWarehouse.mockResolvedValue([shelfA]);
-    stockRepo.findOccupiedVolumeByWarehouse.mockResolvedValue(new Map());
+    locationRepo.findShelves.mockResolvedValue([shelfA]);
+    stockRepo.findOccupiedVolume.mockResolvedValue(new Map());
     stockRepo.findShelfIdsWithItem.mockResolvedValue(new Set());
 
-    const result = await svc.suggest('SKU-A', 999, warehouseId);
+    const result = await svc.suggest('SKU-A', 999);
 
     expect(result.warning).toBe('INSUFFICIENT_CAPACITY');
     expect(result.suggestions).toEqual([{ shelfCode: 'A1-1', capacity: 30 }]);

@@ -1,10 +1,9 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { Types } from 'mongoose';
 import { AppException } from '@app/common';
 import { StockRepository } from '../stock/stock.repository';
-import { WarehouseRepository } from '../warehouse/warehouse.repository';
-import type { ShelfDocument } from '../warehouse/schemas/shelf.schema';
+import { LocationRepository } from '../location/location.repository';
+import type { ShelfDocument } from '../location/schemas/shelf.schema';
 
 export interface PutAwaySuggestionItem {
   shelfCode: string;
@@ -35,15 +34,11 @@ const DEFAULT_FILL_FACTOR = 0.75;
 export class PutAwaySuggestionService {
   constructor(
     private readonly stockRepo: StockRepository,
-    private readonly warehouseRepo: WarehouseRepository,
+    private readonly locationRepo: LocationRepository,
     private readonly configService: ConfigService,
   ) {}
 
-  async suggest(
-    sku: string,
-    qty: number,
-    warehouseId: string,
-  ): Promise<PutAwaySuggestionResult> {
+  async suggest(sku: string, qty: number): Promise<PutAwaySuggestionResult> {
     const item = await this.stockRepo.findItemBySku(sku);
     if (!item) throw new AppException('PUTAWAY_ITEM_NOT_FOUND');
 
@@ -55,21 +50,15 @@ export class PutAwaySuggestionService {
       (a, b) => b - a,
     );
 
-    const shelves =
-      await this.warehouseRepo.findShelvesByWarehouse(warehouseId);
+    const shelves = await this.locationRepo.findShelves();
     const fittingShelves = shelves.filter((s) => this.fits(itemDims, s));
     if (fittingShelves.length === 0) {
       return { suggestions: [], warning: 'NO_SHELF_FITS' };
     }
 
     const [occupiedByShelf, shelfIdsWithSameSku] = await Promise.all([
-      this.stockRepo.findOccupiedVolumeByWarehouse(
-        new Types.ObjectId(warehouseId),
-      ),
-      this.stockRepo.findShelfIdsWithItem(
-        item._id,
-        new Types.ObjectId(warehouseId),
-      ),
+      this.stockRepo.findOccupiedVolume(),
+      this.stockRepo.findShelfIdsWithItem(item._id),
     ]);
     const defaultFillFactor =
       this.configService.get<number>('PUTAWAY_DEFAULT_FILL_FACTOR') ??

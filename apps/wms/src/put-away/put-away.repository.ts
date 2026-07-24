@@ -14,7 +14,6 @@ export interface CreatePutAwayLineInput {
 }
 
 export interface QueryPutAwayTaskInput {
-  warehouseId?: string;
   status?: PutAwayTaskStatus;
   page?: number;
   limit?: number;
@@ -30,7 +29,6 @@ export class PutAwayRepository {
   // remainingQty = quantity lúc khởi tạo — chưa xếp gì nên còn lại đúng bằng số lượng cần xếp
   async createTask(
     grnId: Types.ObjectId,
-    warehouseId: Types.ObjectId,
     lines: CreatePutAwayLineInput[],
     actorId: string,
     session: ClientSession,
@@ -39,7 +37,6 @@ export class PutAwayRepository {
       [
         {
           grnId,
-          warehouseId,
           status: PutAwayTaskStatus.PENDING,
           items: lines.map((l) => ({
             itemId: l.itemId,
@@ -65,8 +62,6 @@ export class PutAwayRepository {
     const page = query.page ?? 1;
     const limit = query.limit ?? 20;
     const filter: Record<string, unknown> = {};
-    if (query.warehouseId)
-      filter['warehouseId'] = new Types.ObjectId(query.warehouseId);
     if (query.status) filter['status'] = query.status;
 
     const [data, total] = await Promise.all([

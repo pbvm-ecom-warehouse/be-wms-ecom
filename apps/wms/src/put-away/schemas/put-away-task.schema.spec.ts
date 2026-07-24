@@ -9,7 +9,6 @@ describe('PutAwayTaskSchema', () => {
     );
     const doc = new Model({
       grnId: new Types.ObjectId(),
-      warehouseId: new Types.ObjectId(),
       items: [
         {
           itemId: new Types.ObjectId(),
