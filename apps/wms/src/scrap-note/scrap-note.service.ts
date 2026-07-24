@@ -210,7 +210,9 @@ export class ScrapNoteService {
     // Lặp theo touchedItemIds (đã dedup) để không bắn trùng alert khi nhiều dòng
     // cùng item.
     for (const itemIdStr of touchedItemIds) {
-      await this.stockService.checkAndEmitStockLow(new Types.ObjectId(itemIdStr));
+      await this.stockService.checkAndEmitStockLow(
+        new Types.ObjectId(itemIdStr),
+      );
     }
 
     const updated = await this.repo.findById(id);

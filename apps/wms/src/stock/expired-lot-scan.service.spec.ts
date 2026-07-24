@@ -47,13 +47,7 @@ describe('ExpiredLotScanService', () => {
 
       await svc.scanExpiredLots();
 
-      expect(stockRepo.upsertBalance).toHaveBeenCalledWith(
-        itemId,
-        0,
-        0,
-        5,
-        {},
-      );
+      expect(stockRepo.upsertBalance).toHaveBeenCalledWith(itemId, 0, 0, 5, {});
       expect(lotModel.updateOne).toHaveBeenCalledWith(
         { _id: lotId },
         { status: LotStatus.EXPIRED },

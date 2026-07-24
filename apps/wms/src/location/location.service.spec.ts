@@ -52,7 +52,10 @@ describe('LocationService', () => {
       const created = { _id: 'zone1', code: 'A' };
       repo.createZone.mockResolvedValue(created);
 
-      const result = await svc.createZone({ name: 'Khu A', code: 'A' }, 'actor1');
+      const result = await svc.createZone(
+        { name: 'Khu A', code: 'A' },
+        'actor1',
+      );
 
       expect(repo.createZone).toHaveBeenCalledWith(
         { name: 'Khu A', code: 'A' },
@@ -68,18 +71,18 @@ describe('LocationService', () => {
 
     it('throw ZONE_NOT_FOUND khi zone cha không tồn tại', async () => {
       repo.findZoneById.mockResolvedValue(null);
-      await expect(
-        svc.createRack(baseDto, 'actor1'),
-      ).rejects.toMatchObject({ code: 'ZONE_NOT_FOUND' });
+      await expect(svc.createRack(baseDto, 'actor1')).rejects.toMatchObject({
+        code: 'ZONE_NOT_FOUND',
+      });
       expect(repo.createRack).not.toHaveBeenCalled();
     });
 
     it('throw RACK_CODE_EXISTS khi code đã tồn tại trong zone', async () => {
       repo.findZoneById.mockResolvedValue({ _id: zoneId });
       repo.findRackByCode.mockResolvedValue({ _id: 'rack-existing' });
-      await expect(
-        svc.createRack(baseDto, 'actor1'),
-      ).rejects.toMatchObject({ code: 'RACK_CODE_EXISTS' });
+      await expect(svc.createRack(baseDto, 'actor1')).rejects.toMatchObject({
+        code: 'RACK_CODE_EXISTS',
+      });
       expect(repo.createRack).not.toHaveBeenCalled();
     });
 
@@ -102,18 +105,18 @@ describe('LocationService', () => {
 
     it('throw RACK_NOT_FOUND khi rack cha không tồn tại', async () => {
       repo.findRackById.mockResolvedValue(null);
-      await expect(
-        svc.createShelf(baseDto, 'actor1'),
-      ).rejects.toMatchObject({ code: 'RACK_NOT_FOUND' });
+      await expect(svc.createShelf(baseDto, 'actor1')).rejects.toMatchObject({
+        code: 'RACK_NOT_FOUND',
+      });
       expect(repo.createShelf).not.toHaveBeenCalled();
     });
 
     it('throw SHELF_CODE_EXISTS khi code đã tồn tại', async () => {
       repo.findRackById.mockResolvedValue({ _id: rackId });
       repo.findShelfByCode.mockResolvedValue({ _id: 'shelf-existing' });
-      await expect(
-        svc.createShelf(baseDto, 'actor1'),
-      ).rejects.toMatchObject({ code: 'SHELF_CODE_EXISTS' });
+      await expect(svc.createShelf(baseDto, 'actor1')).rejects.toMatchObject({
+        code: 'SHELF_CODE_EXISTS',
+      });
       expect(repo.createShelf).not.toHaveBeenCalled();
     });
 

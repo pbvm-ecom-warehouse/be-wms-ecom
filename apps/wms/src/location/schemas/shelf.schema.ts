@@ -52,5 +52,8 @@ ShelfSchema.index(
 // là quy ước ngầm scoped theo warehouseId, giờ siết thành ràng buộc DB thật).
 ShelfSchema.index(
   { isStaging: 1 },
-  { unique: true, partialFilterExpression: { isStaging: true, deletedAt: null } },
+  {
+    unique: true,
+    partialFilterExpression: { isStaging: true, deletedAt: null },
+  },
 );

@@ -580,7 +580,7 @@ describe('StockCountService', () => {
       };
       repo.findAll.mockResolvedValue(result);
 
-      const actual = await svc.listStockCounts(query as never);
+      const actual = await svc.listStockCounts(query);
 
       expect(actual).toBe(result);
       expect(repo.findAll).toHaveBeenCalledWith(query);

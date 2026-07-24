@@ -311,7 +311,9 @@ export class GoodsReturnService {
       await this.stockQueue.add(EVENTS.STOCK_CHANGED, payload, { jobId });
     }
     for (const itemIdStr of touchedItemIds) {
-      await this.stockService.checkAndEmitStockLow(new Types.ObjectId(itemIdStr));
+      await this.stockService.checkAndEmitStockLow(
+        new Types.ObjectId(itemIdStr),
+      );
     }
 
     const updated = await this.repo.findById(id);

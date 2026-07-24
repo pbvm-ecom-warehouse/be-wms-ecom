@@ -37,9 +37,7 @@ export class LocationRepository {
   }
 
   async findZoneByCode(code: string): Promise<ZoneDocument | null> {
-    return this.zoneModel
-      .findOne({ code, ...SOFT_DELETE_FILTER })
-      .exec();
+    return this.zoneModel.findOne({ code, ...SOFT_DELETE_FILTER }).exec();
   }
 
   async updateZone(
@@ -187,9 +185,7 @@ export class LocationRepository {
 
   /** Tìm shelf staging (khu nhận hàng tạm) duy nhất toàn hệ thống — dùng khi GRN CONFIRMED cộng tồn. */
   async findStagingShelf(): Promise<ShelfDocument | null> {
-    return this.shelfModel
-      .findOne({ isStaging: true, deletedAt: null })
-      .exec();
+    return this.shelfModel.findOne({ isStaging: true, deletedAt: null }).exec();
   }
 
   async updateShelf(

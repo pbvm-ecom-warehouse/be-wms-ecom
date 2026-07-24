@@ -235,13 +235,7 @@ export class StockCountService {
           delta,
           session,
         );
-        await this.stockRepo.upsertBalance(
-          line.itemId,
-          delta,
-          0,
-          0,
-          session,
-        );
+        await this.stockRepo.upsertBalance(line.itemId, delta, 0, 0, session);
         touchedItemIds.add(line.itemId.toString());
         await this.stockRepo.insertMovement(
           {
@@ -277,7 +271,9 @@ export class StockCountService {
     // S4-04: kiểm tra ngưỡng thấp tồn — sau khi commit. Lặp theo touchedItemIds
     // (đã dedup) để không bắn trùng alert khi nhiều dòng lệch cùng item.
     for (const itemIdStr of touchedItemIds) {
-      await this.stockService.checkAndEmitStockLow(new Types.ObjectId(itemIdStr));
+      await this.stockService.checkAndEmitStockLow(
+        new Types.ObjectId(itemIdStr),
+      );
     }
 
     const updated = await this.repo.findById(id);

@@ -228,7 +228,12 @@ describe('LocationRepository', () => {
       shelfModel.create.mockRejectedValueOnce(dupErr);
       await expect(
         repo.createShelf(
-          { rackId: rack._id.toString(), level: 2, code: 'S2', isStaging: true },
+          {
+            rackId: rack._id.toString(),
+            level: 2,
+            code: 'S2',
+            isStaging: true,
+          },
           actorId,
         ),
       ).rejects.toThrow();
