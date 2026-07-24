@@ -1,4 +1,5 @@
 // apps/wms/src/purchase-order/purchase-order.service.spec.ts
+import { Logger } from '@nestjs/common';
 import { PurchaseOrderService } from './purchase-order.service';
 
 const makeRepo = () => ({
@@ -118,11 +119,13 @@ describe('PurchaseOrderService', () => {
           },
         ],
       };
+      supplierSvc.getSupplierItemByItemAndSupplier.mockResolvedValue({
+        purchasePrice: 9999,
+        isActive: true,
+        supplierId,
+      });
       repo.createPurchaseOrder.mockResolvedValue({ poNumber: 'PO-X' });
       await svc.createPurchaseOrder(dtoWithPrice, actorId);
-      expect(
-        supplierSvc.getSupplierItemByItemAndSupplier,
-      ).not.toHaveBeenCalled();
       expect(repo.createPurchaseOrder).toHaveBeenCalledWith(
         dtoWithPrice,
         expect.any(String),
@@ -137,6 +140,137 @@ describe('PurchaseOrderService', () => {
         ],
         actorId,
       );
+    });
+
+    it('không chặn PO và không log cảnh báo khi unitPrice nhập tay khớp SupplierItem.purchasePrice', async () => {
+      const dtoWithPrice = {
+        ...baseDto,
+        items: [
+          {
+            itemId,
+            sku: 'SKU-1',
+            expectedQty: 10,
+            unit: 'cái',
+            unitPrice: 7000,
+          },
+        ],
+      };
+      supplierSvc.getSupplierItemByItemAndSupplier.mockResolvedValue({
+        purchasePrice: 7000,
+        isActive: true,
+        supplierId,
+      });
+      repo.createPurchaseOrder.mockResolvedValue({ poNumber: 'PO-X' });
+      const warnSpy = jest.spyOn(Logger.prototype, 'warn');
+      await svc.createPurchaseOrder(dtoWithPrice, actorId);
+      expect(warnSpy).not.toHaveBeenCalled();
+      warnSpy.mockRestore();
+    });
+
+    it('ghi log cảnh báo (không chặn PO) khi unitPrice nhập tay lệch so với SupplierItem.purchasePrice', async () => {
+      const dtoWithPrice = {
+        ...baseDto,
+        items: [
+          {
+            itemId,
+            sku: 'SKU-1',
+            expectedQty: 10,
+            unit: 'cái',
+            unitPrice: 9999,
+          },
+        ],
+      };
+      supplierSvc.getSupplierItemByItemAndSupplier.mockResolvedValue({
+        purchasePrice: 7000,
+        isActive: true,
+        supplierId,
+      });
+      repo.createPurchaseOrder.mockResolvedValue({ poNumber: 'PO-X' });
+      const warnSpy = jest
+        .spyOn(Logger.prototype, 'warn')
+        .mockImplementation(() => undefined);
+      await svc.createPurchaseOrder(dtoWithPrice, actorId);
+      expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('SKU-1'));
+      expect(repo.createPurchaseOrder).toHaveBeenCalledWith(
+        dtoWithPrice,
+        expect.any(String),
+        [
+          {
+            itemId,
+            sku: 'SKU-1',
+            expectedQty: 10,
+            unit: 'cái',
+            unitPrice: 9999,
+          },
+        ],
+        actorId,
+      );
+      warnSpy.mockRestore();
+    });
+
+    it('không throw, không log khi unitPrice nhập tay nhưng SKU chưa có báo giá NCC (SUPPLIER_ITEM_NOT_FOUND)', async () => {
+      const dtoWithPrice = {
+        ...baseDto,
+        items: [
+          {
+            itemId,
+            sku: 'SKU-1',
+            expectedQty: 10,
+            unit: 'cái',
+            unitPrice: 9999,
+          },
+        ],
+      };
+      supplierSvc.getSupplierItemByItemAndSupplier.mockRejectedValue({
+        code: 'SUPPLIER_ITEM_NOT_FOUND',
+      });
+      repo.createPurchaseOrder.mockResolvedValue({ poNumber: 'PO-X' });
+      const warnSpy = jest
+        .spyOn(Logger.prototype, 'warn')
+        .mockImplementation(() => undefined);
+      await svc.createPurchaseOrder(dtoWithPrice, actorId);
+      expect(repo.createPurchaseOrder).toHaveBeenCalledWith(
+        dtoWithPrice,
+        expect.any(String),
+        [
+          {
+            itemId,
+            sku: 'SKU-1',
+            expectedQty: 10,
+            unit: 'cái',
+            unitPrice: 9999,
+          },
+        ],
+        actorId,
+      );
+      expect(warnSpy).not.toHaveBeenCalled();
+      warnSpy.mockRestore();
+    });
+
+    it('không so sánh khi SupplierItem tồn tại nhưng isActive=false (coi như chưa có giá chính thống)', async () => {
+      const dtoWithPrice = {
+        ...baseDto,
+        items: [
+          {
+            itemId,
+            sku: 'SKU-1',
+            expectedQty: 10,
+            unit: 'cái',
+            unitPrice: 9999,
+          },
+        ],
+      };
+      supplierSvc.getSupplierItemByItemAndSupplier.mockResolvedValue({
+        purchasePrice: 7000,
+        isActive: false,
+      });
+      repo.createPurchaseOrder.mockResolvedValue({ poNumber: 'PO-X' });
+      const warnSpy = jest
+        .spyOn(Logger.prototype, 'warn')
+        .mockImplementation(() => undefined);
+      await svc.createPurchaseOrder(dtoWithPrice, actorId);
+      expect(warnSpy).not.toHaveBeenCalled();
+      warnSpy.mockRestore();
     });
 
     it('throw PO_PRICE_MISSING khi thiếu giá và SKU chưa có SupplierItem', async () => {

@@ -1,5 +1,5 @@
 // apps/wms/src/purchase-order/purchase-order.service.ts
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { AppException } from '@app/common';
 import type { ClientSession } from 'mongoose';
 import {
@@ -17,8 +17,13 @@ import type {
   QueryPurchaseOrderDto,
 } from './dto/purchase-order.dto';
 
+/** Ngưỡng lệch giá (%) để cảnh báo — không chặn PO, chỉ log nghi vấn nhập nhầm/gian lận (issue #31). */
+const PRICE_DEVIATION_WARN_THRESHOLD = 0.2;
+
 @Injectable()
 export class PurchaseOrderService {
+  private readonly logger = new Logger(PurchaseOrderService.name);
+
   constructor(
     private readonly repo: PurchaseOrderRepository,
     private readonly supplierService: SupplierService,
@@ -62,6 +67,11 @@ export class PurchaseOrderService {
           throw new AppException('PO_PRICE_MISSING');
         }
         unitPrice = supplierItem.purchasePrice;
+      } else {
+        // Giá nhập tay: không chặn PO (giá thương lượng tự do theo từng đơn),
+        // nhưng vẫn tra báo giá NCC để CẢNH BÁO qua log nếu lệch quá ngưỡng —
+        // phát hiện nhập nhầm/gian lận mà không cản trở nghiệp vụ (issue #31).
+        await this.warnIfPriceDeviates(item, dto.supplierId, unitPrice);
       }
       resolvedItems.push({
         itemId: item.itemId,
@@ -120,6 +130,43 @@ export class PurchaseOrderService {
       newStatus,
       session,
     );
+  }
+
+  /**
+   * So sánh unitPrice nhập tay với SupplierItem.purchasePrice (nếu có báo giá active).
+   * Không có báo giá / báo giá inactive → bỏ qua lặng lẽ (không có gì để so sánh).
+   * Chỉ log cảnh báo, không throw — giá nhập tay vẫn được chấp nhận.
+   */
+  private async warnIfPriceDeviates(
+    item: { itemId: string; sku: string },
+    supplierId: string,
+    unitPrice: number,
+  ): Promise<void> {
+    let supplierItem: { purchasePrice: number; isActive: boolean };
+    try {
+      supplierItem =
+        await this.supplierService.getSupplierItemByItemAndSupplier(
+          item.itemId,
+          supplierId,
+        );
+    } catch (err) {
+      if ((err as { code?: string })?.code === 'SUPPLIER_ITEM_NOT_FOUND') {
+        return;
+      }
+      throw err;
+    }
+    if (!supplierItem.isActive || supplierItem.purchasePrice === 0) {
+      return;
+    }
+
+    const deviation =
+      Math.abs(unitPrice - supplierItem.purchasePrice) /
+      supplierItem.purchasePrice;
+    if (deviation > PRICE_DEVIATION_WARN_THRESHOLD) {
+      this.logger.warn(
+        `SKU ${item.sku}: unitPrice nhập tay (${unitPrice}) lệch ${(deviation * 100).toFixed(1)}% so với SupplierItem.purchasePrice (${supplierItem.purchasePrice}) — kiểm tra lại giá NCC hoặc nhập nhầm`,
+      );
+    }
   }
 
   /** Sinh mã PO dạng PO-YYYYMMDD-xxxx, số thứ tự reset theo ngày. */

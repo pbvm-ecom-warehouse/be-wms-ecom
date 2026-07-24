@@ -42,7 +42,8 @@ export class CreatePurchaseOrderItemDto {
 
   @ApiPropertyOptional({
     example: 15000,
-    description: 'Để trống → tự điền từ SupplierItem.purchasePrice',
+    description:
+      'Để trống → tự điền từ SupplierItem.purchasePrice. Nhập tay vẫn được chấp nhận (giá thương lượng theo đơn); nếu lệch quá 20% so với báo giá đã đăng ký, hệ thống chỉ ghi log cảnh báo, không chặn.',
   })
   @IsOptional()
   @IsNumber()
