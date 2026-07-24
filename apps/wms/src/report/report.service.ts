@@ -1,5 +1,4 @@
 import { Injectable } from '@nestjs/common';
-import { Types } from 'mongoose';
 import { LotStatus } from '../stock/schemas/lot.schema';
 import { MovementType } from '../stock/schemas/stock-movement.schema';
 import {
@@ -30,9 +29,6 @@ export class ReportService {
     query: QueryStockReportDto,
   ): Promise<{ data: StockReportItemDto[]; total: number }> {
     const filter: ItemFilter = {};
-    if (query.warehouseId) {
-      filter.warehouseId = new Types.ObjectId(query.warehouseId);
-    }
     if (query.sku) {
       const item = await this.repo.findItemIdBySku(query.sku);
       if (!item) return { data: [], total: 0 };
@@ -49,8 +45,6 @@ export class ReportService {
       data: data.map((row) => ({
         sku: row.item.sku,
         itemName: row.item.name,
-        warehouseId: row.warehouseId.toString(),
-        warehouseName: row.warehouse.name,
         onHand: row.onHand,
         reserved: row.reserved,
         expired: row.expired,
@@ -64,9 +58,6 @@ export class ReportService {
     query: QueryLotReportDto,
   ): Promise<{ data: LotReportItemDto[]; total: number }> {
     const filter: LotItemFilter = {};
-    if (query.warehouseId) {
-      filter.warehouseId = new Types.ObjectId(query.warehouseId);
-    }
     if (query.status) filter.status = query.status;
     if (query.sku) {
       const item = await this.repo.findItemIdBySku(query.sku);
@@ -101,8 +92,6 @@ export class ReportService {
           itemName: row.item.name,
           lotNumber: row.lot.lotNumber,
           expiryDate: row.lot.expiryDate,
-          warehouseId: row._id.warehouseId.toString(),
-          warehouseName: row.warehouse.name,
           quantity: row.quantity,
           status: row.lot.status,
           expiryFlag,
@@ -123,9 +112,6 @@ export class ReportService {
         );
 
     const filter: PerformanceFilter = { dateFrom, dateTo };
-    if (query.warehouseId) {
-      filter.warehouseId = new Types.ObjectId(query.warehouseId);
-    }
 
     const zeroFilled = (): PerformanceReportItemDto[] =>
       Object.values(MovementType).map((type) => ({
