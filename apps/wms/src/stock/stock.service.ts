@@ -5,6 +5,7 @@ import {
   QUEUES,
   type StockChangedPayload,
   type StockLowPayload,
+  type WarehouseItemCreatedPayload,
 } from '@app/events';
 import { AppException, CloudinaryService } from '@app/common';
 import { Queue } from 'bullmq';
@@ -172,7 +173,7 @@ export class StockService {
     }
 
     try {
-      return await this.txHelper.withStockTransaction(async (session) => {
+      const createdItem = await this.txHelper.withStockTransaction(async (session) => {
         const itemId = new Types.ObjectId();
         const barcode = await this.barcodeSvc.generateAndReservePrimaryBarcode(
           itemId,
@@ -203,6 +204,32 @@ export class StockService {
           session,
         );
       });
+
+      try {
+        const payload: WarehouseItemCreatedPayload = {
+          sku: createdItem.sku,
+          name: createdItem.name,
+          type: createdItem.type,
+          unit: createdItem.unit,
+          initialQty: 0,
+          attributes: (createdItem.attributes ?? []).map((attr) => ({
+            code: attr.code,
+            value: attr.value,
+            name: attr.name,
+          })),
+        };
+        await this.stockQueue.add(EVENTS.ITEM_CREATED, payload, {
+          jobId: `item_created-${createdItem.sku}`,
+        });
+        this.logger.log(`warehouse_item.created → sku=${createdItem.sku} (initialQty=0)`);
+      } catch (evtErr) {
+        this.logger.error(
+          `Lỗi khi phát sự kiện warehouse_item.created cho SKU ${createdItem.sku}:`,
+          evtErr,
+        );
+      }
+
+      return createdItem;
     } catch (err) {
       if (isMongoDuplicateKeyError(err)) {
         throw new AppException('STOCK_ITEM_SKU_CONFLICT');

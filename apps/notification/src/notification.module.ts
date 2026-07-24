@@ -17,6 +17,10 @@ import {
   UserFcmToken,
   UserFcmTokenSchema,
 } from '../../ecommerce/src/auth/schemas/user-fcm-token.schema';
+import {
+  User,
+  UserSchema,
+} from '../../ecommerce/src/auth/schemas/user.schema';
 
 @Module({
   imports: [
@@ -29,6 +33,7 @@ import {
     DatabaseModule.forApp('ECOM_DATABASE_URL'),
     MongooseModule.forFeature([
       { name: UserFcmToken.name, schema: UserFcmTokenSchema },
+      { name: User.name, schema: UserSchema },
     ]),
     EventsModule, // BullMQ + Redis
     EmailModule, // Resend email service — gửi OTP verify/reset

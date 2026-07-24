@@ -24,6 +24,7 @@ export const EVENTS = {
   // ----- Tồn kho (WMS → Ecommerce) -----
   STOCK_CHANGED: 'stock.changed',
   STOCK_EXPIRED: 'stock.expired',
+  ITEM_CREATED: 'warehouse_item.created',
   // ----- Reserve theo saga (Ecommerce → WMS → Ecommerce) -----
   // Vì đồng bộ bằng event (không transaction xuyên DB), reserve lúc checkout là bất đồng bộ:
   STOCK_RESERVE_REQUESTED: 'stock.reserve_requested', // Ecom → WMS
@@ -48,6 +49,7 @@ export const EVENTS = {
   CUSTOMER_VERIFY_REQUESTED: 'customer.verify_requested',
   CUSTOMER_PASSWORD_RESET_REQUESTED: 'customer.password_reset_requested',
   CUSTOMER_GOOGLE_REGISTERED: 'customer.google_registered',
+  NEW_ITEM_SYNCED: 'new_item.synced',
 } as const;
 
 export type EventName = (typeof EVENTS)[keyof typeof EVENTS];
@@ -157,10 +159,24 @@ export interface CustomerEmailActionPayload {
   code: string; // mã OTP 6 số (plaintext, chỉ để notification ghép vào email)
 }
 
+export interface WarehouseItemCreatedPayload {
+  sku: string;
+  name: string;
+  type: string; // ItemType
+  unit: string;
+  initialQty: number;
+  attributes: {
+    code: string;
+    value: string;
+    name: string;
+  }[];
+}
+
 /** Bản đồ event → payload (giúp producer/consumer type-safe). */
 export interface EventPayloadMap {
   [EVENTS.STOCK_CHANGED]: StockChangedPayload;
   [EVENTS.STOCK_EXPIRED]: StockExpiredPayload;
+  [EVENTS.ITEM_CREATED]: WarehouseItemCreatedPayload;
   [EVENTS.STOCK_RESERVE_REQUESTED]: StockReserveRequestedPayload;
   [EVENTS.STOCK_RESERVED]: StockReservedPayload;
   [EVENTS.STOCK_RESERVE_FAILED]: StockReserveFailedPayload;
@@ -179,6 +195,12 @@ export interface EventPayloadMap {
   [EVENTS.CUSTOMER_VERIFY_REQUESTED]: CustomerEmailActionPayload;
   [EVENTS.CUSTOMER_PASSWORD_RESET_REQUESTED]: CustomerEmailActionPayload;
   [EVENTS.CUSTOMER_GOOGLE_REGISTERED]: CustomerGoogleRegisteredPayload;
+  [EVENTS.NEW_ITEM_SYNCED]: NewItemSyncedPayload;
+}
+
+export interface NewItemSyncedPayload {
+  sku: string;
+  name: string;
 }
 
 export interface CustomerGoogleRegisteredPayload {

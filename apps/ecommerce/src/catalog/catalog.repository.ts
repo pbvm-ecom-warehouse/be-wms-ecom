@@ -57,6 +57,75 @@ export class CatalogRepository {
     }
   }
 
+  async findOrCreateDefaultCategory(): Promise<Types.ObjectId> {
+    const existing = await this.categoryModel.findOne().lean();
+    if (existing) {
+      return existing._id as Types.ObjectId;
+    }
+    const created = await this.categoryModel.create({
+      name: 'Chưa phân loại',
+      slug: 'chua-phan-loai',
+      position: 0,
+    });
+    return created._id as Types.ObjectId;
+  }
+
+  async findOrCreateProductForVariant(type: string): Promise<Types.ObjectId> {
+    const slug = `san-pham-kho-${type.toLowerCase()}`;
+    const existing = await this.productModel.findOne({ slug }).lean();
+    if (existing) {
+      return existing._id as Types.ObjectId;
+    }
+    const categoryId = await this.findOrCreateDefaultCategory();
+    const created = await this.productModel.create({
+      name: `Sản phẩm kho - ${type}`,
+      slug,
+      description: 'Sản phẩm nháp được tạo tự động từ mặt hàng kho WMS',
+      categoryId,
+      status: ProductStatus.DRAFT,
+    });
+    return created._id as Types.ObjectId;
+  }
+
+  async createProductVariantFromWms(
+    jobId: string,
+    eventName: string,
+    sku: string,
+    type: string,
+    initialQty: number,
+    attributes: Record<string, string>,
+  ): Promise<boolean> {
+    const session = await this.conn.startSession();
+    try {
+      await session.withTransaction(async () => {
+        await this.processedModel.create([{ jobId, eventName }], { session });
+        const existing = await this.variantModel.findOne({ sku }).session(session).lean();
+        if (!existing) {
+          const productId = await this.findOrCreateProductForVariant(type);
+          await this.variantModel.create(
+            [
+              {
+                sku,
+                productId,
+                price: 0,
+                availableQty: initialQty,
+                isActive: false, // Để ẩn mặc định
+                attributes,
+              },
+            ],
+            { session },
+          );
+        }
+      });
+      return true;
+    } catch (err: unknown) {
+      if ((err as { code?: number })?.code === DUPLICATE_KEY) return false;
+      throw err;
+    } finally {
+      await session.endSession();
+    }
+  }
+
   // ── CATEGORY ─────────────────────────────────────────────────────────────
 
   async createCategory(data: Partial<Category>) {

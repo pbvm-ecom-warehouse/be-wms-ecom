@@ -26,6 +26,8 @@
     "test:e2e": "jest --config ./apps/wms/test/jest-e2e.json",
     "seed:wms": "ts-node -r tsconfig-paths/register apps/wms/src/seed/seed.ts",
     "seed:ecom": "ts-node -r tsconfig-paths/register apps/ecommerce/src/seed/seed.ts",
+    "seed:test-sync": "ts-node -r tsconfig-paths/register apps/wms/src/seed/test-sync-seed.ts",
+    "cleanup:test-sync": "ts-node -r tsconfig-paths/register apps/wms/src/seed/test-sync-cleanup.ts",
     "backfill:barcode-registry": "ts-node -r tsconfig-paths/register apps/wms/scripts/backfill-barcode-registry.ts"
   },
   "dependencies": {

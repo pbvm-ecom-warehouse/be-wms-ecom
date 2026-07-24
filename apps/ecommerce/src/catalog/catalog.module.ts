@@ -25,7 +25,10 @@ import { CacheModule } from '../cache/cache.module';
 
 @Module({
   imports: [
-    BullModule.registerQueue({ name: QUEUES.STOCK }),
+    BullModule.registerQueue(
+      { name: QUEUES.STOCK },
+      { name: QUEUES.NOTIFICATION },
+    ),
     MongooseModule.forFeature([
       { name: ProductVariant.name, schema: ProductVariantSchema },
       { name: ProcessedEvent.name, schema: ProcessedEventSchema },

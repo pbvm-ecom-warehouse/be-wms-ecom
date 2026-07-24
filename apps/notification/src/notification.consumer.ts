@@ -12,7 +12,10 @@ import {
   type PaymentSuccessPayload,
   type StockLowPayload,
   type StockNearExpiryPayload,
+  type NewItemSyncedPayload,
 } from '@app/events';
+import { EcomRole } from '@app/auth';
+import { User, UserStatus } from '../../ecommerce/src/auth/schemas/user.schema';
 import { Job } from 'bullmq';
 import { EmailService } from './email/email.service';
 import { FirebaseService } from './firebase/firebase.service';
@@ -46,6 +49,8 @@ export class NotificationConsumer extends WorkerHost {
     private readonly config: ConfigService,
     @InjectModel(UserFcmToken.name)
     private readonly fcmTokenModel: Model<UserFcmToken>,
+    @InjectModel(User.name)
+    private readonly userModel: Model<User>,
   ) {
     super();
   }
@@ -176,6 +181,37 @@ export class NotificationConsumer extends WorkerHost {
             `Đơn hàng ${payload.orderId} của bạn đã được thanh toán thành công với số tiền ${payload.amount.toLocaleString()}đ!`,
             { orderId: payload.orderId, type: 'PAYMENT_SUCCESS' },
           );
+        }
+        break;
+      }
+      case EVENTS.NEW_ITEM_SYNCED: {
+        const { sku, name } = job.data as NewItemSyncedPayload;
+        try {
+          const managers = await this.userModel
+            .find({ role: EcomRole.ECOM_MANAGER, status: UserStatus.ACTIVE })
+            .lean();
+          const managerIds = managers.map((m) => m._id);
+          if (managerIds.length > 0 && this.firebase.isEnabled()) {
+            const tokens = await this.fcmTokenModel
+              .find({ customerId: { $in: managerIds } })
+              .lean();
+            const tokenList = tokens.map((t) => t.fcmToken);
+            if (tokenList.length > 0) {
+              await this.firebase.getMessaging().sendEachForMulticast({
+                tokens: tokenList,
+                notification: {
+                  title: 'Mặt hàng mới cần duyệt 📦',
+                  body: `Mã SKU [${sku}] - Tên: ${name} đã được WMS đồng bộ sang Ecommerce dạng nháp. Vui lòng thiết lập giá bán và kích hoạt.`,
+                },
+                data: { sku, name },
+              });
+              this.logger.log(
+                `Đã gửi FCM Push Notification báo duyệt hàng cho ${tokenList.length} thiết bị Ecom Manager`,
+              );
+            }
+          }
+        } catch (err: any) {
+          this.logger.error('Lỗi khi gửi FCM Push Notification cho Ecom Manager:', err);
         }
         break;
       }

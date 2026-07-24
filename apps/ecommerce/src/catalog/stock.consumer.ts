@@ -1,14 +1,14 @@
-import { Processor, WorkerHost } from '@nestjs/bullmq';
+import { Processor, WorkerHost, InjectQueue } from '@nestjs/bullmq';
 import { Logger } from '@nestjs/common';
 import {
   EVENTS,
   QUEUES,
   type StockChangedPayload,
   type StockExpiredPayload,
+  type WarehouseItemCreatedPayload,
 } from '@app/events';
-import { Job } from 'bullmq';
+import { Job, Queue } from 'bullmq';
 import { CatalogRepository } from './catalog.repository';
-import { CacheService } from '../cache/cache.service';
 
 /**
  * CONSUMER tồn kho: cộng dồn ProductVariant.availableQty theo delta (bản copy do WMS
@@ -21,7 +21,7 @@ export class StockConsumer extends WorkerHost {
 
   constructor(
     private readonly catalogRepo: CatalogRepository,
-    private readonly cacheService: CacheService,
+    @InjectQueue(QUEUES.NOTIFICATION) private readonly notifyQueue: Queue,
   ) {
     super();
   }
@@ -41,27 +41,49 @@ export class StockConsumer extends WorkerHost {
         );
         if (applied) {
           this.logger.log(`availableQty[${sku}] += ${delta} (job ${job.id})`);
-          try {
-            const variant = await this.catalogRepo.findVariantBySku(sku);
-            if (variant) {
-              const product = await this.catalogRepo.getProductById(
-                variant.productId.toString(),
-              );
-              if (product) {
-                await this.cacheService.del(
-                  `ecom:catalog:products:detail:${product.slug}`,
-                );
-              }
-            }
-          } catch (cacheErr) {
-            this.logger.error(
-              `Lỗi khi xóa cache chi tiết sản phẩm cho SKU ${sku}:`,
-              cacheErr,
-            );
-          }
         } else {
           this.logger.warn(
             `Job ${job.id} đã xử lý trước đó → bỏ qua (idempotent).`,
+          );
+        }
+        break;
+      }
+      case EVENTS.ITEM_CREATED: {
+        const payload = job.data as WarehouseItemCreatedPayload;
+        // Chỉ đồng bộ các sản phẩm thuộc diện đăng bán lẻ trên Ecom
+        if (payload.type === 'CUP_BLANK' || payload.type === 'CUP_PRINTED') {
+          const attributesObj: Record<string, string> = {};
+          if (Array.isArray(payload.attributes)) {
+            for (const attr of payload.attributes) {
+              attributesObj[attr.code.toLowerCase()] = attr.value;
+            }
+          }
+          const applied = await this.catalogRepo.createProductVariantFromWms(
+            String(job.id),
+            job.name,
+            payload.sku,
+            payload.type,
+            payload.initialQty || 0,
+            attributesObj,
+          );
+          if (applied) {
+            this.logger.log(
+              `Tự động đồng bộ SKU [${payload.sku}] từ WMS sang Ecom dưới dạng Nháp thành công (job ${job.id})`,
+            );
+            // Bắn event báo cho Manager biết qua FCM Push
+            await this.notifyQueue.add(
+              EVENTS.NEW_ITEM_SYNCED,
+              { sku: payload.sku, name: payload.name },
+              { removeOnComplete: true },
+            );
+          } else {
+            this.logger.warn(
+              `Job ${job.id} cho SKU [${payload.sku}] đã xử lý trước đó → bỏ qua.`,
+            );
+          }
+        } else {
+          this.logger.log(
+            `Bỏ qua đồng bộ SKU [${payload.sku}] vì loại mặt hàng [${payload.type}] không hiển thị bán lẻ trên Ecom.`,
           );
         }
         break;
