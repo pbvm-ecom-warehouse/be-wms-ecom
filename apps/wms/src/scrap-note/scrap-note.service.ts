@@ -18,7 +18,7 @@ import {
 } from './schemas/scrap-note.schema';
 import { StockRepository } from '../stock/stock.repository';
 import { StockService } from '../stock/stock.service';
-import { WarehouseRepository } from '../warehouse/warehouse.repository';
+import { LocationRepository } from '../location/location.repository';
 import { StockTransactionHelper } from '../stock/helpers/with-stock-transaction.helper';
 import { MovementType } from '../stock/schemas/stock-movement.schema';
 
@@ -38,7 +38,7 @@ export class ScrapNoteService {
     private readonly repo: ScrapNoteRepository,
     private readonly stockRepo: StockRepository,
     private readonly stockService: StockService,
-    private readonly warehouseRepo: WarehouseRepository,
+    private readonly locationRepo: LocationRepository,
     private readonly stockTransactionHelper: StockTransactionHelper,
     @InjectQueue(QUEUES.STOCK) private readonly stockQueue: Queue,
     private readonly cloudinary: CloudinaryService,
@@ -60,12 +60,6 @@ export class ScrapNoteService {
     actorId: string,
     imagesByIndex?: Map<number, UploadedImageFile[]>,
   ): Promise<ScrapNoteDocument> {
-    const warehouseId = new Types.ObjectId(dto.warehouseId);
-    const warehouse = await this.warehouseRepo.findWarehouseById(
-      dto.warehouseId,
-    );
-    if (!warehouse) throw new AppException('WAREHOUSE_NOT_FOUND');
-
     const lines: {
       itemId: Types.ObjectId;
       sku: string;
@@ -83,7 +77,7 @@ export class ScrapNoteService {
         throw new AppException('SCRAP_NOTE_ITEM_ISPERISHABLE_NO_LOT');
       }
 
-      const shelf = await this.warehouseRepo.findShelfById(itemDto.shelfId);
+      const shelf = await this.locationRepo.findShelfById(itemDto.shelfId);
       if (!shelf) throw new AppException('SHELF_NOT_FOUND');
 
       const itemId = new Types.ObjectId(itemDto.itemId);
@@ -92,7 +86,6 @@ export class ScrapNoteService {
 
       const inventory = await this.stockRepo.findInventory(
         itemId,
-        warehouseId,
         shelfId,
         lotId,
       );
@@ -123,7 +116,6 @@ export class ScrapNoteService {
     }
 
     return this.repo.createScrapNote(
-      warehouseId,
       dto.note,
       new Types.ObjectId(actorId),
       lines,
@@ -164,17 +156,13 @@ export class ScrapNoteService {
 
     // S4-04: nhiều dòng scrap có thể cùng itemId (vd cùng SKU hỏng ở 2 lot khác
     // nhau) — checkAndEmitStockLow đọc lại balance sau commit nên chỉ cần gọi
-    // 1 lần cho mỗi cặp (itemId, warehouseId), dồn vào map để dedup trước.
-    const touchedBalances = new Map<
-      string,
-      { itemId: Types.ObjectId; warehouseId: Types.ObjectId }
-    >();
+    // 1 lần cho mỗi itemId, dồn vào set để dedup trước.
+    const touchedItemIds = new Set<string>();
 
     await this.stockTransactionHelper.withStockTransaction(async (session) => {
       for (const line of scrapNote.items) {
         await this.stockRepo.upsertInventory(
           line.itemId,
-          scrapNote.warehouseId,
           line.shelfId,
           line.lotId,
           -line.quantity,
@@ -183,20 +171,15 @@ export class ScrapNoteService {
         const expiredDelta = line.lotId ? -line.quantity : 0;
         await this.stockRepo.upsertBalance(
           line.itemId,
-          scrapNote.warehouseId,
           -line.quantity,
           0,
           expiredDelta,
           session,
         );
-        touchedBalances.set(
-          `${line.itemId.toString()}:${scrapNote.warehouseId.toString()}`,
-          { itemId: line.itemId, warehouseId: scrapNote.warehouseId },
-        );
+        touchedItemIds.add(line.itemId.toString());
         await this.stockRepo.insertMovement(
           {
             itemId: line.itemId,
-            warehouseId: scrapNote.warehouseId,
             shelfId: line.shelfId,
             lotId: line.lotId,
             type: MovementType.SCRAP,
@@ -224,10 +207,10 @@ export class ScrapNoteService {
     // S4-04: kiểm tra ngưỡng thấp tồn cho MỌI dòng (bao gồm cả lotId/skipAvailableSync
     // — khác với vòng lặp stock.changed phía trên, vì stock.low quan tâm available
     // sau MỌI biến động onHand, không chỉ dòng ảnh hưởng available đã sync Ecom).
-    // Lặp theo touchedBalances (đã dedup theo itemId+warehouseId) để không bắn
-    // trùng alert khi nhiều dòng cùng item.
-    for (const { itemId, warehouseId } of touchedBalances.values()) {
-      await this.stockService.checkAndEmitStockLow(itemId, warehouseId);
+    // Lặp theo touchedItemIds (đã dedup) để không bắn trùng alert khi nhiều dòng
+    // cùng item.
+    for (const itemIdStr of touchedItemIds) {
+      await this.stockService.checkAndEmitStockLow(new Types.ObjectId(itemIdStr));
     }
 
     const updated = await this.repo.findById(id);
@@ -245,7 +228,6 @@ export class ScrapNoteService {
    * stock.changed — hàng này chưa từng tăng available.
    */
   async createApprovedScrapNoteForReturn(params: {
-    warehouseId: Types.ObjectId;
     itemId: Types.ObjectId;
     sku: string;
     shelfId: Types.ObjectId;
@@ -255,7 +237,6 @@ export class ScrapNoteService {
     session: ClientSession;
   }): Promise<Types.ObjectId> {
     const scrapNote = await this.repo.createApprovedScrapNote(
-      params.warehouseId,
       params.actorId,
       [
         {
@@ -272,7 +253,6 @@ export class ScrapNoteService {
     );
     await this.stockRepo.upsertInventory(
       params.itemId,
-      params.warehouseId,
       params.shelfId,
       params.lotId,
       -params.quantity,
@@ -280,7 +260,6 @@ export class ScrapNoteService {
     );
     await this.stockRepo.upsertBalance(
       params.itemId,
-      params.warehouseId,
       -params.quantity,
       0,
       0,
@@ -289,7 +268,6 @@ export class ScrapNoteService {
     await this.stockRepo.insertMovement(
       {
         itemId: params.itemId,
-        warehouseId: params.warehouseId,
         shelfId: params.shelfId,
         lotId: params.lotId,
         type: MovementType.SCRAP,

@@ -14,10 +14,6 @@ import { Types } from 'mongoose';
 import { StockCountStatus } from '../schemas/stock-count.schema';
 
 export class CreateStockCountDto {
-  @ApiProperty({ example: '665f1a2b3c4d5e6f7a8b9c0d' })
-  @IsMongoId()
-  warehouseId!: string;
-
   @ApiPropertyOptional({
     example: '665f1a2b3c4d5e6f7a8b9c0e',
     description: 'Bỏ trống = kiểm toàn kho',
@@ -100,11 +96,6 @@ export class QueryStockCountDto {
   @IsEnum(StockCountStatus)
   status?: StockCountStatus;
 
-  @ApiPropertyOptional({ example: '665f1a2b3c4d5e6f7a8b9c0d' })
-  @IsOptional()
-  @IsMongoId()
-  warehouseId?: string;
-
   @ApiPropertyOptional({ default: 1, minimum: 1 })
   @IsOptional()
   @Type(() => Number)
@@ -175,13 +166,6 @@ export class StockCountResponseDto {
   )
   @ApiProperty()
   id!: string;
-
-  @Expose()
-  @Transform(({ obj }: { obj: { warehouseId?: Types.ObjectId } }) =>
-    obj.warehouseId?.toString(),
-  )
-  @ApiProperty()
-  warehouseId!: string;
 
   @Expose()
   @Transform(({ obj }: { obj: { zoneId?: Types.ObjectId | null } }) =>

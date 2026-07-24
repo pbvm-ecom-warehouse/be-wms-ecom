@@ -6,7 +6,7 @@ import { ScrapNote, ScrapNoteSchema } from './schemas/scrap-note.schema';
 import { ScrapNoteRepository } from './scrap-note.repository';
 import { ScrapNoteService } from './scrap-note.service';
 import { ScrapNoteController } from './scrap-note.controller';
-import { WarehouseModule } from '../warehouse/warehouse.module';
+import { LocationModule } from '../location/location.module';
 import { StockModule } from '../stock/stock.module';
 
 @Module({
@@ -17,7 +17,7 @@ import { StockModule } from '../stock/stock.module';
     MongooseModule.forFeature([
       { name: ScrapNote.name, schema: ScrapNoteSchema },
     ]),
-    WarehouseModule, // findWarehouseById/findShelfById
+    LocationModule, // findShelfById
     StockModule, // StockRepository + StockTransactionHelper
   ],
   providers: [ScrapNoteRepository, ScrapNoteService],

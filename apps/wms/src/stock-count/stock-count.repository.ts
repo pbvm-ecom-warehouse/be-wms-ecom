@@ -17,7 +17,6 @@ export interface CreateStockCountLineInput {
 
 export interface QueryStockCountInput {
   status?: StockCountStatus;
-  warehouseId?: Types.ObjectId;
   page?: number;
   limit?: number;
 }
@@ -34,7 +33,6 @@ export class StockCountRepository {
   }
 
   async createStockCount(
-    warehouseId: Types.ObjectId,
     zoneId: Types.ObjectId | null,
     note: string | undefined,
     createdBy: Types.ObjectId,
@@ -42,7 +40,6 @@ export class StockCountRepository {
   ): Promise<StockCountDocument> {
     const [doc] = await this.model.create([
       {
-        warehouseId,
         zoneId,
         note,
         status: StockCountStatus.DRAFT,
@@ -69,7 +66,6 @@ export class StockCountRepository {
     const limit = query.limit ?? 20;
     const filter: Record<string, unknown> = {};
     if (query.status) filter['status'] = query.status;
-    if (query.warehouseId) filter['warehouseId'] = query.warehouseId;
 
     const [data, total] = await Promise.all([
       this.model

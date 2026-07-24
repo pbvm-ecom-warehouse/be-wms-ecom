@@ -20,8 +20,7 @@ const makeStockRepo = () => ({
   findItemsByIds: jest.fn(),
 });
 
-const makeWarehouseRepo = () => ({
-  findWarehouseById: jest.fn(),
+const makeLocationRepo = () => ({
   findZoneById: jest.fn(),
   findShelfIdsByZone: jest.fn(),
 });
@@ -56,14 +55,13 @@ describe('StockCountService', () => {
   let svc: StockCountService;
   let repo: ReturnType<typeof makeRepo>;
   let stockRepo: ReturnType<typeof makeStockRepo>;
-  let warehouseRepo: ReturnType<typeof makeWarehouseRepo>;
+  let locationRepo: ReturnType<typeof makeLocationRepo>;
   let txHelper: ReturnType<typeof makeTxHelper>;
   let stockQueue: ReturnType<typeof makeStockQueue>;
   let stockService: ReturnType<typeof makeStockService>;
   let cloudinary: ReturnType<typeof makeCloudinaryService>;
 
   const actorId = new Types.ObjectId().toString();
-  const warehouseId = new Types.ObjectId();
   const zoneId = new Types.ObjectId();
   const itemId = new Types.ObjectId();
   const shelfId = new Types.ObjectId();
@@ -71,7 +69,7 @@ describe('StockCountService', () => {
   beforeEach(() => {
     repo = makeRepo();
     stockRepo = makeStockRepo();
-    warehouseRepo = makeWarehouseRepo();
+    locationRepo = makeLocationRepo();
     txHelper = makeTxHelper();
     stockQueue = makeStockQueue();
     stockService = makeStockService();
@@ -80,7 +78,7 @@ describe('StockCountService', () => {
       repo as never,
       stockRepo as never,
       stockService as never,
-      warehouseRepo as never,
+      locationRepo as never,
       txHelper as never,
       stockQueue as never,
       cloudinary as never,
@@ -89,7 +87,6 @@ describe('StockCountService', () => {
 
   describe('createStockCount', () => {
     it('tạo phiếu toàn kho khi không truyền zoneId, dòng lấy từ InventoryStock', async () => {
-      warehouseRepo.findWarehouseById.mockResolvedValue({ _id: warehouseId });
       stockRepo.findInventoryByScope.mockResolvedValue([
         { itemId, shelfId, lotId: null, quantity: 50 },
       ]);
@@ -98,19 +95,12 @@ describe('StockCountService', () => {
       ]);
       repo.createStockCount.mockResolvedValue({ _id: 'sc1' });
 
-      await svc.createStockCount(
-        { warehouseId: warehouseId.toString() },
-        actorId,
-      );
+      await svc.createStockCount({}, actorId);
 
-      expect(warehouseRepo.findShelfIdsByZone).not.toHaveBeenCalled();
-      expect(stockRepo.findInventoryByScope).toHaveBeenCalledWith(
-        warehouseId,
-        undefined,
-      );
+      expect(locationRepo.findShelfIdsByZone).not.toHaveBeenCalled();
+      expect(stockRepo.findInventoryByScope).toHaveBeenCalledWith(undefined);
       expect(stockRepo.findItemsByIds).toHaveBeenCalledWith([itemId]);
       expect(repo.createStockCount).toHaveBeenCalledWith(
-        warehouseId,
         null,
         undefined,
         expect.anything(),
@@ -127,12 +117,8 @@ describe('StockCountService', () => {
     });
 
     it('lọc theo zoneId khi có truyền — dùng findShelfIdsByZone trước', async () => {
-      warehouseRepo.findWarehouseById.mockResolvedValue({ _id: warehouseId });
-      warehouseRepo.findZoneById.mockResolvedValue({
-        _id: zoneId,
-        warehouseId,
-      });
-      warehouseRepo.findShelfIdsByZone.mockResolvedValue([shelfId]);
+      locationRepo.findZoneById.mockResolvedValue({ _id: zoneId });
+      locationRepo.findShelfIdsByZone.mockResolvedValue([shelfId]);
       stockRepo.findInventoryByScope.mockResolvedValue([
         { itemId, shelfId, lotId: null, quantity: 30 },
       ]);
@@ -141,30 +127,21 @@ describe('StockCountService', () => {
       ]);
       repo.createStockCount.mockResolvedValue({ _id: 'sc1' });
 
-      await svc.createStockCount(
-        { warehouseId: warehouseId.toString(), zoneId: zoneId.toString() },
-        actorId,
-      );
+      await svc.createStockCount({ zoneId: zoneId.toString() }, actorId);
 
-      expect(stockRepo.findInventoryByScope).toHaveBeenCalledWith(warehouseId, [
-        shelfId,
-      ]);
+      expect(stockRepo.findInventoryByScope).toHaveBeenCalledWith([shelfId]);
     });
 
     it('phạm vi trống (không có InventoryStock nào) → throw STOCK_COUNT_EMPTY_SCOPE', async () => {
-      warehouseRepo.findWarehouseById.mockResolvedValue({ _id: warehouseId });
       stockRepo.findInventoryByScope.mockResolvedValue([]);
 
-      await expect(
-        svc.createStockCount({ warehouseId: warehouseId.toString() }, actorId),
-      ).rejects.toThrow();
+      await expect(svc.createStockCount({}, actorId)).rejects.toThrow();
       expect(repo.createStockCount).not.toHaveBeenCalled();
     });
 
     it('dòng InventoryStock mồ côi (itemId không khớp WarehouseItem nào) bị bỏ qua, các dòng hợp lệ khác vẫn tạo bình thường', async () => {
       const orphanItemId = new Types.ObjectId();
       const otherShelfId = new Types.ObjectId();
-      warehouseRepo.findWarehouseById.mockResolvedValue({ _id: warehouseId });
       stockRepo.findInventoryByScope.mockResolvedValue([
         { itemId, shelfId, lotId: null, quantity: 50 },
         {
@@ -180,13 +157,9 @@ describe('StockCountService', () => {
       ]);
       repo.createStockCount.mockResolvedValue({ _id: 'sc1' });
 
-      await svc.createStockCount(
-        { warehouseId: warehouseId.toString() },
-        actorId,
-      );
+      await svc.createStockCount({}, actorId);
 
       expect(repo.createStockCount).toHaveBeenCalledWith(
-        warehouseId,
         null,
         undefined,
         expect.anything(),
@@ -204,40 +177,20 @@ describe('StockCountService', () => {
 
     it('mọi dòng InventoryStock đều mồ côi → throw STOCK_COUNT_EMPTY_SCOPE, không tạo phiếu', async () => {
       const orphanItemId = new Types.ObjectId();
-      warehouseRepo.findWarehouseById.mockResolvedValue({ _id: warehouseId });
       stockRepo.findInventoryByScope.mockResolvedValue([
         { itemId: orphanItemId, shelfId, lotId: null, quantity: 10 },
       ]);
       stockRepo.findItemsByIds.mockResolvedValue([]);
 
-      await expect(
-        svc.createStockCount({ warehouseId: warehouseId.toString() }, actorId),
-      ).rejects.toThrow();
+      await expect(svc.createStockCount({}, actorId)).rejects.toThrow();
       expect(repo.createStockCount).not.toHaveBeenCalled();
     });
 
-    it('không tìm thấy warehouse → throw WAREHOUSE_NOT_FOUND, không tạo phiếu', async () => {
-      warehouseRepo.findWarehouseById.mockResolvedValue(null);
+    it('zoneId không tồn tại → throw ZONE_NOT_FOUND, không tạo phiếu', async () => {
+      locationRepo.findZoneById.mockResolvedValue(null);
 
       await expect(
-        svc.createStockCount({ warehouseId: warehouseId.toString() }, actorId),
-      ).rejects.toThrow();
-      expect(repo.createStockCount).not.toHaveBeenCalled();
-    });
-
-    it('zoneId thuộc warehouse khác → throw ZONE_NOT_FOUND, không tạo phiếu', async () => {
-      warehouseRepo.findWarehouseById.mockResolvedValue({ _id: warehouseId });
-      const otherWarehouseId = new Types.ObjectId();
-      warehouseRepo.findZoneById.mockResolvedValue({
-        _id: zoneId,
-        warehouseId: otherWarehouseId,
-      });
-
-      await expect(
-        svc.createStockCount(
-          { warehouseId: warehouseId.toString(), zoneId: zoneId.toString() },
-          actorId,
-        ),
+        svc.createStockCount({ zoneId: zoneId.toString() }, actorId),
       ).rejects.toThrow();
       expect(repo.createStockCount).not.toHaveBeenCalled();
     });
@@ -450,7 +403,6 @@ describe('StockCountService', () => {
     it('duyệt dòng lệch dương → onHand/InventoryStock += delta, ghi ADJUST, bắn stock.changed', async () => {
       repo.findById.mockResolvedValue({
         _id: new Types.ObjectId('665f1a2b3c4d5e6f7a8b9c99'),
-        warehouseId,
         status: StockCountStatus.COMPLETED,
         items: [
           {
@@ -469,7 +421,6 @@ describe('StockCountService', () => {
 
       expect(stockRepo.upsertInventory).toHaveBeenCalledWith(
         itemId,
-        warehouseId,
         shelfId,
         null,
         5,
@@ -477,7 +428,6 @@ describe('StockCountService', () => {
       );
       expect(stockRepo.upsertBalance).toHaveBeenCalledWith(
         itemId,
-        warehouseId,
         5,
         0,
         0,
@@ -503,7 +453,6 @@ describe('StockCountService', () => {
     it('mọi dòng delta=0 → set APPROVED nhưng không ghi movement/event nào', async () => {
       repo.findById.mockResolvedValue({
         _id: 'sc1',
-        warehouseId,
         status: StockCountStatus.COMPLETED,
         items: [
           {
@@ -530,7 +479,6 @@ describe('StockCountService', () => {
       const itemId2 = new Types.ObjectId();
       repo.findById.mockResolvedValue({
         _id: 'sc1',
-        warehouseId,
         status: StockCountStatus.COMPLETED,
         items: [
           {
@@ -566,21 +514,14 @@ describe('StockCountService', () => {
       await svc.approveStockCount('sc1', { reason: 'Duyệt' }, actorId);
 
       expect(stockService.checkAndEmitStockLow).toHaveBeenCalledTimes(2);
-      expect(stockService.checkAndEmitStockLow).toHaveBeenCalledWith(
-        itemId,
-        warehouseId,
-      );
-      expect(stockService.checkAndEmitStockLow).toHaveBeenCalledWith(
-        itemId2,
-        warehouseId,
-      );
+      expect(stockService.checkAndEmitStockLow).toHaveBeenCalledWith(itemId);
+      expect(stockService.checkAndEmitStockLow).toHaveBeenCalledWith(itemId2);
     });
 
     it('approveStockCount gọi checkAndEmitStockLow 1 lần khi nhiều dòng lệch cùng itemId (dedup)', async () => {
       const otherShelfId = new Types.ObjectId();
       repo.findById.mockResolvedValue({
         _id: 'sc1',
-        warehouseId,
         status: StockCountStatus.COMPLETED,
         items: [
           {
@@ -608,10 +549,7 @@ describe('StockCountService', () => {
       await svc.approveStockCount('sc1', { reason: 'Duyệt' }, actorId);
 
       expect(stockService.checkAndEmitStockLow).toHaveBeenCalledTimes(1);
-      expect(stockService.checkAndEmitStockLow).toHaveBeenCalledWith(
-        itemId,
-        warehouseId,
-      );
+      expect(stockService.checkAndEmitStockLow).toHaveBeenCalledWith(itemId);
     });
   });
 
@@ -635,7 +573,7 @@ describe('StockCountService', () => {
 
   describe('listStockCounts', () => {
     it('trả về data + total từ repo.findAll, truyền nguyên query', async () => {
-      const query = { warehouseId: warehouseId.toString(), page: 1, limit: 20 };
+      const query = { page: 1, limit: 20 };
       const result = {
         data: [{ _id: 'sc1' }, { _id: 'sc2' }],
         total: 2,

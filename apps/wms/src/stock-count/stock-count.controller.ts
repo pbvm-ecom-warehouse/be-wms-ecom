@@ -26,7 +26,6 @@ import {
   WmsRole,
 } from '@app/auth';
 import { plainToInstance } from 'class-transformer';
-import { Types } from 'mongoose';
 import {
   StockCountService,
   type UploadedImageFile,
@@ -76,9 +75,6 @@ export class StockCountController {
   }> {
     const { data, total } = await this.svc.listStockCounts({
       status: query.status,
-      warehouseId: query.warehouseId
-        ? new Types.ObjectId(query.warehouseId)
-        : undefined,
       page: query.page,
       limit: query.limit,
     });

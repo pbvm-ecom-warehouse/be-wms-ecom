@@ -6,7 +6,7 @@ import { StockCount, StockCountSchema } from './schemas/stock-count.schema';
 import { StockCountRepository } from './stock-count.repository';
 import { StockCountService } from './stock-count.service';
 import { StockCountController } from './stock-count.controller';
-import { WarehouseModule } from '../warehouse/warehouse.module';
+import { LocationModule } from '../location/location.module';
 import { StockModule } from '../stock/stock.module';
 
 @Module({
@@ -16,7 +16,7 @@ import { StockModule } from '../stock/stock.module';
     MongooseModule.forFeature([
       { name: StockCount.name, schema: StockCountSchema },
     ]),
-    WarehouseModule, // findWarehouseById/findZoneById/findShelfIdsByZone
+    LocationModule, // findZoneById/findShelfIdsByZone
     StockModule, // StockRepository + StockTransactionHelper
   ],
   providers: [StockCountRepository, StockCountService],

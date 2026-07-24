@@ -12,7 +12,6 @@ describe('ScrapNoteRepository', () => {
     findOneAndUpdate: jest.Mock;
   };
 
-  const warehouseId = new Types.ObjectId();
   const itemId = new Types.ObjectId();
   const shelfId = new Types.ObjectId();
   const createdBy = new Types.ObjectId();
@@ -42,7 +41,7 @@ describe('ScrapNoteRepository', () => {
   describe('createScrapNote', () => {
     it('tạo document với status DRAFT, items đúng shape (images mặc định rỗng)', async () => {
       model.create.mockResolvedValue([{ _id: 'sn1' }]);
-      await repo.createScrapNote(warehouseId, 'Ghi chú', createdBy, [
+      await repo.createScrapNote('Ghi chú', createdBy, [
         {
           itemId,
           sku: 'SKU-1',
@@ -54,7 +53,6 @@ describe('ScrapNoteRepository', () => {
       ]);
       expect(model.create).toHaveBeenCalledWith([
         {
-          warehouseId,
           note: 'Ghi chú',
           status: ScrapNoteStatus.DRAFT,
           createdBy,
@@ -75,7 +73,7 @@ describe('ScrapNoteRepository', () => {
 
     it('lưu images vào đúng dòng khi có ảnh minh chứng', async () => {
       model.create.mockResolvedValue([{ _id: 'sn1' }]);
-      await repo.createScrapNote(warehouseId, undefined, createdBy, [
+      await repo.createScrapNote(undefined, createdBy, [
         {
           itemId,
           sku: 'SKU-1',
@@ -103,7 +101,6 @@ describe('ScrapNoteRepository', () => {
       const session = {} as never;
       model.create.mockResolvedValue([{ _id: 'sn1' }]);
       await repo.createApprovedScrapNote(
-        warehouseId,
         createdBy,
         [
           {
@@ -121,7 +118,6 @@ describe('ScrapNoteRepository', () => {
       expect(model.create).toHaveBeenCalledWith(
         [
           {
-            warehouseId,
             status: ScrapNoteStatus.APPROVED,
             createdBy,
             approvedBy: createdBy,
@@ -144,7 +140,7 @@ describe('ScrapNoteRepository', () => {
   });
 
   describe('findAll', () => {
-    it('lọc theo status + warehouseId, phân trang mặc định', async () => {
+    it('lọc theo status, phân trang mặc định', async () => {
       model.find.mockReturnValue({
         sort: jest.fn().mockReturnThis(),
         skip: jest.fn().mockReturnThis(),
@@ -154,10 +150,9 @@ describe('ScrapNoteRepository', () => {
       model.countDocuments.mockReturnValue({
         exec: jest.fn().mockResolvedValue(0),
       });
-      await repo.findAll({ status: ScrapNoteStatus.DRAFT, warehouseId });
+      await repo.findAll({ status: ScrapNoteStatus.DRAFT });
       expect(model.find).toHaveBeenCalledWith({
         status: ScrapNoteStatus.DRAFT,
-        warehouseId,
       });
     });
   });
