@@ -26,7 +26,6 @@ describe('GoodsReceiptNoteRepository', () => {
   let model: ReturnType<typeof makeModel>;
   const actorId = new Types.ObjectId().toString();
   const purchaseOrderId = new Types.ObjectId().toString();
-  const warehouseId = new Types.ObjectId().toString();
   const itemId = new Types.ObjectId().toString();
 
   beforeEach(async () => {
@@ -55,7 +54,6 @@ describe('GoodsReceiptNoteRepository', () => {
       ];
       await repo.createGoodsReceiptNote(
         purchaseOrderId,
-        warehouseId,
         'GRN-20260703-0001',
         resolvedItems,
         actorId,

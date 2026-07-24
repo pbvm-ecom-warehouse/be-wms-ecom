@@ -7,7 +7,7 @@ import {
   ResolvedGoodsReceiptNoteItem,
 } from './goods-receipt-note.repository';
 import { PurchaseOrderService } from '../purchase-order/purchase-order.service';
-import { WarehouseService } from '../warehouse/warehouse.service';
+import { LocationService } from '../location/location.service';
 import { StockRepository } from '../stock/stock.repository';
 import { StockService } from '../stock/stock.service';
 import { StockTransactionHelper } from '../stock/helpers/with-stock-transaction.helper';
@@ -43,7 +43,7 @@ export class GoodsReceiptNoteService {
   constructor(
     private readonly repo: GoodsReceiptNoteRepository,
     private readonly purchaseOrderService: PurchaseOrderService,
-    private readonly warehouseService: WarehouseService,
+    private readonly locationService: LocationService,
     private readonly stockRepo: StockRepository,
     private readonly stockService: StockService,
     private readonly stockTransactionHelper: StockTransactionHelper,
@@ -93,7 +93,6 @@ export class GoodsReceiptNoteService {
     const grnNumber = await this.generateGrnNumber();
     return this.repo.createGoodsReceiptNote(
       dto.purchaseOrderId,
-      po.warehouseId.toString(),
       grnNumber,
       resolvedItems,
       actorId,
@@ -153,18 +152,12 @@ export class GoodsReceiptNoteService {
       }
     }
 
-    const stagingShelf = await this.warehouseService.findStagingShelf(
-      grn.warehouseId.toString(),
-    );
+    const stagingShelf = await this.locationService.findStagingShelf();
 
-    // S4-04: cặp (item,warehouse) đã chạm upsertBalance trong transaction — dùng
-    // để checkAndEmitStockLow SAU KHI commit. warehouseId luôn = grn.warehouseId
-    // (1 GRN chỉ nhận vào 1 kho) nhưng vẫn key theo cả 2 cho rõ nghĩa/nhất quán
-    // với các service khác.
-    const touchedBalances = new Map<
-      string,
-      { itemId: Types.ObjectId; warehouseId: Types.ObjectId }
-    >();
+    // S4-04: item đã chạm upsertBalance trong transaction — dùng để
+    // checkAndEmitStockLow SAU KHI commit (đọc lại balance, không dedup trùng
+    // trong 1 GRN vì baseQtyByItem đã gộp theo itemId).
+    const touchedItemIds = new Set<string>();
 
     await this.stockTransactionHelper.withStockTransaction(async (session) => {
       // Tích lũy dòng put-away trong cùng vòng lặp — cần lotId ĐÃ RESOLVE (không phải
@@ -177,9 +170,6 @@ export class GoodsReceiptNoteService {
 
       for (const line of resolvedLines) {
         const itemObjectId = new Types.ObjectId(line.itemId);
-        const warehouseObjectId = new Types.ObjectId(
-          grn.warehouseId.toString(),
-        );
 
         let lotId: Types.ObjectId | null = null;
         if (line.lotNumber && line.expiryDate) {
@@ -210,19 +200,14 @@ export class GoodsReceiptNoteService {
 
         await this.stockRepo.upsertBalance(
           itemObjectId,
-          warehouseObjectId,
           line.baseQty,
           0,
           0,
           session,
         );
-        touchedBalances.set(`${line.itemId}:${grn.warehouseId.toString()}`, {
-          itemId: itemObjectId,
-          warehouseId: warehouseObjectId,
-        });
+        touchedItemIds.add(line.itemId);
         await this.stockRepo.upsertInventory(
           itemObjectId,
-          warehouseObjectId,
           stagingShelf._id,
           lotId,
           line.baseQty,
@@ -231,7 +216,6 @@ export class GoodsReceiptNoteService {
         await this.stockRepo.insertMovement(
           {
             itemId: itemObjectId,
-            warehouseId: warehouseObjectId,
             shelfId: stagingShelf._id,
             lotId,
             type: MovementType.RECEIVE,
@@ -254,7 +238,6 @@ export class GoodsReceiptNoteService {
       // được tạo, tránh việc GRN chưa confirm mà đã có task xếp hàng "ma".
       await this.putAwayService.createTaskFromGrn(
         grn._id,
-        new Types.ObjectId(grn.warehouseId.toString()),
         putAwayLines,
         actorId,
         session,
@@ -272,8 +255,10 @@ export class GoodsReceiptNoteService {
         grn._id,
       );
     }
-    for (const { itemId, warehouseId } of touchedBalances.values()) {
-      await this.stockService.checkAndEmitStockLow(itemId, warehouseId);
+    for (const itemIdStr of touchedItemIds) {
+      await this.stockService.checkAndEmitStockLow(
+        new Types.ObjectId(itemIdStr),
+      );
     }
 
     const confirmed = await this.repo.findGoodsReceiptNoteById(id);

@@ -54,10 +54,6 @@ export class GoodsReceiptNote {
   @Prop({ type: Types.ObjectId, required: true })
   purchaseOrderId!: Types.ObjectId;
 
-  /** Copy từ PO.warehouseId tại thời điểm tạo */
-  @Prop({ type: Types.ObjectId, required: true })
-  warehouseId!: Types.ObjectId;
-
   @Prop({ enum: GoodsReceiptNoteStatus, default: GoodsReceiptNoteStatus.DRAFT })
   status!: GoodsReceiptNoteStatus;
 
