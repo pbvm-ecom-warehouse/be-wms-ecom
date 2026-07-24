@@ -324,7 +324,7 @@ async function seedZoneAndItems(
     note: string;
   }[] = [
     {
-      code: 'SEED-NCC-001',
+      code: 'NCC-TTN-001',
       name: 'Công ty TNHH Trà Thái Nguyên',
       contactName: 'Nguyễn Văn An',
       phone: '0901234567',
@@ -334,7 +334,7 @@ async function seedZoneAndItems(
       note: 'Cung cấp nguyên liệu trà các loại',
     },
     {
-      code: 'SEED-NCC-002',
+      code: 'NCC-VTH-001',
       name: 'Công ty CP Bao Bì Việt Thành',
       contactName: 'Trần Thị Bích',
       phone: '0912345678',
@@ -344,7 +344,7 @@ async function seedZoneAndItems(
       note: 'Cung cấp bao bì, ống hút, hộp giấy',
     },
     {
-      code: 'SEED-NCC-003',
+      code: 'NCC-DDT-001',
       name: 'Công ty TNHH Nhựa Đại Đồng Tiến',
       contactName: 'Lê Hoàng Cường',
       phone: '0913456789',
@@ -354,7 +354,7 @@ async function seedZoneAndItems(
       note: 'Sản xuất ly nhựa, cốc nhựa PET/PP',
     },
     {
-      code: 'SEED-NCC-004',
+      code: 'NCC-TTP-001',
       name: 'Công ty CP Đường Tân Thịnh Phát',
       contactName: 'Phạm Thị Dung',
       phone: '0914567890',
@@ -364,7 +364,7 @@ async function seedZoneAndItems(
       note: 'Cung cấp đường tinh luyện các loại',
     },
     {
-      code: 'SEED-NCC-005',
+      code: 'NCC-NTX-001',
       name: 'Công ty TNHH Sữa Nông Trại Xanh',
       contactName: 'Hoàng Văn Em',
       phone: '0915678901',
@@ -374,7 +374,7 @@ async function seedZoneAndItems(
       note: 'Cung cấp sữa tươi, sữa đặc, kem béo',
     },
     {
-      code: 'SEED-NCC-006',
+      code: 'NCC-ACF-001',
       name: 'Công ty TNHH Hương Liệu Á Châu',
       contactName: 'Vũ Thị Phương',
       phone: '0916789012',
@@ -384,7 +384,7 @@ async function seedZoneAndItems(
       note: 'Cung cấp syrup, hương liệu, topping',
     },
     {
-      code: 'SEED-NCC-007',
+      code: 'NCC-PN-001',
       name: 'Công ty CP Giấy Bao Bì Phương Nam',
       contactName: 'Đặng Văn Giang',
       phone: '0917890123',
@@ -394,7 +394,7 @@ async function seedZoneAndItems(
       note: 'Cung cấp túi giấy, hộp giấy đựng đồ uống',
     },
     {
-      code: 'SEED-NCC-008',
+      code: 'NCC-MN-001',
       name: 'Công ty TNHH Bột Thực Phẩm Miền Nam',
       contactName: 'Bùi Thị Hoa',
       phone: '0918901234',
@@ -404,7 +404,7 @@ async function seedZoneAndItems(
       note: 'Cung cấp bột trân châu, bột pha chế',
     },
     {
-      code: 'SEED-NCC-009',
+      code: 'NCC-MP-001',
       name: 'Công ty CP Cơ Khí In Ấn Minh Phát',
       contactName: 'Ngô Văn Inh',
       phone: '0919012345',
@@ -414,7 +414,7 @@ async function seedZoneAndItems(
       note: 'Cung cấp nắp ly, tem nhãn in sẵn',
     },
     {
-      code: 'SEED-NCC-010',
+      code: 'NCC-KL-001',
       name: 'Công ty TNHH Xuất Nhập Khẩu Kim Long',
       contactName: 'Đỗ Thị Kim',
       phone: '0920123456',
