@@ -23,7 +23,6 @@ import {
 
 type InsertMovementData = {
   itemId: Types.ObjectId;
-  warehouseId: Types.ObjectId;
   shelfId: Types.ObjectId;
   lotId: Types.ObjectId | null;
   type: MovementType;
@@ -90,7 +89,6 @@ export interface PickSuggestion {
 
 export interface LotInventorySummary {
   itemId: Types.ObjectId;
-  warehouseId: Types.ObjectId;
   sku: string;
   qty: number;
 }
@@ -147,14 +145,11 @@ export class StockRepository {
     return this.itemModel.findById(itemId).exec();
   }
 
-  findBalanceByItemAndWarehouse(
+  findBalance(
     itemId: Types.ObjectId,
-    warehouseId: Types.ObjectId,
     session?: ClientSession,
   ): Promise<StockBalanceDocument | null> {
-    return this.balanceModel
-      .findOne({ itemId, warehouseId }, null, { session })
-      .exec();
+    return this.balanceModel.findOne({ itemId }, null, { session }).exec();
   }
 
   /**
@@ -163,7 +158,6 @@ export class StockRepository {
    */
   upsertBalance(
     itemId: Types.ObjectId,
-    warehouseId: Types.ObjectId,
     onHandDelta: number,
     reservedDelta: number,
     expiredDelta: number,
@@ -171,7 +165,7 @@ export class StockRepository {
   ): Promise<StockBalanceDocument | null> {
     return this.balanceModel
       .findOneAndUpdate(
-        { itemId, warehouseId },
+        { itemId },
         {
           $inc: {
             onHand: onHandDelta,
@@ -191,7 +185,6 @@ export class StockRepository {
    */
   async reserveIfAvailable(
     itemId: Types.ObjectId,
-    warehouseId: Types.ObjectId,
     quantity: number,
     session: ClientSession,
   ): Promise<boolean> {
@@ -199,7 +192,6 @@ export class StockRepository {
       .findOneAndUpdate(
         {
           itemId,
-          warehouseId,
           $expr: {
             $gte: [
               { $subtract: ['$onHand', '$reserved', '$expired'] },
@@ -235,20 +227,18 @@ export class StockRepository {
 
   findInventory(
     itemId: Types.ObjectId,
-    warehouseId: Types.ObjectId,
     shelfId: Types.ObjectId,
     lotId: Types.ObjectId | null,
     session?: ClientSession,
   ): Promise<InventoryStockDocument | null> {
     return this.inventoryModel
-      .findOne({ itemId, warehouseId, shelfId, lotId }, null, { session })
+      .findOne({ itemId, shelfId, lotId }, null, { session })
       .exec();
   }
 
   /** Upsert InventoryStock: cộng dồn deltaQty vào quantity. */
   upsertInventory(
     itemId: Types.ObjectId,
-    warehouseId: Types.ObjectId,
     shelfId: Types.ObjectId,
     lotId: Types.ObjectId | null,
     deltaQty: number,
@@ -256,7 +246,7 @@ export class StockRepository {
   ): Promise<InventoryStockDocument | null> {
     return this.inventoryModel
       .findOneAndUpdate(
-        { itemId, warehouseId, shelfId, lotId },
+        { itemId, shelfId, lotId },
         { $inc: { quantity: deltaQty } },
         { upsert: true, new: true, session },
       )
@@ -264,15 +254,14 @@ export class StockRepository {
   }
 
   /**
-   * Danh sách InventoryStock trong phạm vi 1 kho (toàn kho nếu không truyền
-   * shelfIds, hoặc giới hạn theo danh sách shelf nếu lọc theo zone) — dùng
-   * để auto-generate dòng khi MANAGER tạo StockCount (UC-06).
+   * Danh sách InventoryStock (toàn kho nếu không truyền shelfIds, hoặc giới
+   * hạn theo danh sách shelf nếu lọc theo zone) — dùng để auto-generate dòng
+   * khi MANAGER tạo StockCount (UC-06).
    */
   findInventoryByScope(
-    warehouseId: Types.ObjectId,
     shelfIds?: Types.ObjectId[],
   ): Promise<InventoryStockDocument[]> {
-    const filter: Record<string, unknown> = { warehouseId };
+    const filter: Record<string, unknown> = {};
     if (shelfIds) filter['shelfId'] = { $in: shelfIds };
     return this.inventoryModel.find(filter).exec();
   }
@@ -333,7 +322,7 @@ export class StockRepository {
   }
 
   /**
-   * Tính thể tích đã chiếm (cm³) của mọi shelf trong 1 kho, group theo shelfId,
+   * Tính thể tích đã chiếm (cm³) của mọi shelf, group theo shelfId,
    * tổng hợp Σ(quantity × unitVolume) trên mọi SKU/lô của shelf đó. Dòng
    * InventoryStock có item thiếu depth/width/height bị loại khỏi tổng (không
    * throw) — occupied chỉ tính trên item đã khai đủ kích thước.
@@ -343,21 +332,19 @@ export class StockRepository {
    * InventoryStock bất kể item đã soft-delete.
    * quantity > 0 — nhất quán với findShelfIdsWithItem, tránh 2 query cùng đọc
    * InventoryStock nhưng khác điều kiện lọc ngầm định.
-   * Map trả về là warehouse-wide (bao gồm cả shelf staging/đã soft-delete),
+   * Map trả về toàn hệ thống (bao gồm cả shelf staging/đã soft-delete),
    * KHÔNG lọc theo trạng thái shelf ở đây vì sẽ cần join thêm sang collection
    * `shelves` mà không đổi kết quả dùng thực tế: caller (PutAwaySuggestionService)
    * chỉ tra map này cho các shelfId đã lấy từ findShelvesByWarehouse (nơi đã lọc
    * staging/deleted/thiếu kích thước) nên các entry ngoài phạm vi candidate
    * đơn giản là không bao giờ được .get().
    */
-  async findOccupiedVolumeByWarehouse(
-    warehouseId: Types.ObjectId,
-  ): Promise<Map<string, number>> {
+  async findOccupiedVolume(): Promise<Map<string, number>> {
     const rows = await this.inventoryModel.aggregate<{
       shelfId: string;
       occupied: number;
     }>([
-      { $match: { warehouseId, quantity: { $gt: 0 } } },
+      { $match: { quantity: { $gt: 0 } } },
       {
         $lookup: {
           from: 'warehouse_items',
@@ -394,17 +381,14 @@ export class StockRepository {
   }
 
   /**
-   * Danh sách shelf đã có tồn (>0) của 1 item trong kho — dùng xếp hạng ưu tiên
+   * Danh sách shelf đã có tồn (>0) của 1 item — dùng xếp hạng ưu tiên
    * SKU-affinity khi gợi ý put-away.
-   * quantity > 0 — nhất quán với findOccupiedVolumeByWarehouse, tránh 2 query
+   * quantity > 0 — nhất quán với findOccupiedVolume, tránh 2 query
    * cùng đọc InventoryStock nhưng khác điều kiện lọc ngầm định.
    */
-  async findShelfIdsWithItem(
-    itemId: Types.ObjectId,
-    warehouseId: Types.ObjectId,
-  ): Promise<Set<string>> {
+  async findShelfIdsWithItem(itemId: Types.ObjectId): Promise<Set<string>> {
     const shelfIds = await this.inventoryModel
-      .distinct('shelfId', { itemId, warehouseId, quantity: { $gt: 0 } })
+      .distinct('shelfId', { itemId, quantity: { $gt: 0 } })
       .exec();
     return new Set(shelfIds.map((id: Types.ObjectId) => id.toString()));
   }
@@ -474,7 +458,6 @@ export class StockRepository {
    */
   async findAvailableStockForPick(
     itemId: Types.ObjectId,
-    warehouseId: Types.ObjectId,
     isPerishable: boolean,
   ): Promise<PickSuggestion[]> {
     const shelfLookupStage = {
@@ -496,7 +479,6 @@ export class StockRepository {
         {
           $match: {
             itemId,
-            warehouseId,
             lotId: null,
             quantity: { $gt: 0 },
           },
@@ -534,7 +516,6 @@ export class StockRepository {
       {
         $match: {
           itemId,
-          warehouseId,
           quantity: { $gt: 0 },
           lotId: { $ne: null },
         },
@@ -576,9 +557,9 @@ export class StockRepository {
   }
 
   /**
-   * Tổng InventoryStock.quantity của 1 lô, group theo warehouseId — dùng bởi
-   * ExpiredLotScanService để cộng dồn StockBalance.expired đúng cho từng kho
-   * (1 lô có thể nằm rải rác nhiều kho/shelf).
+   * Tổng InventoryStock.quantity của 1 lô, group theo itemId — dùng bởi
+   * ExpiredLotScanService để cộng dồn StockBalance.expired đúng
+   * (1 lô có thể nằm rải rác nhiều shelf).
    */
   async sumInventoryByLot(
     lotId: Types.ObjectId,
@@ -587,14 +568,14 @@ export class StockRepository {
       { $match: { lotId, quantity: { $gt: 0 } } },
       {
         $group: {
-          _id: { itemId: '$itemId', warehouseId: '$warehouseId' },
+          _id: '$itemId',
           qty: { $sum: '$quantity' },
         },
       },
       {
         $lookup: {
           from: 'warehouse_items',
-          localField: '_id.itemId',
+          localField: '_id',
           foreignField: '_id',
           as: 'item',
         },
@@ -603,8 +584,7 @@ export class StockRepository {
       {
         $project: {
           _id: 0,
-          itemId: '$_id.itemId',
-          warehouseId: '$_id.warehouseId',
+          itemId: '$_id',
           sku: '$item.sku',
           qty: 1,
         },

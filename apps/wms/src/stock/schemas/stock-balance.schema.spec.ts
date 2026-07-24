@@ -4,7 +4,6 @@ describe('StockBalance schema', () => {
   it('schema có đủ field tồn tổng', () => {
     const paths = StockBalanceSchema.paths;
     expect(paths['itemId']).toBeDefined();
-    expect(paths['warehouseId']).toBeDefined();
     expect(paths['onHand']).toBeDefined();
     expect(paths['reserved']).toBeDefined();
     expect(paths['expired']).toBeDefined();
