@@ -19,7 +19,6 @@ describe('GoodsIssuedConsumer', () => {
     goodsIssueRepo.findById.mockResolvedValue({
       _id: 'gi1',
       orderId: 'order-1',
-      warehouseId: 'wh1',
       shippingAddress: { street: '123' },
       recipient: { name: 'A', phone: '090' },
       paymentMethod: 'COD',
@@ -35,7 +34,6 @@ describe('GoodsIssuedConsumer', () => {
     expect(shipmentService.createFromGoodsIssue).toHaveBeenCalledWith({
       orderId: 'order-1',
       goodsIssueId: 'gi1',
-      fulfillWarehouseId: 'wh1',
       recipient: { name: 'A', phone: '090', address: { street: '123' } },
       paymentMethod: 'COD',
       codAmount: 0,

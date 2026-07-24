@@ -43,9 +43,6 @@ export class Shipment {
   @Prop({ type: Types.ObjectId, required: true })
   goodsIssueId!: Types.ObjectId;
 
-  @Prop({ type: Types.ObjectId, required: true })
-  fulfillWarehouseId!: Types.ObjectId;
-
   @Prop({ type: Types.ObjectId })
   carrierId?: Types.ObjectId;
 

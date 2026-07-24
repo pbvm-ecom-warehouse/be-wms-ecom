@@ -46,7 +46,6 @@ export class ShipmentService {
   async createFromGoodsIssue(input: {
     orderId: string;
     goodsIssueId: string;
-    fulfillWarehouseId: string;
     recipient: {
       name: string;
       phone: string;
@@ -61,7 +60,6 @@ export class ShipmentService {
     const createInput: CreateShipmentFromGoodsIssueInput = {
       orderId: input.orderId,
       goodsIssueId: new Types.ObjectId(input.goodsIssueId),
-      fulfillWarehouseId: new Types.ObjectId(input.fulfillWarehouseId),
       recipient: input.recipient,
       paymentMethod: input.paymentMethod,
       codAmount: input.codAmount,

@@ -38,7 +38,6 @@ export class GoodsIssuedConsumer extends WorkerHost {
         await this.shipmentService.createFromGoodsIssue({
           orderId: gi.orderId,
           goodsIssueId: data.goodsIssueId,
-          fulfillWarehouseId: gi.warehouseId.toString(),
           recipient: {
             name: gi.recipient.name,
             phone: gi.recipient.phone,

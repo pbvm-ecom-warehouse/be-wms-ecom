@@ -10,7 +10,6 @@ import {
 export interface CreateShipmentFromGoodsIssueInput {
   orderId: string;
   goodsIssueId: Types.ObjectId;
-  fulfillWarehouseId: Types.ObjectId;
   recipient: { name: string; phone: string; address: Record<string, unknown> };
   paymentMethod: 'COD' | 'ONLINE';
   codAmount: number;
@@ -45,7 +44,6 @@ export class ShipmentRepository {
       {
         orderId: input.orderId,
         goodsIssueId: input.goodsIssueId,
-        fulfillWarehouseId: input.fulfillWarehouseId,
         shipmentStatus: ShipmentStatus.PENDING,
         recipient: input.recipient,
         paymentMethod: input.paymentMethod,

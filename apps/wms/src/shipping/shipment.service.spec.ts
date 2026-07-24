@@ -42,14 +42,12 @@ describe('ShipmentService', () => {
 
   describe('createFromGoodsIssue', () => {
     const goodsIssueIdStr = new Types.ObjectId().toString();
-    const warehouseIdStr = new Types.ObjectId().toString();
 
     it('bỏ qua nếu đã có Shipment cho goodsIssueId này (idempotent)', async () => {
       repo.findByGoodsIssueId.mockResolvedValue({ _id: shipmentId });
       await svc.createFromGoodsIssue({
         orderId,
         goodsIssueId: goodsIssueIdStr,
-        fulfillWarehouseId: warehouseIdStr,
         recipient: { name: 'A', phone: '090', address: {} },
         paymentMethod: 'COD',
         codAmount: 0,
@@ -63,7 +61,6 @@ describe('ShipmentService', () => {
       await svc.createFromGoodsIssue({
         orderId,
         goodsIssueId: goodsIssueIdStr,
-        fulfillWarehouseId: warehouseIdStr,
         recipient: { name: 'A', phone: '090', address: {} },
         paymentMethod: 'COD',
         codAmount: 0,
@@ -71,7 +68,6 @@ describe('ShipmentService', () => {
       expect(repo.createFromGoodsIssue).toHaveBeenCalledWith({
         orderId,
         goodsIssueId: new Types.ObjectId(goodsIssueIdStr),
-        fulfillWarehouseId: new Types.ObjectId(warehouseIdStr),
         recipient: { name: 'A', phone: '090', address: {} },
         paymentMethod: 'COD',
         codAmount: 0,
