@@ -308,6 +308,171 @@ describe('PurchaseOrderService', () => {
       expect(repo.createPurchaseOrder).not.toHaveBeenCalled();
     });
 
+    it('throw PO_QTY_BELOW_MOQ khi expectedQty < SupplierItem.minOrderQty', async () => {
+      supplierSvc.getSupplierItemByItemAndSupplier.mockResolvedValue({
+        purchasePrice: 7000,
+        isActive: true,
+        minOrderQty: 50,
+      });
+      await expect(
+        svc.createPurchaseOrder(baseDto as never, actorId),
+      ).rejects.toMatchObject({ code: 'PO_QTY_BELOW_MOQ' });
+      expect(repo.createPurchaseOrder).not.toHaveBeenCalled();
+    });
+
+    it('không chặn PO khi expectedQty >= SupplierItem.minOrderQty', async () => {
+      supplierSvc.getSupplierItemByItemAndSupplier.mockResolvedValue({
+        purchasePrice: 7000,
+        isActive: true,
+        minOrderQty: 10,
+      });
+      repo.createPurchaseOrder.mockResolvedValue({ poNumber: 'PO-X' });
+      await expect(
+        svc.createPurchaseOrder(baseDto as never, actorId),
+      ).resolves.toBeDefined();
+    });
+
+    it('không chặn PO khi SupplierItem không khai báo minOrderQty', async () => {
+      supplierSvc.getSupplierItemByItemAndSupplier.mockResolvedValue({
+        purchasePrice: 7000,
+        isActive: true,
+      });
+      repo.createPurchaseOrder.mockResolvedValue({ poNumber: 'PO-X' });
+      await expect(
+        svc.createPurchaseOrder(baseDto as never, actorId),
+      ).resolves.toBeDefined();
+    });
+
+    it('không check MOQ khi unitPrice nhập tay nhưng SKU chưa có báo giá NCC', async () => {
+      const dtoWithPrice = {
+        ...baseDto,
+        items: [
+          { itemId, sku: 'SKU-1', expectedQty: 1, unit: 'cái', unitPrice: 500 },
+        ],
+      };
+      supplierSvc.getSupplierItemByItemAndSupplier.mockRejectedValue({
+        code: 'SUPPLIER_ITEM_NOT_FOUND',
+      });
+      repo.createPurchaseOrder.mockResolvedValue({ poNumber: 'PO-X' });
+      const warnSpy = jest
+        .spyOn(Logger.prototype, 'warn')
+        .mockImplementation(() => undefined);
+      await expect(
+        svc.createPurchaseOrder(dtoWithPrice, actorId),
+      ).resolves.toBeDefined();
+      warnSpy.mockRestore();
+    });
+
+    it('throw PO_QTY_BELOW_MOQ ngay cả khi unitPrice đã nhập tay', async () => {
+      const dtoWithPrice = {
+        ...baseDto,
+        items: [
+          {
+            itemId,
+            sku: 'SKU-1',
+            expectedQty: 1,
+            unit: 'cái',
+            unitPrice: 7000,
+          },
+        ],
+      };
+      supplierSvc.getSupplierItemByItemAndSupplier.mockResolvedValue({
+        purchasePrice: 7000,
+        isActive: true,
+        minOrderQty: 50,
+      });
+      const warnSpy = jest
+        .spyOn(Logger.prototype, 'warn')
+        .mockImplementation(() => undefined);
+      await expect(
+        svc.createPurchaseOrder(dtoWithPrice, actorId),
+      ).rejects.toMatchObject({ code: 'PO_QTY_BELOW_MOQ' });
+      warnSpy.mockRestore();
+    });
+
+    it('tự tính expectedDate = orderDate + leadTimeDays khi client không truyền expectedDate', async () => {
+      supplierSvc.getSupplierItemByItemAndSupplier.mockResolvedValue({
+        purchasePrice: 7000,
+        isActive: true,
+        leadTimeDays: 5,
+      });
+      repo.createPurchaseOrder.mockResolvedValue({ poNumber: 'PO-X' });
+      const before = Date.now();
+      await svc.createPurchaseOrder(baseDto, actorId);
+      const dtoArg = repo.createPurchaseOrder.mock.calls[0][0] as {
+        expectedDate?: string;
+      };
+      expect(dtoArg.expectedDate).toBeDefined();
+      const expectedMs = new Date(dtoArg.expectedDate!).getTime();
+      const diffDays = (expectedMs - before) / (1000 * 60 * 60 * 24);
+      expect(diffDays).toBeGreaterThan(4.9);
+      expect(diffDays).toBeLessThan(5.1);
+    });
+
+    it('giữ nguyên expectedDate do client truyền, không ghi đè bằng leadTimeDays', async () => {
+      const dtoWithDate = { ...baseDto, expectedDate: '2026-01-01' };
+      supplierSvc.getSupplierItemByItemAndSupplier.mockResolvedValue({
+        purchasePrice: 7000,
+        isActive: true,
+        leadTimeDays: 5,
+      });
+      repo.createPurchaseOrder.mockResolvedValue({ poNumber: 'PO-X' });
+      await svc.createPurchaseOrder(dtoWithDate, actorId);
+      const dtoArg = repo.createPurchaseOrder.mock.calls[0][0] as {
+        expectedDate?: string;
+      };
+      expect(dtoArg.expectedDate).toBe('2026-01-01');
+    });
+
+    it('không set expectedDate khi client không truyền và SupplierItem không có leadTimeDays', async () => {
+      supplierSvc.getSupplierItemByItemAndSupplier.mockResolvedValue({
+        purchasePrice: 7000,
+        isActive: true,
+      });
+      repo.createPurchaseOrder.mockResolvedValue({ poNumber: 'PO-X' });
+      await svc.createPurchaseOrder(baseDto, actorId);
+      const dtoArg = repo.createPurchaseOrder.mock.calls[0][0] as {
+        expectedDate?: string;
+      };
+      expect(dtoArg.expectedDate).toBeUndefined();
+    });
+
+    it('lấy leadTimeDays lớn nhất trong nhiều dòng hàng để tính expectedDate', async () => {
+      const multiItemDto = {
+        supplierId,
+        items: [
+          { itemId, sku: 'SKU-1', expectedQty: 10, unit: 'cái' },
+          { itemId: 'item002', sku: 'SKU-2', expectedQty: 10, unit: 'cái' },
+        ],
+      };
+      stockRepo.findItemById.mockResolvedValue({
+        _id: 'item002',
+        deletedAt: null,
+      });
+      supplierSvc.getSupplierItemByItemAndSupplier
+        .mockResolvedValueOnce({
+          purchasePrice: 7000,
+          isActive: true,
+          leadTimeDays: 3,
+        })
+        .mockResolvedValueOnce({
+          purchasePrice: 5000,
+          isActive: true,
+          leadTimeDays: 7,
+        });
+      repo.createPurchaseOrder.mockResolvedValue({ poNumber: 'PO-X' });
+      const before = Date.now();
+      await svc.createPurchaseOrder(multiItemDto, actorId);
+      const dtoArg = repo.createPurchaseOrder.mock.calls[0][0] as {
+        expectedDate?: string;
+      };
+      const diffDays =
+        (new Date(dtoArg.expectedDate!).getTime() - before) /
+        (1000 * 60 * 60 * 24);
+      expect(diffDays).toBeGreaterThan(6.9);
+      expect(diffDays).toBeLessThan(7.1);
+    });
+
     it('sinh poNumber theo format PO-YYYYMMDD-xxxx', async () => {
       repo.countByPoNumberPrefix.mockResolvedValue(4);
       supplierSvc.getSupplierItemByItemAndSupplier.mockResolvedValue({

@@ -139,6 +139,11 @@ export const ERROR_CATALOG = {
     status: HttpStatus.BAD_REQUEST,
     message: 'Thiếu đơn giá — SKU chưa có báo giá NCC, cần nhập tay',
   },
+  PO_QTY_BELOW_MOQ: {
+    status: HttpStatus.BAD_REQUEST,
+    message:
+      'Số lượng đặt thấp hơn số lượng đặt tối thiểu (MOQ) của NCC cho SKU này',
+  },
 
   // ── WMS — Goods Receipt Note ────────────────────────────────────────────
   GRN_NOT_FOUND: {

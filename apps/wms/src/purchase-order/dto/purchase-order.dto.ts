@@ -30,7 +30,11 @@ export class CreatePurchaseOrderItemDto {
   @MinLength(1)
   sku!: string;
 
-  @ApiProperty({ example: 100 })
+  @ApiProperty({
+    example: 100,
+    description:
+      'Nếu SKU đã có SupplierItem.minOrderQty với NCC này, expectedQty phải >= minOrderQty, nếu không PO bị từ chối (PO_QTY_BELOW_MOQ).',
+  })
   @IsNumber()
   @Min(0)
   expectedQty!: number;
@@ -56,7 +60,10 @@ export class CreatePurchaseOrderDto {
   @IsMongoId()
   supplierId!: string;
 
-  @ApiPropertyOptional({ description: 'Ngày dự kiến nhận hàng' })
+  @ApiPropertyOptional({
+    description:
+      'Ngày dự kiến nhận hàng. Để trống → tự tính = hôm nay + leadTimeDays lớn nhất trong các SupplierItem của đơn (nếu có khai báo).',
+  })
   @IsOptional()
   @IsString()
   expectedDate?: string;
