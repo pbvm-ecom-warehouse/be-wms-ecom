@@ -1,4 +1,4 @@
-import { IsEnum, IsMongoId, IsOptional, IsString } from 'class-validator';
+import { IsEnum, IsOptional, IsString } from 'class-validator';
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { OffsetPaginationQuery } from '@app/common';
 import { WmsRole } from '@app/auth';

@@ -18,7 +18,7 @@ import { AuthModule } from './auth/auth.module';
 import { UsersModule } from './users/users.module';
 import { HealthModule } from './health/health.module';
 import { StockModule } from './stock/stock.module';
-import { WarehouseModule } from './warehouse/warehouse.module';
+import { LocationModule } from './location/location.module';
 import { SupplierModule } from './supplier/supplier.module';
 import { PurchaseOrderModule } from './purchase-order/purchase-order.module';
 import { GoodsReceiptNoteModule } from './goods-receipt-note/goods-receipt-note.module';
@@ -59,11 +59,11 @@ import { validateEnv } from './config/env.validation';
     UsersModule, // CRUD nhân viên cho ADMIN/MANAGER (list/get/create/update/role/lock/unlock/reset-password/soft-delete)
     HealthModule, // GET /api/wms/health
     StockModule, // producer mẫu: stock.changed
-    WarehouseModule, // CRUD cấu trúc kho: Warehouse/Zone/Rack/Shelf
+    LocationModule, // CRUD cấu trúc kho single-warehouse: Zone/Rack/Shelf
     SupplierModule, // CRUD NCC + bảng giá SupplierItem
-    PurchaseOrderModule, // UC-01: tạo/xem PO — dùng SupplierModule + WarehouseModule
-    GoodsReceiptNoteModule, // UC-02: nhận hàng theo PO, cộng tồn 2 lớp — dùng PurchaseOrderModule + StockModule + WarehouseModule
-    PutAwaySuggestionModule, // S2-05: gợi ý vị trí put-away theo thể tích — dùng StockModule + WarehouseModule
+    PurchaseOrderModule, // UC-01: tạo/xem PO — dùng SupplierModule + LocationModule
+    GoodsReceiptNoteModule, // UC-02: nhận hàng theo PO, cộng tồn 2 lớp — dùng PurchaseOrderModule + StockModule + LocationModule
+    PutAwaySuggestionModule, // S2-05: gợi ý vị trí put-away theo thể tích — dùng StockModule + LocationModule
     GoodsIssueModule, // UC-05: nhận order.ready_to_fulfill, sinh GoodsIssue, PICKER xuất kho, phát goods.issued
     ReservationModule, // saga giữ tồn checkout: nhận stock.reserve_requested/order.cancelled, phát stock.reserved/stock.reserve_failed
     PrintJobModule, // UC-04: nhận print.requested, sinh PrintJob, PRINTER in ly make-to-order, phát print.completed

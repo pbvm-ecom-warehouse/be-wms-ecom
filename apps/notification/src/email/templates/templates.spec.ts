@@ -20,7 +20,6 @@ describe('email templates', () => {
     const html = await render(
       StockLowAlertEmail({
         sku: 'SKU-1',
-        warehouseId: 'wh-1',
         available: 234,
         minQuantity: 5678,
       }),
