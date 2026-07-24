@@ -7,7 +7,7 @@ import { GoodsReturnRepository } from './goods-return.repository';
 import { GoodsReturnService } from './goods-return.service';
 import { GoodsReturnController } from './goods-return.controller';
 import { OrderReturnedConsumer } from './order-returned.consumer';
-import { WarehouseModule } from '../warehouse/warehouse.module';
+import { LocationModule } from '../location/location.module';
 import { StockModule } from '../stock/stock.module';
 import { ScrapNoteModule } from '../scrap-note/scrap-note.module';
 
@@ -18,7 +18,7 @@ import { ScrapNoteModule } from '../scrap-note/scrap-note.module';
     MongooseModule.forFeature([
       { name: GoodsReturn.name, schema: GoodsReturnSchema },
     ]),
-    WarehouseModule, // findWarehouseById/findShelfById
+    LocationModule, // findShelfById
     StockModule, // StockRepository + StockTransactionHelper
     ScrapNoteModule, // createApprovedScrapNoteForReturn (dòng DAMAGED)
   ],

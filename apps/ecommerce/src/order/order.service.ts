@@ -72,7 +72,6 @@ export class OrderService {
       // Báo kho đóng gói xuất hàng
       await this.orderQueue.add(EVENTS.ORDER_READY_TO_FULFILL, {
         orderId,
-        fulfillWarehouseId: order.fulfillWarehouseId,
         items: order.items.map((i) => ({ sku: i.sku, quantity: i.quantity })),
         shippingAddress: order.shippingAddress,
         recipient: {
@@ -181,7 +180,6 @@ export class OrderService {
       // Đơn thường -> Phát lệnh xuất kho
       await this.orderQueue.add(EVENTS.ORDER_READY_TO_FULFILL, {
         orderId,
-        fulfillWarehouseId: order.fulfillWarehouseId,
         items: order.items.map((i) => ({ sku: i.sku, quantity: i.quantity })),
         shippingAddress: order.shippingAddress,
         recipient: {
@@ -337,7 +335,6 @@ export class OrderService {
       // Phát lệnh xuất kho
       await this.orderQueue.add(EVENTS.ORDER_READY_TO_FULFILL, {
         orderId,
-        fulfillWarehouseId: order.fulfillWarehouseId,
         items: items.map((i) => ({ sku: i.sku, quantity: i.quantity })),
         shippingAddress: order.shippingAddress,
         recipient: {

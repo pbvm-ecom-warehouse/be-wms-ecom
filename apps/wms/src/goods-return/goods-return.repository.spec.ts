@@ -17,7 +17,6 @@ describe('GoodsReturnRepository', () => {
 
   const itemId = new Types.ObjectId();
   const shelfId = new Types.ObjectId();
-  const warehouseId = new Types.ObjectId();
   const createdBy = new Types.ObjectId();
 
   beforeEach(() => {
@@ -53,7 +52,7 @@ describe('GoodsReturnRepository', () => {
   });
 
   describe('createGoodsReturn', () => {
-    it('tạo document DRAFT, warehouseId null, dòng chưa phân loại', async () => {
+    it('tạo document DRAFT, dòng chưa phân loại', async () => {
       model.create.mockResolvedValue([{ _id: 'gr1' }]);
       await repo.createGoodsReturn('order-1', null, undefined, [
         { itemId, sku: 'SKU-1', quantity: 5 },
@@ -62,7 +61,6 @@ describe('GoodsReturnRepository', () => {
         {
           orderId: 'order-1',
           note: undefined,
-          warehouseId: null,
           status: GoodsReturnStatus.DRAFT,
           createdBy: null,
           items: [
@@ -82,7 +80,7 @@ describe('GoodsReturnRepository', () => {
   });
 
   describe('findAll', () => {
-    it('lọc theo status + warehouseId + orderId, phân trang mặc định', async () => {
+    it('lọc theo status + orderId, phân trang mặc định', async () => {
       model.find.mockReturnValue({
         sort: jest.fn().mockReturnThis(),
         skip: jest.fn().mockReturnThis(),
@@ -94,12 +92,10 @@ describe('GoodsReturnRepository', () => {
       });
       await repo.findAll({
         status: GoodsReturnStatus.DRAFT,
-        warehouseId,
         orderId: 'order-1',
       });
       expect(model.find).toHaveBeenCalledWith({
         status: GoodsReturnStatus.DRAFT,
-        warehouseId,
         orderId: 'order-1',
       });
     });
@@ -110,14 +106,13 @@ describe('GoodsReturnRepository', () => {
       model.findOne.mockReturnValue({
         exec: jest.fn().mockResolvedValue(null),
       });
-      await repo.setInspected('gr1', warehouseId, createdBy, []);
+      await repo.setInspected('gr1', createdBy, []);
       expect(model.findOne).toHaveBeenCalledWith({ _id: 'gr1' });
     });
 
-    it('set warehouseId, createdBy, status=INSPECTED, cập nhật từng dòng', async () => {
+    it('set createdBy, status=INSPECTED, cập nhật từng dòng', async () => {
       const save = jest.fn().mockResolvedValue(undefined);
       const doc = {
-        warehouseId: null,
         createdBy: null,
         status: GoodsReturnStatus.DRAFT,
         items: [
@@ -127,7 +122,7 @@ describe('GoodsReturnRepository', () => {
       };
       model.findOne.mockReturnValue({ exec: jest.fn().mockResolvedValue(doc) });
 
-      await repo.setInspected('gr1', warehouseId, createdBy, [
+      await repo.setInspected('gr1', createdBy, [
         {
           itemId,
           condition: GoodsReturnItemCondition.GOOD,
@@ -137,7 +132,6 @@ describe('GoodsReturnRepository', () => {
         },
       ]);
 
-      expect(doc.warehouseId).toBe(warehouseId);
       expect(doc.createdBy).toBe(createdBy);
       expect(doc.status).toBe(GoodsReturnStatus.INSPECTED);
       expect(doc.items[0].condition).toBe(GoodsReturnItemCondition.GOOD);
@@ -148,7 +142,6 @@ describe('GoodsReturnRepository', () => {
     it('lưu images vào đúng dòng khi DAMAGED có ảnh minh chứng', async () => {
       const save = jest.fn().mockResolvedValue(undefined);
       const doc = {
-        warehouseId: null,
         createdBy: null,
         status: GoodsReturnStatus.DRAFT,
         items: [
@@ -158,7 +151,7 @@ describe('GoodsReturnRepository', () => {
       };
       model.findOne.mockReturnValue({ exec: jest.fn().mockResolvedValue(doc) });
 
-      await repo.setInspected('gr1', warehouseId, createdBy, [
+      await repo.setInspected('gr1', createdBy, [
         {
           itemId,
           condition: GoodsReturnItemCondition.DAMAGED,

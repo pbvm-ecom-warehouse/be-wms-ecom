@@ -42,17 +42,6 @@ export class UserResponseDto {
   mustChangePassword!: boolean;
 
   @Expose()
-  @Transform(
-    ({
-      obj,
-    }: {
-      obj: { warehouseId?: Types.ObjectId | { toString(): string } | null };
-    }) => obj.warehouseId?.toString() ?? undefined,
-  )
-  @ApiPropertyOptional()
-  warehouseId?: string;
-
-  @Expose()
   @ApiPropertyOptional()
   avatarUrl?: string;
 

@@ -29,7 +29,6 @@ export class GoodsReceiptNoteRepository {
 
   async createGoodsReceiptNote(
     purchaseOrderId: string,
-    warehouseId: string,
     grnNumber: string,
     resolvedItems: ResolvedGoodsReceiptNoteItem[],
     actorId: string,
@@ -37,7 +36,6 @@ export class GoodsReceiptNoteRepository {
     return this.model.create({
       grnNumber,
       purchaseOrderId: new Types.ObjectId(purchaseOrderId),
-      warehouseId: new Types.ObjectId(warehouseId),
       status: GoodsReceiptNoteStatus.DRAFT,
       // itemId giữ string — Mongoose tự cast theo schema; cast tay vì Model.create() đòi ObjectId ở kiểu tĩnh
       items: resolvedItems as unknown as GoodsReceiptNote['items'],

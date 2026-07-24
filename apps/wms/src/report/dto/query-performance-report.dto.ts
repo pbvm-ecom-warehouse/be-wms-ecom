@@ -1,5 +1,5 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { IsDateString, IsMongoId, IsOptional, IsString } from 'class-validator';
+import { IsDateString, IsOptional, IsString } from 'class-validator';
 
 export class QueryPerformanceReportDto {
   @ApiPropertyOptional({
@@ -15,11 +15,6 @@ export class QueryPerformanceReportDto {
   @IsOptional()
   @IsDateString()
   dateTo?: string;
-
-  @ApiPropertyOptional({ description: 'Lọc theo kho' })
-  @IsOptional()
-  @IsMongoId()
-  warehouseId?: string;
 
   @ApiPropertyOptional({ description: 'Lọc theo sku (khớp chính xác)' })
   @IsOptional()

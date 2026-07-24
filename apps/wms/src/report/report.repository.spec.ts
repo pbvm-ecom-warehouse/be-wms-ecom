@@ -11,7 +11,6 @@ describe('ReportRepository', () => {
   let stockMovementModel: { aggregate: jest.Mock };
 
   const itemId = new Types.ObjectId();
-  const warehouseId = new Types.ObjectId();
 
   beforeEach(() => {
     warehouseItemModel = { findOne: jest.fn() };
@@ -54,16 +53,14 @@ describe('ReportRepository', () => {
   });
 
   describe('aggregateStockReport', () => {
-    it('dựng đúng $match theo warehouseId+itemId, $skip/$limit theo trang, đếm total', async () => {
+    it('dựng đúng $match theo itemId, $skip/$limit theo trang, đếm total', async () => {
       const rows = [
         {
           itemId,
-          warehouseId,
           onHand: 10,
           reserved: 2,
           expired: 1,
           item: { sku: 'SKU-1', name: 'Item 1' },
-          warehouse: { name: 'Kho A' },
         },
       ];
       stockBalanceModel.aggregate
@@ -72,21 +69,34 @@ describe('ReportRepository', () => {
           exec: jest.fn().mockResolvedValue([{ total: 1 }]),
         });
 
-      const result = await repo.aggregateStockReport(
-        { warehouseId, itemId },
-        1,
-        20,
-      );
+      const result = await repo.aggregateStockReport({ itemId }, 1, 20);
 
       expect(result).toEqual({ data: rows, total: 1 });
       const dataPipeline = stockBalanceModel.aggregate.mock
         .calls[0][0] as Record<string, unknown>[];
-      expect(dataPipeline[0]).toEqual({ $match: { warehouseId, itemId } });
+      expect(dataPipeline[0]).toEqual({ $match: { itemId } });
       expect(dataPipeline).toContainEqual({ $skip: 0 });
       expect(dataPipeline).toContainEqual({ $limit: 20 });
       const countPipeline = stockBalanceModel.aggregate.mock
         .calls[1][0] as Record<string, unknown>[];
       expect(countPipeline).toContainEqual({ $count: 'total' });
+    });
+
+    it('KHÔNG lookup collection warehouses (đã bị xóa khỏi hệ thống)', async () => {
+      stockBalanceModel.aggregate
+        .mockReturnValueOnce({ exec: jest.fn().mockResolvedValue([]) })
+        .mockReturnValueOnce({ exec: jest.fn().mockResolvedValue([]) });
+
+      await repo.aggregateStockReport({}, 1, 20);
+
+      const dataPipeline = stockBalanceModel.aggregate.mock
+        .calls[0][0] as Record<string, unknown>[];
+      const lookupStages = dataPipeline.filter(
+        (stage) => '$lookup' in stage,
+      ) as { $lookup: { from: string } }[];
+      expect(lookupStages).toHaveLength(1);
+      expect(lookupStages[0].$lookup.from).toBe('warehouse_items');
+      expect(dataPipeline).not.toContainEqual({ $unwind: '$warehouse' });
     });
 
     it('total = 0 khi $count trả mảng rỗng, $skip tính đúng theo trang 2', async () => {
@@ -105,11 +115,11 @@ describe('ReportRepository', () => {
   });
 
   describe('aggregateLotReport', () => {
-    it('lọc lotId != null, group theo lotId+warehouseId, lookup lot/item/warehouse', async () => {
+    it('lọc lotId != null, group theo lotId, lookup lot/item', async () => {
       const lotId = new Types.ObjectId();
       const rows = [
         {
-          _id: { lotId, warehouseId },
+          _id: lotId,
           itemId,
           quantity: 5,
           lot: {
@@ -118,7 +128,6 @@ describe('ReportRepository', () => {
             status: LotStatus.ACTIVE,
           },
           item: { sku: 'SKU-1', name: 'Item 1', nearExpiryDays: 3 },
-          warehouse: { name: 'Kho A' },
         },
       ];
       inventoryStockModel.aggregate
@@ -127,20 +136,42 @@ describe('ReportRepository', () => {
           exec: jest.fn().mockResolvedValue([{ total: 1 }]),
         });
 
-      const result = await repo.aggregateLotReport(
-        { warehouseId, itemId },
-        1,
-        20,
-      );
+      const result = await repo.aggregateLotReport({ itemId }, 1, 20);
 
       expect(result).toEqual({ data: rows, total: 1 });
       const dataPipeline = inventoryStockModel.aggregate.mock
         .calls[0][0] as Record<string, unknown>[];
       expect(dataPipeline[0]).toEqual({
-        $match: { lotId: { $ne: null }, warehouseId, itemId },
+        $match: { lotId: { $ne: null }, itemId },
+      });
+      expect(dataPipeline[1]).toEqual({
+        $group: {
+          _id: '$lotId',
+          itemId: { $first: '$itemId' },
+          quantity: { $sum: '$quantity' },
+        },
       });
       expect(dataPipeline).toContainEqual({ $skip: 0 });
       expect(dataPipeline).toContainEqual({ $limit: 20 });
+    });
+
+    it('KHÔNG lookup collection warehouses (đã bị xóa khỏi hệ thống)', async () => {
+      inventoryStockModel.aggregate
+        .mockReturnValueOnce({ exec: jest.fn().mockResolvedValue([]) })
+        .mockReturnValueOnce({ exec: jest.fn().mockResolvedValue([]) });
+
+      await repo.aggregateLotReport({}, 1, 20);
+
+      const dataPipeline = inventoryStockModel.aggregate.mock
+        .calls[0][0] as Record<string, unknown>[];
+      const lookupStages = dataPipeline.filter(
+        (stage) => '$lookup' in stage,
+      ) as { $lookup: { from: string } }[];
+      expect(lookupStages.map((s) => s.$lookup.from)).toEqual([
+        'lots',
+        'warehouse_items',
+      ]);
+      expect(dataPipeline).not.toContainEqual({ $unwind: '$warehouse' });
     });
 
     it('có status filter → thêm $match lot.status sau bước lookup', async () => {
@@ -172,7 +203,6 @@ describe('ReportRepository', () => {
       const result = await repo.aggregatePerformanceReport({
         dateFrom,
         dateTo,
-        warehouseId,
         itemId,
       });
 
@@ -184,7 +214,6 @@ describe('ReportRepository', () => {
       expect(pipeline[0]).toEqual({
         $match: {
           createdAt: { $gte: dateFrom, $lte: dateTo },
-          warehouseId,
           itemId,
         },
       });

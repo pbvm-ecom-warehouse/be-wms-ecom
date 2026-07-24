@@ -59,9 +59,6 @@ export class PrintJob {
   @Prop({ required: true, unique: true })
   orderId!: string;
 
-  @Prop({ type: Types.ObjectId, required: true })
-  warehouseId!: Types.ObjectId;
-
   @Prop({ enum: PrintJobStatus, default: PrintJobStatus.PENDING })
   status!: PrintJobStatus;
 

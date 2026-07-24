@@ -94,13 +94,6 @@ export class GoodsIssueResponseDto {
   orderId!: string;
 
   @Expose()
-  @Transform(({ obj }: { obj: { warehouseId?: Types.ObjectId } }) =>
-    obj.warehouseId?.toString(),
-  )
-  @ApiProperty()
-  warehouseId!: string;
-
-  @Expose()
   @ApiProperty({ enum: GoodsIssueStatus })
   status!: GoodsIssueStatus;
 

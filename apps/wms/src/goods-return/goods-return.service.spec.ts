@@ -23,8 +23,7 @@ const makeStockRepo = () => ({
   insertMovement: jest.fn(),
 });
 
-const makeWarehouseRepo = () => ({
-  findWarehouseById: jest.fn(),
+const makeLocationRepo = () => ({
   findShelfById: jest.fn(),
 });
 
@@ -64,7 +63,7 @@ describe('GoodsReturnService', () => {
   let svc: GoodsReturnService;
   let repo: ReturnType<typeof makeRepo>;
   let stockRepo: ReturnType<typeof makeStockRepo>;
-  let warehouseRepo: ReturnType<typeof makeWarehouseRepo>;
+  let locationRepo: ReturnType<typeof makeLocationRepo>;
   let scrapNoteService: ReturnType<typeof makeScrapNoteService>;
   let stockService: ReturnType<typeof makeStockService>;
   let txHelper: ReturnType<typeof makeTxHelper>;
@@ -72,7 +71,6 @@ describe('GoodsReturnService', () => {
   let cloudinary: ReturnType<typeof makeCloudinaryService>;
 
   const actorId = new Types.ObjectId().toString();
-  const warehouseId = new Types.ObjectId();
   const itemId = new Types.ObjectId();
   const shelfId = new Types.ObjectId();
   const lotId = new Types.ObjectId();
@@ -80,7 +78,7 @@ describe('GoodsReturnService', () => {
   beforeEach(() => {
     repo = makeRepo();
     stockRepo = makeStockRepo();
-    warehouseRepo = makeWarehouseRepo();
+    locationRepo = makeLocationRepo();
     scrapNoteService = makeScrapNoteService();
     stockService = makeStockService();
     txHelper = makeTxHelper();
@@ -90,7 +88,7 @@ describe('GoodsReturnService', () => {
       repo as never,
       stockRepo as never,
       stockService as never,
-      warehouseRepo as never,
+      locationRepo as never,
       scrapNoteService as never,
       txHelper as never,
       stockQueue as never,
@@ -176,11 +174,7 @@ describe('GoodsReturnService', () => {
     it('phiếu không tồn tại → throw GOODS_RETURN_NOT_FOUND', async () => {
       repo.findById.mockResolvedValue(null);
       await expect(
-        svc.inspectGoodsReturn(
-          'gr1',
-          { warehouseId: warehouseId.toString(), items: [] },
-          actorId,
-        ),
+        svc.inspectGoodsReturn('gr1', { items: [] }, actorId),
       ).rejects.toThrow();
     });
 
@@ -191,37 +185,7 @@ describe('GoodsReturnService', () => {
         items: [],
       });
       await expect(
-        svc.inspectGoodsReturn(
-          'gr1',
-          { warehouseId: warehouseId.toString(), items: [] },
-          actorId,
-        ),
-      ).rejects.toThrow();
-    });
-
-    it('warehouseId không tồn tại → throw WAREHOUSE_NOT_FOUND', async () => {
-      repo.findById.mockResolvedValue({
-        _id: 'gr1',
-        status: GoodsReturnStatus.DRAFT,
-        items: [{ itemId, sku: 'SKU-1', quantity: 2 }],
-      });
-      warehouseRepo.findWarehouseById.mockResolvedValue(null);
-
-      await expect(
-        svc.inspectGoodsReturn(
-          'gr1',
-          {
-            warehouseId: warehouseId.toString(),
-            items: [
-              {
-                itemId: itemId.toString(),
-                condition: GoodsReturnItemCondition.GOOD,
-                shelfId: shelfId.toString(),
-              },
-            ],
-          },
-          actorId,
-        ),
+        svc.inspectGoodsReturn('gr1', { items: [] }, actorId),
       ).rejects.toThrow();
     });
 
@@ -231,14 +195,9 @@ describe('GoodsReturnService', () => {
         status: GoodsReturnStatus.DRAFT,
         items: [{ itemId, sku: 'SKU-1', quantity: 2 }],
       });
-      warehouseRepo.findWarehouseById.mockResolvedValue({ _id: warehouseId });
 
       await expect(
-        svc.inspectGoodsReturn(
-          'gr1',
-          { warehouseId: warehouseId.toString(), items: [] },
-          actorId,
-        ),
+        svc.inspectGoodsReturn('gr1', { items: [] }, actorId),
       ).rejects.toThrow();
     });
 
@@ -248,8 +207,7 @@ describe('GoodsReturnService', () => {
         status: GoodsReturnStatus.DRAFT,
         items: [{ itemId, sku: 'SKU-1', quantity: 2 }],
       });
-      warehouseRepo.findWarehouseById.mockResolvedValue({ _id: warehouseId });
-      warehouseRepo.findShelfById.mockResolvedValue(null);
+      locationRepo.findShelfById.mockResolvedValue(null);
       stockRepo.findItemById.mockResolvedValue({
         _id: itemId,
         sku: 'SKU-1',
@@ -260,7 +218,6 @@ describe('GoodsReturnService', () => {
         svc.inspectGoodsReturn(
           'gr1',
           {
-            warehouseId: warehouseId.toString(),
             items: [
               {
                 itemId: itemId.toString(),
@@ -280,8 +237,7 @@ describe('GoodsReturnService', () => {
         status: GoodsReturnStatus.DRAFT,
         items: [{ itemId, sku: 'SKU-1', quantity: 2 }],
       });
-      warehouseRepo.findWarehouseById.mockResolvedValue({ _id: warehouseId });
-      warehouseRepo.findShelfById.mockResolvedValue({ _id: shelfId });
+      locationRepo.findShelfById.mockResolvedValue({ _id: shelfId });
       stockRepo.findItemById.mockResolvedValue({
         _id: itemId,
         sku: 'SKU-1',
@@ -292,7 +248,6 @@ describe('GoodsReturnService', () => {
         svc.inspectGoodsReturn(
           'gr1',
           {
-            warehouseId: warehouseId.toString(),
             items: [
               {
                 itemId: itemId.toString(),
@@ -313,8 +268,7 @@ describe('GoodsReturnService', () => {
         status: GoodsReturnStatus.DRAFT,
         items: [{ itemId, sku: 'SKU-1', quantity: 2 }],
       });
-      warehouseRepo.findWarehouseById.mockResolvedValue({ _id: warehouseId });
-      warehouseRepo.findShelfById.mockResolvedValue({ _id: shelfId });
+      locationRepo.findShelfById.mockResolvedValue({ _id: shelfId });
       stockRepo.findItemById.mockResolvedValue({
         _id: itemId,
         sku: 'SKU-1',
@@ -324,7 +278,6 @@ describe('GoodsReturnService', () => {
       await svc.inspectGoodsReturn(
         'gr1',
         {
-          warehouseId: warehouseId.toString(),
           items: [
             {
               itemId: itemId.toString(),
@@ -348,8 +301,7 @@ describe('GoodsReturnService', () => {
           items: [{ itemId, sku: 'SKU-1', quantity: 2 }],
         })
         .mockResolvedValueOnce(updated);
-      warehouseRepo.findWarehouseById.mockResolvedValue({ _id: warehouseId });
-      warehouseRepo.findShelfById.mockResolvedValue({ _id: shelfId });
+      locationRepo.findShelfById.mockResolvedValue({ _id: shelfId });
       stockRepo.findItemById.mockResolvedValue({
         _id: itemId,
         sku: 'SKU-1',
@@ -359,7 +311,6 @@ describe('GoodsReturnService', () => {
       const result = await svc.inspectGoodsReturn(
         'gr1',
         {
-          warehouseId: warehouseId.toString(),
           items: [
             {
               itemId: itemId.toString(),
@@ -374,7 +325,6 @@ describe('GoodsReturnService', () => {
 
       expect(repo.setInspected).toHaveBeenCalledWith(
         'gr1',
-        warehouseId,
         new Types.ObjectId(actorId),
         [
           {
@@ -397,8 +347,7 @@ describe('GoodsReturnService', () => {
           items: [{ itemId, sku: 'SKU-1', quantity: 2 }],
         })
         .mockResolvedValueOnce({ _id: 'gr1' });
-      warehouseRepo.findWarehouseById.mockResolvedValue({ _id: warehouseId });
-      warehouseRepo.findShelfById.mockResolvedValue({ _id: shelfId });
+      locationRepo.findShelfById.mockResolvedValue({ _id: shelfId });
       stockRepo.findItemById.mockResolvedValue({
         _id: itemId,
         sku: 'SKU-1',
@@ -408,7 +357,6 @@ describe('GoodsReturnService', () => {
       await svc.inspectGoodsReturn(
         'gr1',
         {
-          warehouseId: warehouseId.toString(),
           items: [
             {
               itemId: itemId.toString(),
@@ -423,7 +371,6 @@ describe('GoodsReturnService', () => {
       expect(cloudinary.uploadImage).not.toHaveBeenCalled();
       expect(repo.setInspected).toHaveBeenCalledWith(
         'gr1',
-        warehouseId,
         new Types.ObjectId(actorId),
         [expect.objectContaining({ images: [] })],
       );
@@ -437,8 +384,7 @@ describe('GoodsReturnService', () => {
           items: [{ itemId, sku: 'SKU-1', quantity: 2 }],
         })
         .mockResolvedValueOnce({ _id: 'gr1' });
-      warehouseRepo.findWarehouseById.mockResolvedValue({ _id: warehouseId });
-      warehouseRepo.findShelfById.mockResolvedValue({ _id: shelfId });
+      locationRepo.findShelfById.mockResolvedValue({ _id: shelfId });
       stockRepo.findItemById.mockResolvedValue({
         _id: itemId,
         sku: 'SKU-1',
@@ -450,7 +396,6 @@ describe('GoodsReturnService', () => {
       await svc.inspectGoodsReturn(
         'gr1',
         {
-          warehouseId: warehouseId.toString(),
           items: [
             {
               itemId: itemId.toString(),
@@ -469,7 +414,6 @@ describe('GoodsReturnService', () => {
       );
       expect(repo.setInspected).toHaveBeenCalledWith(
         'gr1',
-        warehouseId,
         new Types.ObjectId(actorId),
         [
           expect.objectContaining({
@@ -487,8 +431,7 @@ describe('GoodsReturnService', () => {
         status: GoodsReturnStatus.DRAFT,
         items: [{ itemId, sku: 'SKU-1', quantity: 2 }],
       });
-      warehouseRepo.findWarehouseById.mockResolvedValue({ _id: warehouseId });
-      warehouseRepo.findShelfById.mockResolvedValue({ _id: shelfId });
+      locationRepo.findShelfById.mockResolvedValue({ _id: shelfId });
       stockRepo.findItemById.mockResolvedValue({
         _id: itemId,
         sku: 'SKU-1',
@@ -503,7 +446,6 @@ describe('GoodsReturnService', () => {
         svc.inspectGoodsReturn(
           'gr1',
           {
-            warehouseId: warehouseId.toString(),
             items: [
               {
                 itemId: itemId.toString(),
@@ -525,8 +467,7 @@ describe('GoodsReturnService', () => {
         status: GoodsReturnStatus.DRAFT,
         items: [{ itemId, sku: 'SKU-1', quantity: 2 }],
       });
-      warehouseRepo.findWarehouseById.mockResolvedValue({ _id: warehouseId });
-      warehouseRepo.findShelfById.mockResolvedValue({ _id: shelfId });
+      locationRepo.findShelfById.mockResolvedValue({ _id: shelfId });
       stockRepo.findItemById.mockResolvedValue({
         _id: itemId,
         sku: 'SKU-1',
@@ -541,7 +482,6 @@ describe('GoodsReturnService', () => {
         svc.inspectGoodsReturn(
           'gr1',
           {
-            warehouseId: warehouseId.toString(),
             items: [
               {
                 itemId: itemId.toString(),
@@ -570,7 +510,6 @@ describe('GoodsReturnService', () => {
     it('dòng GOOD → nhập lại kho, StockMovement RETURN_IN dương, CÓ bắn stock.changed(+)', async () => {
       repo.findById.mockResolvedValue({
         _id: 'gr1',
-        warehouseId,
         status: GoodsReturnStatus.INSPECTED,
         items: [
           {
@@ -588,7 +527,6 @@ describe('GoodsReturnService', () => {
 
       expect(stockRepo.upsertInventory).toHaveBeenCalledWith(
         itemId,
-        warehouseId,
         shelfId,
         null,
         4,
@@ -596,7 +534,6 @@ describe('GoodsReturnService', () => {
       );
       expect(stockRepo.upsertBalance).toHaveBeenCalledWith(
         itemId,
-        warehouseId,
         4,
         0,
         0,
@@ -626,7 +563,6 @@ describe('GoodsReturnService', () => {
       );
       repo.findById.mockResolvedValue({
         _id: 'gr1',
-        warehouseId,
         status: GoodsReturnStatus.INSPECTED,
         items: [
           {
@@ -644,7 +580,6 @@ describe('GoodsReturnService', () => {
 
       expect(stockRepo.upsertInventory).toHaveBeenCalledWith(
         itemId,
-        warehouseId,
         shelfId,
         null,
         3,
@@ -652,7 +587,6 @@ describe('GoodsReturnService', () => {
       );
       expect(stockRepo.upsertBalance).toHaveBeenCalledWith(
         itemId,
-        warehouseId,
         3,
         0,
         0,
@@ -665,7 +599,6 @@ describe('GoodsReturnService', () => {
       expect(
         scrapNoteService.createApprovedScrapNoteForReturn,
       ).toHaveBeenCalledWith({
-        warehouseId,
         itemId,
         sku: 'SKU-1',
         shelfId,
@@ -690,7 +623,6 @@ describe('GoodsReturnService', () => {
       );
       repo.findById.mockResolvedValue({
         _id: 'gr1',
-        warehouseId,
         status: GoodsReturnStatus.INSPECTED,
         items: [
           {
@@ -733,7 +665,6 @@ describe('GoodsReturnService', () => {
       );
       repo.findById.mockResolvedValue({
         _id: 'gr1',
-        warehouseId,
         status: GoodsReturnStatus.INSPECTED,
         items: [
           {
@@ -758,13 +689,9 @@ describe('GoodsReturnService', () => {
       await svc.confirmGoodsReturn('gr1', actorId);
 
       expect(stockService.checkAndEmitStockLow).toHaveBeenCalledTimes(2);
-      expect(stockService.checkAndEmitStockLow).toHaveBeenCalledWith(
-        itemId,
-        warehouseId,
-      );
+      expect(stockService.checkAndEmitStockLow).toHaveBeenCalledWith(itemId);
       expect(stockService.checkAndEmitStockLow).toHaveBeenCalledWith(
         otherItemId,
-        warehouseId,
       );
     });
   });

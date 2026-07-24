@@ -17,7 +17,7 @@ const makeRepo = () => ({
 const makeStockRepo = () => ({
   findItemBySku: jest.fn(),
   findItemByIdDocument: jest.fn(),
-  findBalanceByItemAndWarehouse: jest.fn(),
+  findBalance: jest.fn(),
   upsertBalance: jest.fn(),
   findInventory: jest.fn(),
   upsertInventory: jest.fn(),
@@ -26,7 +26,7 @@ const makeStockRepo = () => ({
   findSkuById: jest.fn(),
 });
 
-const makeWarehouseRepo = () => ({
+const makeLocationRepo = () => ({
   findShelfByCode: jest.fn(),
 });
 
@@ -53,7 +53,7 @@ describe('PrintJobService', () => {
   let svc: PrintJobService;
   let repo: ReturnType<typeof makeRepo>;
   let stockRepo: ReturnType<typeof makeStockRepo>;
-  let warehouseRepo: ReturnType<typeof makeWarehouseRepo>;
+  let locationRepo: ReturnType<typeof makeLocationRepo>;
   let txHelper: ReturnType<typeof makeTxHelper>;
   let stockService: ReturnType<typeof makeStockService>;
   let barcodeSvc: ReturnType<typeof makeBarcodeService>;
@@ -62,14 +62,13 @@ describe('PrintJobService', () => {
 
   const actorId = new Types.ObjectId().toString();
   const orderId = 'order-1';
-  const warehouseId = new Types.ObjectId();
   const blankItemId = new Types.ObjectId();
   const printedItemId = new Types.ObjectId();
 
   beforeEach(() => {
     repo = makeRepo();
     stockRepo = makeStockRepo();
-    warehouseRepo = makeWarehouseRepo();
+    locationRepo = makeLocationRepo();
     txHelper = makeTxHelper();
     stockService = makeStockService();
     barcodeSvc = makeBarcodeService();
@@ -79,7 +78,7 @@ describe('PrintJobService', () => {
       repo as never,
       stockRepo as never,
       stockService as never,
-      warehouseRepo as never,
+      locationRepo,
       txHelper as never,
       barcodeSvc as never,
       stockQueue as never,
@@ -90,7 +89,7 @@ describe('PrintJobService', () => {
   describe('createFromPrintRequested', () => {
     it('bỏ qua nếu đã có PrintJob cho orderId này (idempotent)', async () => {
       repo.findByOrderId.mockResolvedValue({ _id: 'pj1' });
-      await svc.createFromPrintRequested(orderId, warehouseId.toString(), [
+      await svc.createFromPrintRequested(orderId, [
         { sku: 'CUP-PRINTED-1', quantity: 5 },
       ]);
       expect(repo.createPrintJob).not.toHaveBeenCalled();
@@ -108,21 +107,20 @@ describe('PrintJobService', () => {
             })
           : Promise.resolve(null),
       );
-      stockRepo.findBalanceByItemAndWarehouse.mockResolvedValue({
+      stockRepo.findBalance.mockResolvedValue({
         onHand: 100,
         reserved: 20,
         expired: 0,
       });
       stockRepo.findSkuById.mockResolvedValue({ sku: 'CUP-BLANK-500' });
 
-      await svc.createFromPrintRequested(orderId, warehouseId.toString(), [
+      await svc.createFromPrintRequested(orderId, [
         { sku: 'CUP-PRINTED-1', quantity: 10 },
       ]);
 
       // available = 100 - 20 - 0 = 80 ≥ 10 → reservedQty = 10
       expect(stockRepo.upsertBalance).toHaveBeenCalledWith(
         blankItemId,
-        warehouseId,
         0,
         10,
         0,
@@ -130,7 +128,6 @@ describe('PrintJobService', () => {
       );
       expect(repo.createPrintJob).toHaveBeenCalledWith(
         orderId,
-        warehouseId,
         [
           {
             inputItemId: blankItemId,
@@ -158,20 +155,19 @@ describe('PrintJobService', () => {
         type: ItemType.CUP_PRINTED,
         blankItemId,
       });
-      stockRepo.findBalanceByItemAndWarehouse.mockResolvedValue({
+      stockRepo.findBalance.mockResolvedValue({
         onHand: 5,
         reserved: 0,
         expired: 0,
       });
 
-      await svc.createFromPrintRequested(orderId, warehouseId.toString(), [
+      await svc.createFromPrintRequested(orderId, [
         { sku: 'CUP-PRINTED-1', quantity: 10 },
       ]);
 
       // available = 5 → reservedQty = min(10, 5) = 5
       expect(repo.createPrintJob).toHaveBeenCalledWith(
         orderId,
-        warehouseId,
         [expect.objectContaining({ quantity: 10, reservedQty: 5 })],
         expect.anything(),
       );
@@ -194,13 +190,13 @@ describe('PrintJobService', () => {
         _id: printedItemId,
         sku: 'CUP-PRINTED-NEW',
       });
-      stockRepo.findBalanceByItemAndWarehouse.mockResolvedValue({
+      stockRepo.findBalance.mockResolvedValue({
         onHand: 100,
         reserved: 0,
         expired: 0,
       });
 
-      await svc.createFromPrintRequested(orderId, warehouseId.toString(), [
+      await svc.createFromPrintRequested(orderId, [
         {
           sku: 'CUP-PRINTED-NEW',
           quantity: 3,
@@ -219,7 +215,6 @@ describe('PrintJobService', () => {
       );
       expect(repo.createPrintJob).toHaveBeenCalledWith(
         orderId,
-        warehouseId,
         [
           expect.objectContaining({
             inputItemId: newBlankItemId,
@@ -243,20 +238,19 @@ describe('PrintJobService', () => {
             })
           : Promise.resolve(null),
       );
-      stockRepo.findBalanceByItemAndWarehouse.mockResolvedValue({
+      stockRepo.findBalance.mockResolvedValue({
         onHand: 100,
         reserved: 0,
         expired: 0,
       });
 
-      await svc.createFromPrintRequested(orderId, warehouseId.toString(), [
+      await svc.createFromPrintRequested(orderId, [
         { sku: 'CUP-PRINTED-OK', quantity: 5 },
         { sku: 'CUP-PRINTED-NO-BLANK-SKU', quantity: 2 },
       ]);
 
       expect(repo.createPrintJob).toHaveBeenCalledWith(
         orderId,
-        warehouseId,
         [expect.objectContaining({ sku: 'CUP-PRINTED-OK' })],
         expect.anything(),
       );
@@ -271,7 +265,7 @@ describe('PrintJobService', () => {
         type: ItemType.MATERIAL,
       });
 
-      await svc.createFromPrintRequested(orderId, warehouseId.toString(), [
+      await svc.createFromPrintRequested(orderId, [
         { sku: 'CUP-PRINTED-1', quantity: 5 },
       ]);
 
@@ -281,7 +275,7 @@ describe('PrintJobService', () => {
     it('không tạo job nếu không có dòng nào hợp lệ', async () => {
       repo.findByOrderId.mockResolvedValue(null);
       stockRepo.findItemBySku.mockResolvedValue(null);
-      await svc.createFromPrintRequested(orderId, warehouseId.toString(), [
+      await svc.createFromPrintRequested(orderId, [
         { sku: 'CUP-PRINTED-UNKNOWN', quantity: 3 },
       ]);
       expect(repo.createPrintJob).not.toHaveBeenCalled();
@@ -308,14 +302,14 @@ describe('PrintJobService', () => {
           });
         return Promise.resolve(null);
       });
-      stockRepo.findBalanceByItemAndWarehouse.mockResolvedValue({
+      stockRepo.findBalance.mockResolvedValue({
         onHand: 100,
         reserved: 0,
         expired: 0,
       });
       stockRepo.findSkuById.mockResolvedValue({ sku: 'CUP-BLANK-500' });
 
-      await svc.createFromPrintRequested(orderId, warehouseId.toString(), [
+      await svc.createFromPrintRequested(orderId, [
         { sku: 'CUP-PRINTED-1', quantity: 10 },
         { sku: 'CUP-PRINTED-2', quantity: 5 },
       ]);
@@ -331,7 +325,6 @@ describe('PrintJobService', () => {
     const baseJob = () => ({
       _id: pjId,
       orderId,
-      warehouseId,
       items: [
         {
           inputItemId: blankItemId,
@@ -375,7 +368,7 @@ describe('PrintJobService', () => {
       repo.findById.mockResolvedValue(baseJob());
       barcodeSvc.findItemIdByCode.mockResolvedValue(blankItemId);
       stockRepo.findItemByIdDocument.mockResolvedValue({ _id: blankItemId });
-      warehouseRepo.findShelfByCode.mockResolvedValue(null);
+      locationRepo.findShelfByCode.mockResolvedValue(null);
       await expect(
         svc.consumeItem(
           pjId,
@@ -393,9 +386,8 @@ describe('PrintJobService', () => {
       stockRepo.findItemByIdDocument.mockResolvedValue({
         _id: mismatchedItemId,
       });
-      warehouseRepo.findShelfByCode.mockResolvedValue({
+      locationRepo.findShelfByCode.mockResolvedValue({
         _id: shelfId,
-        warehouseId,
       });
       await expect(
         svc.consumeItem(
@@ -411,9 +403,8 @@ describe('PrintJobService', () => {
       repo.findById.mockResolvedValue(baseJob());
       barcodeSvc.findItemIdByCode.mockResolvedValue(blankItemId);
       stockRepo.findItemByIdDocument.mockResolvedValue({ _id: blankItemId });
-      warehouseRepo.findShelfByCode.mockResolvedValue({
+      locationRepo.findShelfByCode.mockResolvedValue({
         _id: shelfId,
-        warehouseId,
       });
       await expect(
         svc.consumeItem(
@@ -429,9 +420,8 @@ describe('PrintJobService', () => {
       repo.findById.mockResolvedValue(baseJob());
       barcodeSvc.findItemIdByCode.mockResolvedValue(blankItemId);
       stockRepo.findItemByIdDocument.mockResolvedValue({ _id: blankItemId });
-      warehouseRepo.findShelfByCode.mockResolvedValue({
+      locationRepo.findShelfByCode.mockResolvedValue({
         _id: shelfId,
-        warehouseId,
       });
       stockRepo.findInventory.mockResolvedValue({ quantity: 2 });
       await expect(
@@ -448,9 +438,8 @@ describe('PrintJobService', () => {
       repo.findById.mockResolvedValue(baseJob());
       barcodeSvc.findItemIdByCode.mockResolvedValue(blankItemId);
       stockRepo.findItemByIdDocument.mockResolvedValue({ _id: blankItemId });
-      warehouseRepo.findShelfByCode.mockResolvedValue({
+      locationRepo.findShelfByCode.mockResolvedValue({
         _id: shelfId,
-        warehouseId,
       });
       stockRepo.findInventory.mockResolvedValue({ quantity: 20 });
 
@@ -463,7 +452,6 @@ describe('PrintJobService', () => {
 
       expect(stockRepo.upsertInventory).toHaveBeenCalledWith(
         blankItemId,
-        warehouseId,
         shelfId,
         null,
         -4,
@@ -471,7 +459,6 @@ describe('PrintJobService', () => {
       );
       expect(stockRepo.upsertBalance).toHaveBeenCalledWith(
         blankItemId,
-        warehouseId,
         -4,
         -4,
         0,
@@ -480,7 +467,6 @@ describe('PrintJobService', () => {
       expect(stockRepo.insertMovement).toHaveBeenCalledWith(
         expect.objectContaining({
           itemId: blankItemId,
-          warehouseId,
           shelfId,
           type: 'PRINT_CONSUME',
           quantity: -4,
@@ -498,13 +484,12 @@ describe('PrintJobService', () => {
       expect(shipmentQueue.add).not.toHaveBeenCalled();
     });
 
-    it('gọi checkAndEmitStockLow(item._id, job.warehouseId) sau khi commit', async () => {
+    it('gọi checkAndEmitStockLow(item._id) sau khi commit', async () => {
       repo.findById.mockResolvedValue(baseJob());
       barcodeSvc.findItemIdByCode.mockResolvedValue(blankItemId);
       stockRepo.findItemByIdDocument.mockResolvedValue({ _id: blankItemId });
-      warehouseRepo.findShelfByCode.mockResolvedValue({
+      locationRepo.findShelfByCode.mockResolvedValue({
         _id: shelfId,
-        warehouseId,
       });
       stockRepo.findInventory.mockResolvedValue({ quantity: 20 });
 
@@ -517,7 +502,6 @@ describe('PrintJobService', () => {
 
       expect(stockService.checkAndEmitStockLow).toHaveBeenCalledWith(
         blankItemId,
-        warehouseId,
       );
     });
   });
@@ -529,7 +513,6 @@ describe('PrintJobService', () => {
     const consumedJob = () => ({
       _id: pjId,
       orderId,
-      warehouseId,
       items: [
         {
           inputItemId: blankItemId,
@@ -605,7 +588,7 @@ describe('PrintJobService', () => {
 
     it('throw PRINT_JOB_SHELF_NOT_FOUND khi shelf không khớp', async () => {
       repo.findById.mockResolvedValue(consumedJob());
-      warehouseRepo.findShelfByCode.mockResolvedValue(null);
+      locationRepo.findShelfByCode.mockResolvedValue(null);
       await expect(
         svc.completeItem(
           pjId,
@@ -618,9 +601,8 @@ describe('PrintJobService', () => {
 
     it('throw PRINT_JOB_QTY_EXCEEDS khi quantity khác reservedQty', async () => {
       repo.findById.mockResolvedValue(consumedJob());
-      warehouseRepo.findShelfByCode.mockResolvedValue({
+      locationRepo.findShelfByCode.mockResolvedValue({
         _id: shelfId,
-        warehouseId,
       });
       await expect(
         svc.completeItem(
@@ -637,9 +619,8 @@ describe('PrintJobService', () => {
         ...consumedJob(),
         status: PrintJobStatus.IN_PROGRESS,
       });
-      warehouseRepo.findShelfByCode.mockResolvedValue({
+      locationRepo.findShelfByCode.mockResolvedValue({
         _id: shelfId,
-        warehouseId,
       });
       repo.markLineCompleted.mockResolvedValue({ allDone: false });
 
@@ -652,7 +633,6 @@ describe('PrintJobService', () => {
 
       expect(stockRepo.upsertInventory).toHaveBeenCalledWith(
         printedItemId,
-        warehouseId,
         shelfId,
         null,
         10,
@@ -660,7 +640,6 @@ describe('PrintJobService', () => {
       );
       expect(stockRepo.upsertBalance).toHaveBeenCalledWith(
         printedItemId,
-        warehouseId,
         10,
         10,
         0,
@@ -669,7 +648,6 @@ describe('PrintJobService', () => {
       expect(stockRepo.insertMovement).toHaveBeenCalledWith(
         expect.objectContaining({
           itemId: printedItemId,
-          warehouseId,
           shelfId,
           type: 'PRINT_OUTPUT',
           quantity: 10,
@@ -687,9 +665,8 @@ describe('PrintJobService', () => {
         ...consumedJob(),
         status: PrintJobStatus.COMPLETED,
       });
-      warehouseRepo.findShelfByCode.mockResolvedValue({
+      locationRepo.findShelfByCode.mockResolvedValue({
         _id: shelfId,
-        warehouseId,
       });
       repo.markLineCompleted.mockResolvedValue({ allDone: true });
 
@@ -713,14 +690,13 @@ describe('PrintJobService', () => {
       );
     });
 
-    it('gọi checkAndEmitStockLow(line.outputItemId, job.warehouseId) sau khi commit', async () => {
+    it('gọi checkAndEmitStockLow(line.outputItemId) sau khi commit', async () => {
       repo.findById.mockResolvedValueOnce(consumedJob()).mockResolvedValueOnce({
         ...consumedJob(),
         status: PrintJobStatus.IN_PROGRESS,
       });
-      warehouseRepo.findShelfByCode.mockResolvedValue({
+      locationRepo.findShelfByCode.mockResolvedValue({
         _id: shelfId,
-        warehouseId,
       });
       repo.markLineCompleted.mockResolvedValue({ allDone: false });
 
@@ -733,7 +709,6 @@ describe('PrintJobService', () => {
 
       expect(stockService.checkAndEmitStockLow).toHaveBeenCalledWith(
         printedItemId,
-        warehouseId,
       );
     });
   });

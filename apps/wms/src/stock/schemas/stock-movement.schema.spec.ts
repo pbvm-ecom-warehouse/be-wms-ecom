@@ -19,7 +19,6 @@ describe('StockMovement schema', () => {
   it('schema có đủ field sổ cái, chỉ createdAt (KHÔNG updatedAt)', () => {
     const paths = StockMovementSchema.paths;
     expect(paths['itemId']).toBeDefined();
-    expect(paths['warehouseId']).toBeDefined();
     expect(paths['shelfId']).toBeDefined();
     expect(paths['lotId']).toBeDefined();
     expect(paths['type']).toBeDefined();

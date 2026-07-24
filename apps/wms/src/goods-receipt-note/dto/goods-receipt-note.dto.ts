@@ -163,13 +163,6 @@ export class GoodsReceiptNoteResponseDto {
   purchaseOrderId!: string;
 
   @Expose()
-  @Transform(({ obj }: { obj: { warehouseId?: Types.ObjectId } }) =>
-    obj.warehouseId?.toString(),
-  )
-  @ApiProperty()
-  warehouseId!: string;
-
-  @Expose()
   @ApiProperty({ enum: GoodsReceiptNoteStatus })
   status!: GoodsReceiptNoteStatus;
 

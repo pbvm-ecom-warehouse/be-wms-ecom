@@ -20,7 +20,6 @@ export interface CreateScrapNoteLineInput {
 
 export interface QueryScrapNoteInput {
   status?: ScrapNoteStatus;
-  warehouseId?: Types.ObjectId;
   page?: number;
   limit?: number;
 }
@@ -37,14 +36,12 @@ export class ScrapNoteRepository {
   }
 
   async createScrapNote(
-    warehouseId: Types.ObjectId,
     note: string | undefined,
     createdBy: Types.ObjectId,
     lines: CreateScrapNoteLineInput[],
   ): Promise<ScrapNoteDocument> {
     const [doc] = await this.model.create([
       {
-        warehouseId,
         note,
         status: ScrapNoteStatus.DRAFT,
         createdBy,
@@ -69,7 +66,6 @@ export class ScrapNoteRepository {
    * GoodsReturnService.confirmGoodsReturn.
    */
   async createApprovedScrapNote(
-    warehouseId: Types.ObjectId,
     createdBy: Types.ObjectId,
     lines: CreateScrapNoteLineInput[],
     session: ClientSession,
@@ -77,7 +73,6 @@ export class ScrapNoteRepository {
     const [doc] = await this.model.create(
       [
         {
-          warehouseId,
           status: ScrapNoteStatus.APPROVED,
           createdBy,
           approvedBy: createdBy,
@@ -104,7 +99,6 @@ export class ScrapNoteRepository {
     const limit = query.limit ?? 20;
     const filter: Record<string, unknown> = {};
     if (query.status) filter['status'] = query.status;
-    if (query.warehouseId) filter['warehouseId'] = query.warehouseId;
 
     const [data, total] = await Promise.all([
       this.model

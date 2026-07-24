@@ -46,7 +46,6 @@ export class ExpiredLotScanService {
           for (const row of rows) {
             await this.stockRepo.upsertBalance(
               row.itemId,
-              row.warehouseId,
               0,
               0,
               row.qty,

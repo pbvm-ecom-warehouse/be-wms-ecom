@@ -57,7 +57,6 @@ describe('NotificationConsumer', () => {
   describe('stock.low', () => {
     const payload = {
       sku: 'SKU-1',
-      warehouseId: 'wh-1',
       available: 2,
       minQuantity: 10,
     };
@@ -74,7 +73,7 @@ describe('NotificationConsumer', () => {
         expect.objectContaining({ to: 'manager@x.com', idempotencyKey: 'j1' }),
       );
       expect(messaging.send).toHaveBeenCalledWith(
-        expect.objectContaining({ topic: 'stock_alert_wh-1' }),
+        expect.objectContaining({ topic: 'stock_alert' }),
       );
     });
 

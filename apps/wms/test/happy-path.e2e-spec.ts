@@ -25,14 +25,14 @@ import { GoodsIssueRepository } from '../src/goods-issue/goods-issue.repository'
 import {
   Shelf,
   type ShelfDocument,
-} from '../src/warehouse/schemas/shelf.schema';
+} from '../src/location/schemas/shelf.schema';
 
 /**
  * E2E happy-path WMS (S4-05): login → PO → GRN CONFIRMED (onHand+) → put-away
  * (+ gợi ý) → xuất hàng (onHand-, goods.issued) → kiểm kê khớp. Assert bất biến
  * 2 lớp tồn kho sau mỗi bước quan trọng.
  *
- * File này (phần 1 — Task 3) cover: bootstrap/login, warehouse/zone/rack/shelf,
+ * File này (phần 1 — Task 3) cover: bootstrap/login, zone/rack/shelf,
  * WarehouseItem/Supplier/SupplierItem, PO → GRN confirm, put-away suggestion +
  * confirm-line. Phần 2 (Task 4) nối tiếp cùng file: goods-issue qua queue +
  * stock-count + assertion cuối.
@@ -61,7 +61,6 @@ describe('WMS happy-path (e2e)', () => {
   let pickerToken: string;
   let counterToken: string;
 
-  let warehouseId: string;
   let stagingShelfId: string;
   // stagingShelfCode: gán ở Step 4 (tạo shelf) nhưng chỉ dùng ở Task 4 khi
   // kiểm kê phải đếm luôn dòng ở shelf staging (systemQty=0, xem giải thích
@@ -107,19 +106,18 @@ describe('WMS happy-path (e2e)', () => {
   /**
    * Bất biến 2 lớp tồn kho: onHand (lớp 1, snapshot tổng) phải luôn khớp
    * tổng quantity của mọi InventoryStock (lớp 2, chi tiết theo shelf/lot)
-   * cho cùng (item, warehouse). Đọc thẳng model thay vì qua HTTP vì không
-   * có endpoint trả StockBalance trực tiếp (xem design doc — "Điểm mở").
+   * cho cùng item. Đọc thẳng model thay vì qua HTTP vì không có endpoint trả
+   * StockBalance trực tiếp (xem design doc — "Điểm mở").
    */
   async function assertTwoLayerInvariant(
     checkItemId: string,
-    checkWarehouseId: string,
   ): Promise<{ onHand: number; sumInventory: number }> {
     const balance = await stockBalanceModel
-      .findOne({ itemId: checkItemId, warehouseId: checkWarehouseId })
+      .findOne({ itemId: checkItemId })
       .lean();
     expect(balance).not.toBeNull();
     const inventoryRows = await inventoryStockModel
-      .find({ itemId: checkItemId, warehouseId: checkWarehouseId })
+      .find({ itemId: checkItemId })
       .lean();
     const sumInventory = inventoryRows.reduce((sum, r) => sum + r.quantity, 0);
     expect(balance?.onHand).toBe(sumInventory);
@@ -128,12 +126,10 @@ describe('WMS happy-path (e2e)', () => {
 
   async function countMovements(
     checkItemId: string,
-    checkWarehouseId: string,
     type: MovementType,
   ): Promise<number> {
     return stockMovementModel.countDocuments({
       itemId: checkItemId,
-      warehouseId: checkWarehouseId,
       type,
     });
   }
@@ -195,30 +191,23 @@ describe('WMS happy-path (e2e)', () => {
     );
   });
 
-  it('MANAGER tạo warehouse/zone/rack/shelf(staging+chính)', async () => {
-    const whRes = await request(app.getHttpServer())
-      .post('/api/wms/warehouse')
-      .set('Authorization', `Bearer ${managerToken}`)
-      .send({ name: `Kho E2E ${uniqueSuffix}`, address: 'Địa chỉ test' })
-      .expect(201);
-    warehouseId = whRes.body.data.id;
-
+  it('MANAGER tạo zone/rack/shelf(staging+chính)', async () => {
     const zoneRes = await request(app.getHttpServer())
-      .post('/api/wms/warehouse/zones')
+      .post('/api/wms/location/zones')
       .set('Authorization', `Bearer ${managerToken}`)
-      .send({ warehouseId, name: 'Khu A', code: `E2E-A-${uniqueSuffix}` })
+      .send({ name: 'Khu A', code: `E2E-A-${uniqueSuffix}` })
       .expect(201);
     const zoneId = zoneRes.body.data.id;
 
     const rackRes = await request(app.getHttpServer())
-      .post('/api/wms/warehouse/racks')
+      .post('/api/wms/location/racks')
       .set('Authorization', `Bearer ${managerToken}`)
       .send({ zoneId, name: 'Kệ A1', code: `E2E-A1-${uniqueSuffix}` })
       .expect(201);
     const rackId = rackRes.body.data.id;
 
     const stagingRes = await request(app.getHttpServer())
-      .post('/api/wms/warehouse/shelves')
+      .post('/api/wms/location/shelves')
       .set('Authorization', `Bearer ${managerToken}`)
       .send({
         rackId,
@@ -231,7 +220,7 @@ describe('WMS happy-path (e2e)', () => {
     stagingShelfCode = stagingRes.body.data.code;
 
     const mainRes = await request(app.getHttpServer())
-      .post('/api/wms/warehouse/shelves')
+      .post('/api/wms/location/shelves')
       .set('Authorization', `Bearer ${managerToken}`)
       .send({
         rackId,
@@ -287,7 +276,6 @@ describe('WMS happy-path (e2e)', () => {
       .set('Authorization', `Bearer ${managerToken}`)
       .send({
         supplierId,
-        warehouseId,
         items: [
           { itemId, sku: itemSku, expectedQty: RECEIVE_QTY, unit: 'cái' },
         ],
@@ -312,20 +300,16 @@ describe('WMS happy-path (e2e)', () => {
       .send()
       .expect(201);
 
-    const { onHand } = await assertTwoLayerInvariant(itemId, warehouseId);
+    const { onHand } = await assertTwoLayerInvariant(itemId);
     expect(onHand).toBe(RECEIVE_QTY);
-    const receiveMovements = await countMovements(
-      itemId,
-      warehouseId,
-      MovementType.RECEIVE,
-    );
+    const receiveMovements = await countMovements(itemId, MovementType.RECEIVE);
     expect(receiveMovements).toBe(1);
   });
 
   it('GET gợi ý put-away rồi confirm-line dời hàng staging → shelf chính', async () => {
     const suggestRes = await request(app.getHttpServer())
       .get('/api/wms/putaway/suggestions')
-      .query({ sku: itemSku, qty: RECEIVE_QTY, warehouseId })
+      .query({ sku: itemSku, qty: RECEIVE_QTY })
       .set('Authorization', `Bearer ${receiverToken}`)
       .expect(200);
     expect(suggestRes.body.data.warning).toBeNull();
@@ -333,7 +317,7 @@ describe('WMS happy-path (e2e)', () => {
 
     const tasksRes = await request(app.getHttpServer())
       .get('/api/wms/putaway-tasks')
-      .query({ warehouseId, status: 'PENDING' })
+      .query({ status: 'PENDING' })
       .set('Authorization', `Bearer ${receiverToken}`)
       .expect(200);
     // Controller trả { data: PutAwayTaskResponseDto[], total, page, limit },
@@ -351,25 +335,21 @@ describe('WMS happy-path (e2e)', () => {
       .send({ itemBarcode, shelfCode: mainShelfCode, quantity: RECEIVE_QTY })
       .expect(201);
 
-    const { onHand } = await assertTwoLayerInvariant(itemId, warehouseId);
+    const { onHand } = await assertTwoLayerInvariant(itemId);
     expect(onHand).toBe(RECEIVE_QTY); // put-away chỉ dời vị trí, KHÔNG đổi onHand
     // confirmLine ghi 2 dòng movement PUTAWAY trong cùng transaction: 1 dòng âm
     // ở shelf staging (hàng rời đi) + 1 dòng dương ở shelf đích (hàng đến),
-    // cùng itemId+warehouseId (chỉ khác shelfId). countMovements không lọc theo
-    // shelfId nên đếm cả 2 — đúng bản chất là 2 sự kiện tồn kho thật đã xảy ra.
-    const putawayMovements = await countMovements(
-      itemId,
-      warehouseId,
-      MovementType.PUTAWAY,
-    );
+    // cùng itemId (chỉ khác shelfId). countMovements không lọc theo shelfId
+    // nên đếm cả 2 — đúng bản chất là 2 sự kiện tồn kho thật đã xảy ra.
+    const putawayMovements = await countMovements(itemId, MovementType.PUTAWAY);
     expect(putawayMovements).toBe(2);
 
     const stagingRow = await inventoryStockModel
-      .findOne({ itemId, warehouseId, shelfId: stagingShelfId })
+      .findOne({ itemId, shelfId: stagingShelfId })
       .lean();
     expect(stagingRow?.quantity ?? 0).toBe(0);
     const mainRow = await inventoryStockModel
-      .findOne({ itemId, warehouseId, shelfId: mainShelfId })
+      .findOne({ itemId, shelfId: mainShelfId })
       .lean();
     expect(mainRow?.quantity).toBe(RECEIVE_QTY);
   });
@@ -382,7 +362,6 @@ describe('WMS happy-path (e2e)', () => {
     orderId = `e2e-order-${uniqueSuffix}`;
     const payload: OrderReadyToFulfillPayload = {
       orderId,
-      fulfillWarehouseId: warehouseId,
       items: [{ sku: itemSku, quantity: ISSUE_QTY }],
       shippingAddress: { line1: 'test' },
       recipient: { name: 'E2E Recipient', phone: '0900000000' },
@@ -414,17 +393,13 @@ describe('WMS happy-path (e2e)', () => {
       .send({ itemBarcode, shelfCode: mainShelfCode, quantity: ISSUE_QTY })
       .expect(201);
 
-    const { onHand } = await assertTwoLayerInvariant(itemId, warehouseId);
+    const { onHand } = await assertTwoLayerInvariant(itemId);
     expect(onHand).toBe(RECEIVE_QTY - ISSUE_QTY);
     // Đã đọc toàn bộ GoodsIssueService.confirmLine: trong 1 transaction, path
     // này gọi insertMovement CHỈ 1 LẦN (type ISSUE, quantity=-ISSUE_QTY) —
     // khác PUTAWAY (2 dòng vì dịch chuyển giữa 2 shelf), ISSUE chỉ trừ tồn ở
     // đúng 1 shelf (mainShelfCode) nên chỉ có 1 sự kiện tồn kho thật xảy ra.
-    const issueMovements = await countMovements(
-      itemId,
-      warehouseId,
-      MovementType.ISSUE,
-    );
+    const issueMovements = await countMovements(itemId, MovementType.ISSUE);
     expect(issueMovements).toBe(1);
   });
 
@@ -432,7 +407,7 @@ describe('WMS happy-path (e2e)', () => {
     const createRes = await request(app.getHttpServer())
       .post('/api/wms/stock-counts')
       .set('Authorization', `Bearer ${managerToken}`)
-      .send({ warehouseId })
+      .send({})
       .expect(201);
     const stockCountId = createRes.body.data.id;
 
@@ -485,40 +460,20 @@ describe('WMS happy-path (e2e)', () => {
       .send({})
       .expect(201);
 
-    const adjustMovements = await countMovements(
-      itemId,
-      warehouseId,
-      MovementType.ADJUST,
-    );
+    const adjustMovements = await countMovements(itemId, MovementType.ADJUST);
     expect(adjustMovements).toBe(0);
   });
 
   it('bất biến cuối kịch bản: onHand = ΣInventoryStock, tổng movement = 4 (RECEIVE 1 + PUTAWAY 2 + ISSUE 1), 0 ADJUST', async () => {
-    await assertTwoLayerInvariant(itemId, warehouseId);
+    await assertTwoLayerInvariant(itemId);
     // Đếm lại thủ công theo type để hand-trace đúng tổng, tránh giả định nhầm
     // như bug đã bị review phát hiện ở Task 3 (PUTAWAY tưởng 1 dòng, thực ra
     // 2): RECEIVE=1 (GRN confirm) + PUTAWAY=2 (dời staging→main, 2 dòng ±) +
     // ISSUE=1 (xuất kho, chỉ 1 shelf) = 4 dòng thật sự — KHÔNG phải 3.
-    const receiveMovements = await countMovements(
-      itemId,
-      warehouseId,
-      MovementType.RECEIVE,
-    );
-    const putawayMovements = await countMovements(
-      itemId,
-      warehouseId,
-      MovementType.PUTAWAY,
-    );
-    const issueMovements = await countMovements(
-      itemId,
-      warehouseId,
-      MovementType.ISSUE,
-    );
-    const adjustMovements = await countMovements(
-      itemId,
-      warehouseId,
-      MovementType.ADJUST,
-    );
+    const receiveMovements = await countMovements(itemId, MovementType.RECEIVE);
+    const putawayMovements = await countMovements(itemId, MovementType.PUTAWAY);
+    const issueMovements = await countMovements(itemId, MovementType.ISSUE);
+    const adjustMovements = await countMovements(itemId, MovementType.ADJUST);
     expect(receiveMovements).toBe(1);
     expect(putawayMovements).toBe(2);
     expect(issueMovements).toBe(1);
@@ -526,7 +481,6 @@ describe('WMS happy-path (e2e)', () => {
 
     const totalMovements = await stockMovementModel.countDocuments({
       itemId,
-      warehouseId,
     });
     expect(totalMovements).toBe(4);
   });

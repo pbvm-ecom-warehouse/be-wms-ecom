@@ -142,7 +142,6 @@ export class CheckoutService {
     await this.orderQueue.add(EVENTS.STOCK_RESERVE_REQUESTED, {
       orderId: order._id.toString(),
       items: cart.items.map((i) => ({ sku: i.sku, quantity: i.quantity })),
-      preferWarehouse: 'CENTRAL',
     });
 
     this.logger.log(`Đặt đơn tạm thời thành công: ${code} -> Chờ WMS giữ kho`);

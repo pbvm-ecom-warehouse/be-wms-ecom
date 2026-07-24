@@ -75,14 +75,6 @@ export class GoodsReturn {
   @Prop()
   orderId?: string;
 
-  /**
-   * null ở DRAFT — OrderReturnedPayload không kèm kho nhận trả (hệ thống có
-   * nhiều kho, không đoán được kho nào sẽ vật lý nhận hàng). RECEIVER gán
-   * khi inspect.
-   */
-  @Prop({ type: Types.ObjectId, default: null })
-  warehouseId!: Types.ObjectId | null;
-
   @Prop({ enum: GoodsReturnStatus, default: GoodsReturnStatus.DRAFT })
   status!: GoodsReturnStatus;
 
@@ -104,5 +96,4 @@ export type GoodsReturnDocument = HydratedDocument<GoodsReturn>;
 export const GoodsReturnSchema = SchemaFactory.createForClass(GoodsReturn);
 
 GoodsReturnSchema.index({ orderId: 1 });
-GoodsReturnSchema.index({ warehouseId: 1, status: 1 });
 GoodsReturnSchema.index({ status: 1 });

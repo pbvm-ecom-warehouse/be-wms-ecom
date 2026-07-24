@@ -15,10 +15,6 @@ const makeSupplierService = () => ({
   getSupplierItemByItemAndSupplier: jest.fn(),
 });
 
-const makeWarehouseService = () => ({
-  getWarehouse: jest.fn(),
-});
-
 const makeStockRepo = () => ({
   findItemById: jest.fn(),
 });
@@ -27,26 +23,21 @@ describe('PurchaseOrderService', () => {
   let svc: PurchaseOrderService;
   let repo: ReturnType<typeof makeRepo>;
   let supplierSvc: ReturnType<typeof makeSupplierService>;
-  let warehouseSvc: ReturnType<typeof makeWarehouseService>;
   let stockRepo: ReturnType<typeof makeStockRepo>;
   const actorId = 'actor123';
   const supplierId = 'sup001';
-  const warehouseId = 'wh001';
   const itemId = 'item001';
 
   beforeEach(() => {
     repo = makeRepo();
     supplierSvc = makeSupplierService();
-    warehouseSvc = makeWarehouseService();
     stockRepo = makeStockRepo();
     svc = new PurchaseOrderService(
       repo as never,
       supplierSvc as never,
-      warehouseSvc as never,
       stockRepo as never,
     );
     repo.countByPoNumberPrefix.mockResolvedValue(0);
-    warehouseSvc.getWarehouse.mockResolvedValue({ _id: warehouseId });
     supplierSvc.assertSupplierActive.mockResolvedValue(undefined);
     stockRepo.findItemById.mockResolvedValue({ _id: itemId, deletedAt: null });
   });
@@ -54,7 +45,6 @@ describe('PurchaseOrderService', () => {
   describe('createPurchaseOrder', () => {
     const baseDto = {
       supplierId,
-      warehouseId,
       items: [{ itemId, sku: 'SKU-1', expectedQty: 10, unit: 'cái' }],
     };
 
@@ -66,18 +56,6 @@ describe('PurchaseOrderService', () => {
         svc.createPurchaseOrder(baseDto as never, actorId),
       ).rejects.toMatchObject({
         code: 'SUPPLIER_NOT_ACTIVE',
-      });
-      expect(warehouseSvc.getWarehouse).not.toHaveBeenCalled();
-    });
-
-    it('throw WAREHOUSE_NOT_FOUND khi kho không tồn tại', async () => {
-      warehouseSvc.getWarehouse.mockRejectedValue({
-        code: 'WAREHOUSE_NOT_FOUND',
-      });
-      await expect(
-        svc.createPurchaseOrder(baseDto as never, actorId),
-      ).rejects.toMatchObject({
-        code: 'WAREHOUSE_NOT_FOUND',
       });
     });
 

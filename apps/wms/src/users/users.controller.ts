@@ -91,7 +91,7 @@ export class UsersController {
 
   @Patch(':id')
   @ApiOperation({
-    summary: 'Sửa hồ sơ nhân viên (name/email/warehouseId) — [ADMIN, MANAGER]',
+    summary: 'Sửa hồ sơ nhân viên (name/email) — [ADMIN, MANAGER]',
   })
   @ApiParam({ name: 'id', description: 'Mongo ObjectId của user' })
   @ApiOkResponse({ type: UserResponseDto })

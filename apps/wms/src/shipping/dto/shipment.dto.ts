@@ -136,13 +136,6 @@ export class ShipmentResponseDto {
   goodsIssueId!: string;
 
   @Expose()
-  @Transform(({ obj }: { obj: { fulfillWarehouseId?: Types.ObjectId } }) =>
-    obj.fulfillWarehouseId?.toString(),
-  )
-  @ApiProperty()
-  fulfillWarehouseId!: string;
-
-  @Expose()
   @Transform(({ obj }: { obj: { carrierId?: Types.ObjectId } }) =>
     obj.carrierId?.toString(),
   )

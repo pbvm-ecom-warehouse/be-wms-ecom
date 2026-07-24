@@ -9,17 +9,9 @@ describe('QueryStockReportDto', () => {
     expect(dto.limit).toBe(20);
   });
 
-  it('không truyền warehouseId/sku vẫn hợp lệ (cả 2 đều optional)', async () => {
+  it('không truyền sku vẫn hợp lệ (optional)', async () => {
     const dto = plainToInstance(QueryStockReportDto, {});
     const errors = await validate(dto);
     expect(errors).toHaveLength(0);
-  });
-
-  it('warehouseId sai định dạng ObjectId → validation error', async () => {
-    const dto = plainToInstance(QueryStockReportDto, {
-      warehouseId: 'khong-phai-object-id',
-    });
-    const errors = await validate(dto);
-    expect(errors.some((e) => e.property === 'warehouseId')).toBe(true);
   });
 });

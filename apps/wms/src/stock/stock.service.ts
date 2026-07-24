@@ -93,22 +93,16 @@ export class StockService {
    * biến động, phát stock.low nếu dưới ngưỡng minQuantity. PHẢI gọi SAU KHI
    * transaction Mongo đã commit — BullMQ không tham gia transaction. Đọc lại (thay
    * vì dùng giá trị upsertBalance trả về ngay trong transaction) để luôn đúng với
-   * trạng thái CUỐI CÙNG khi 1 (item,warehouse) bị chạm nhiều lần trong cùng
+   * trạng thái CUỐI CÙNG khi 1 item bị chạm nhiều lần trong cùng
    * transaction (vd GoodsReturn dòng DAMAGED: RETURN_IN rồi SCRAP bù ngay sau).
    * KHÔNG dùng jobId khi add job — mỗi lần gọi đều phải tạo job mới (quyết định:
    * không dedup, chấp nhận báo lại nếu tồn thấp kéo dài qua nhiều biến động).
    */
-  async checkAndEmitStockLow(
-    itemId: Types.ObjectId,
-    warehouseId: Types.ObjectId,
-  ): Promise<void> {
+  async checkAndEmitStockLow(itemId: Types.ObjectId): Promise<void> {
     const item = await this.stockRepo.findSkuAndMinQuantityById(itemId);
     if (!item || item.minQuantity == null) return;
 
-    const balance = await this.stockRepo.findBalanceByItemAndWarehouse(
-      itemId,
-      warehouseId,
-    );
+    const balance = await this.stockRepo.findBalance(itemId);
     if (!balance) return;
 
     const available = balance.onHand - balance.reserved - balance.expired;
@@ -116,13 +110,12 @@ export class StockService {
 
     const payload: StockLowPayload = {
       sku: item.sku,
-      warehouseId: warehouseId.toString(),
       available,
       minQuantity: item.minQuantity,
     };
     await this.notificationQueue.add(EVENTS.STOCK_LOW, payload);
     this.logger.log(
-      `stock.low → sku=${item.sku} warehouseId=${warehouseId.toString()} available=${available} minQuantity=${item.minQuantity}`,
+      `stock.low → sku=${item.sku} available=${available} minQuantity=${item.minQuantity}`,
     );
   }
 

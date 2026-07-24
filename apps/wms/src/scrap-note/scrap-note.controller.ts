@@ -28,7 +28,6 @@ import {
 import { AppException } from '@app/common';
 import { plainToInstance } from 'class-transformer';
 import { validate } from 'class-validator';
-import { Types } from 'mongoose';
 import { ScrapNoteService, type UploadedImageFile } from './scrap-note.service';
 import {
   CreateScrapNoteDto,
@@ -91,7 +90,6 @@ export class ScrapNoteController {
     schema: {
       type: 'object',
       properties: {
-        warehouseId: { type: 'string' },
         note: { type: 'string' },
         items: { type: 'string' },
         images_0: { type: 'string', format: 'binary' },
@@ -146,7 +144,6 @@ export class ScrapNoteController {
     }
 
     const dto = new CreateScrapNoteDto();
-    dto.warehouseId = form.warehouseId;
     dto.note = form.note;
     dto.items = items;
     return dto;
@@ -166,9 +163,6 @@ export class ScrapNoteController {
   }> {
     const { data, total } = await this.svc.listScrapNotes({
       status: query.status,
-      warehouseId: query.warehouseId
-        ? new Types.ObjectId(query.warehouseId)
-        : undefined,
       page: query.page,
       limit: query.limit,
     });

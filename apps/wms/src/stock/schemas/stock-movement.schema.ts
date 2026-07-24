@@ -30,9 +30,6 @@ export class StockMovement {
   itemId!: Types.ObjectId;
 
   @Prop({ type: SchemaTypes.ObjectId, required: true })
-  warehouseId!: Types.ObjectId;
-
-  @Prop({ type: SchemaTypes.ObjectId, required: true })
   shelfId!: Types.ObjectId;
 
   @Prop({ type: SchemaTypes.ObjectId, default: null })
@@ -59,5 +56,5 @@ export class StockMovement {
 export type StockMovementDocument = HydratedDocument<StockMovement>;
 export const StockMovementSchema = SchemaFactory.createForClass(StockMovement);
 
-StockMovementSchema.index({ itemId: 1, warehouseId: 1, createdAt: -1 });
+StockMovementSchema.index({ itemId: 1, createdAt: -1 });
 StockMovementSchema.index({ refType: 1, refId: 1 }); // truy vết bút toán của 1 chứng từ

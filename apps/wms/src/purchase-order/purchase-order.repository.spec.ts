@@ -25,7 +25,6 @@ describe('PurchaseOrderRepository', () => {
   let model: ReturnType<typeof makeModel>;
   const actorId = new Types.ObjectId().toString();
   const supplierId = new Types.ObjectId().toString();
-  const warehouseId = new Types.ObjectId().toString();
   const itemId = new Types.ObjectId().toString();
 
   beforeEach(async () => {
@@ -45,7 +44,6 @@ describe('PurchaseOrderRepository', () => {
       model.create.mockResolvedValue({ poNumber: 'PO-20260702-0001' });
       const dto = {
         supplierId,
-        warehouseId,
         items: [{ itemId, sku: 'SKU-1', expectedQty: 10, unit: 'cái' }],
       };
       const resolvedItems = [

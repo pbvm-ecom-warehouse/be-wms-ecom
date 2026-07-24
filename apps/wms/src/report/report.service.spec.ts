@@ -13,7 +13,6 @@ describe('ReportService', () => {
   };
 
   const itemId = new Types.ObjectId();
-  const warehouseId = new Types.ObjectId();
 
   beforeEach(() => {
     repo = {
@@ -31,12 +30,10 @@ describe('ReportService', () => {
         data: [
           {
             itemId,
-            warehouseId,
             onHand: 10,
             reserved: 3,
             expired: 1,
             item: { sku: 'SKU-1', name: 'Item 1' },
-            warehouse: { name: 'Kho A' },
           },
         ],
         total: 1,
@@ -47,8 +44,6 @@ describe('ReportService', () => {
       expect(result.data[0]).toEqual({
         sku: 'SKU-1',
         itemName: 'Item 1',
-        warehouseId: warehouseId.toString(),
-        warehouseName: 'Kho A',
         onHand: 10,
         reserved: 3,
         expired: 1,
@@ -78,22 +73,6 @@ describe('ReportService', () => {
 
       expect(repo.aggregateStockReport).toHaveBeenCalledWith({ itemId }, 1, 20);
     });
-
-    it('warehouseId truyền vào filter dạng ObjectId', async () => {
-      repo.aggregateStockReport.mockResolvedValue({ data: [], total: 0 });
-
-      await svc.getStockReport({
-        warehouseId: warehouseId.toString(),
-        page: 1,
-        limit: 20,
-      });
-
-      expect(repo.aggregateStockReport).toHaveBeenCalledWith(
-        { warehouseId: expect.any(Types.ObjectId) },
-        1,
-        20,
-      );
-    });
   });
 
   describe('getLotReport', () => {
@@ -111,7 +90,7 @@ describe('ReportService', () => {
       repo.aggregateLotReport.mockResolvedValue({
         data: [
           {
-            _id: { lotId: new Types.ObjectId(), warehouseId },
+            _id: new Types.ObjectId(),
             itemId,
             quantity: 5,
             lot: {
@@ -120,7 +99,6 @@ describe('ReportService', () => {
               status: LotStatus.EXPIRED,
             },
             item: { sku: 'SKU-1', name: 'Item 1' },
-            warehouse: { name: 'Kho A' },
           },
         ],
         total: 1,
@@ -135,7 +113,7 @@ describe('ReportService', () => {
       repo.aggregateLotReport.mockResolvedValue({
         data: [
           {
-            _id: { lotId: new Types.ObjectId(), warehouseId },
+            _id: new Types.ObjectId(),
             itemId,
             quantity: 5,
             lot: {
@@ -144,7 +122,6 @@ describe('ReportService', () => {
               status: LotStatus.ACTIVE,
             },
             item: { sku: 'SKU-1', name: 'Item 1' },
-            warehouse: { name: 'Kho A' },
           },
         ],
         total: 1,
@@ -159,7 +136,7 @@ describe('ReportService', () => {
       repo.aggregateLotReport.mockResolvedValue({
         data: [
           {
-            _id: { lotId: new Types.ObjectId(), warehouseId },
+            _id: new Types.ObjectId(),
             itemId,
             quantity: 5,
             lot: {
@@ -168,7 +145,6 @@ describe('ReportService', () => {
               status: LotStatus.ACTIVE,
             },
             item: { sku: 'SKU-1', name: 'Item 1', nearExpiryDays: 3 },
-            warehouse: { name: 'Kho A' },
           },
         ],
         total: 1,
@@ -183,7 +159,7 @@ describe('ReportService', () => {
       repo.aggregateLotReport.mockResolvedValue({
         data: [
           {
-            _id: { lotId: new Types.ObjectId(), warehouseId },
+            _id: new Types.ObjectId(),
             itemId,
             quantity: 5,
             lot: {
@@ -192,7 +168,6 @@ describe('ReportService', () => {
               status: LotStatus.ACTIVE,
             },
             item: { sku: 'SKU-1', name: 'Item 1' },
-            warehouse: { name: 'Kho A' },
           },
         ],
         total: 1,
@@ -207,7 +182,7 @@ describe('ReportService', () => {
       repo.aggregateLotReport.mockResolvedValue({
         data: [
           {
-            _id: { lotId: new Types.ObjectId(), warehouseId },
+            _id: new Types.ObjectId(),
             itemId,
             quantity: 5,
             lot: {
@@ -216,7 +191,6 @@ describe('ReportService', () => {
               status: LotStatus.ACTIVE,
             },
             item: { sku: 'SKU-1', name: 'Item 1' },
-            warehouse: { name: 'Kho A' },
           },
         ],
         total: 1,

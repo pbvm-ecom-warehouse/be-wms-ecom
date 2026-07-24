@@ -36,7 +36,7 @@ const makePurchaseOrderService = () => ({
   applyReceivedQty: jest.fn(),
 });
 
-const makeWarehouseService = () => ({
+const makeLocationService = () => ({
   findStagingShelf: jest.fn(),
 });
 
@@ -66,7 +66,7 @@ describe('GoodsReceiptNoteService', () => {
   let svc: GoodsReceiptNoteService;
   let repo: ReturnType<typeof makeRepo>;
   let poService: ReturnType<typeof makePurchaseOrderService>;
-  let warehouseService: ReturnType<typeof makeWarehouseService>;
+  let locationService: ReturnType<typeof makeLocationService>;
   let stockRepo: ReturnType<typeof makeStockRepository>;
   let stockService: ReturnType<typeof makeStockService>;
   let txHelper: ReturnType<typeof makeStockTransactionHelper>;
@@ -75,14 +75,13 @@ describe('GoodsReceiptNoteService', () => {
 
   const actorId = new Types.ObjectId().toString();
   const purchaseOrderId = new Types.ObjectId().toString();
-  const warehouseId = new Types.ObjectId().toString();
   const itemId = new Types.ObjectId().toString();
   const stagingShelfId = new Types.ObjectId();
 
   beforeEach(() => {
     repo = makeRepo();
     poService = makePurchaseOrderService();
-    warehouseService = makeWarehouseService();
+    locationService = makeLocationService();
     stockRepo = makeStockRepository();
     stockService = makeStockService();
     txHelper = makeStockTransactionHelper();
@@ -91,7 +90,7 @@ describe('GoodsReceiptNoteService', () => {
     svc = new GoodsReceiptNoteService(
       repo as never,
       poService as never,
-      warehouseService as never,
+      locationService as never,
       stockRepo as never,
       stockService as never,
       txHelper as never,
@@ -117,7 +116,6 @@ describe('GoodsReceiptNoteService', () => {
     it('throw PO_NOT_RECEIVABLE khi PO đã CANCELLED', async () => {
       poService.getPurchaseOrder.mockResolvedValue({
         _id: purchaseOrderId,
-        warehouseId,
         status: PurchaseOrderStatus.CANCELLED,
         items: [{ itemId, expectedQty: 100, receivedQty: 0 }],
       });
@@ -129,7 +127,6 @@ describe('GoodsReceiptNoteService', () => {
     it('throw PO_NOT_RECEIVABLE khi PO đã COMPLETED', async () => {
       poService.getPurchaseOrder.mockResolvedValue({
         _id: purchaseOrderId,
-        warehouseId,
         status: PurchaseOrderStatus.COMPLETED,
         items: [{ itemId, expectedQty: 100, receivedQty: 100 }],
       });
@@ -141,7 +138,6 @@ describe('GoodsReceiptNoteService', () => {
     it('throw GRN_ITEM_NOT_IN_PO khi item không thuộc PO', async () => {
       poService.getPurchaseOrder.mockResolvedValue({
         _id: purchaseOrderId,
-        warehouseId,
         status: PurchaseOrderStatus.SENT,
         items: [{ itemId: 'other-item', expectedQty: 100, receivedQty: 0 }],
       });
@@ -153,7 +149,6 @@ describe('GoodsReceiptNoteService', () => {
     it('throw GRN_LOT_INFO_MISSING khi item perishable thiếu lotNumber/expiryDate', async () => {
       poService.getPurchaseOrder.mockResolvedValue({
         _id: purchaseOrderId,
-        warehouseId,
         status: PurchaseOrderStatus.SENT,
         items: [{ itemId, expectedQty: 100, receivedQty: 0 }],
       });
@@ -166,7 +161,6 @@ describe('GoodsReceiptNoteService', () => {
     it('tạo GRN DRAFT thành công khi mọi validate qua', async () => {
       poService.getPurchaseOrder.mockResolvedValue({
         _id: purchaseOrderId,
-        warehouseId,
         status: PurchaseOrderStatus.SENT,
         items: [{ itemId, expectedQty: 100, receivedQty: 0 }],
       });
@@ -177,7 +171,6 @@ describe('GoodsReceiptNoteService', () => {
       await svc.createGoodsReceiptNote(baseDto, actorId);
       expect(repo.createGoodsReceiptNote).toHaveBeenCalledWith(
         purchaseOrderId,
-        warehouseId,
         expect.any(String),
         [
           {
@@ -220,7 +213,6 @@ describe('GoodsReceiptNoteService', () => {
         _id: grnId,
         status: GoodsReceiptNoteStatus.DRAFT,
         purchaseOrderId,
-        warehouseId,
         items: [{ itemId, sku: 'SKU-1', actualQty: 60, unit: 'cái' }],
       });
       poService.getPurchaseOrder.mockResolvedValue({
@@ -229,7 +221,7 @@ describe('GoodsReceiptNoteService', () => {
       await expect(
         svc.confirmGoodsReceiptNote(grnId, actorId),
       ).rejects.toMatchObject({ code: 'GRN_QTY_EXCEEDS_PO' });
-      expect(warehouseService.findStagingShelf).not.toHaveBeenCalled();
+      expect(locationService.findStagingShelf).not.toHaveBeenCalled();
     });
 
     it('cộng tồn 2 lớp + ghi movement RECEIVE + cập nhật PO khi hợp lệ', async () => {
@@ -241,7 +233,7 @@ describe('GoodsReceiptNoteService', () => {
         unit: 'cái',
         altUnits: [],
       });
-      warehouseService.findStagingShelf.mockResolvedValue({
+      locationService.findStagingShelf.mockResolvedValue({
         _id: stagingShelfId,
       });
       const confirmed = { status: GoodsReceiptNoteStatus.CONFIRMED };
@@ -251,7 +243,6 @@ describe('GoodsReceiptNoteService', () => {
           _id: grnId,
           status: GoodsReceiptNoteStatus.DRAFT,
           purchaseOrderId,
-          warehouseId,
           items: [
             {
               itemId,
@@ -268,7 +259,6 @@ describe('GoodsReceiptNoteService', () => {
       expect(txHelper.withStockTransaction).toHaveBeenCalled();
       expect(stockRepo.upsertBalance).toHaveBeenCalledWith(
         new Types.ObjectId(itemId),
-        new Types.ObjectId(warehouseId),
         20,
         0,
         0,
@@ -276,7 +266,6 @@ describe('GoodsReceiptNoteService', () => {
       );
       expect(stockRepo.upsertInventory).toHaveBeenCalledWith(
         new Types.ObjectId(itemId),
-        new Types.ObjectId(warehouseId),
         stagingShelfId,
         null,
         20,
@@ -285,7 +274,6 @@ describe('GoodsReceiptNoteService', () => {
       expect(stockRepo.insertMovement).toHaveBeenCalledWith(
         expect.objectContaining({
           itemId: new Types.ObjectId(itemId),
-          warehouseId: new Types.ObjectId(warehouseId),
           shelfId: stagingShelfId,
           lotId: null,
           type: 'RECEIVE',
@@ -304,7 +292,6 @@ describe('GoodsReceiptNoteService', () => {
       // lotId đã resolve (null ở case này vì item không perishable/không có lô)
       expect(putAwayService.createTaskFromGrn).toHaveBeenCalledWith(
         grnId,
-        new Types.ObjectId(warehouseId),
         [
           {
             itemId: itemId,
@@ -326,11 +313,10 @@ describe('GoodsReceiptNoteService', () => {
         'grn',
         grnId,
       );
-      // S4-04: checkAndEmitStockLow gọi cho cặp (item, warehouse) đã chạm upsertBalance
-      // trong transaction — sau khi commit.
+      // S4-04: checkAndEmitStockLow gọi cho item đã chạm upsertBalance trong
+      // transaction — sau khi commit.
       expect(stockService.checkAndEmitStockLow).toHaveBeenCalledWith(
         new Types.ObjectId(itemId),
-        new Types.ObjectId(warehouseId),
       );
       expect(result).toEqual(confirmed);
     });
@@ -344,7 +330,7 @@ describe('GoodsReceiptNoteService', () => {
         unit: 'cái',
         altUnits: [],
       });
-      warehouseService.findStagingShelf.mockResolvedValue({
+      locationService.findStagingShelf.mockResolvedValue({
         _id: stagingShelfId,
       });
 
@@ -356,7 +342,6 @@ describe('GoodsReceiptNoteService', () => {
           _id: grnId,
           status: GoodsReceiptNoteStatus.DRAFT,
           purchaseOrderId,
-          warehouseId,
           items: [
             {
               itemId,
@@ -415,7 +400,6 @@ describe('GoodsReceiptNoteService', () => {
       expect(stockRepo.upsertInventory).toHaveBeenNthCalledWith(
         1,
         new Types.ObjectId(itemId),
-        new Types.ObjectId(warehouseId),
         stagingShelfId,
         lotId1,
         20,
@@ -424,7 +408,6 @@ describe('GoodsReceiptNoteService', () => {
       expect(stockRepo.upsertInventory).toHaveBeenNthCalledWith(
         2,
         new Types.ObjectId(itemId),
-        new Types.ObjectId(warehouseId),
         stagingShelfId,
         lotId2,
         15,
@@ -438,7 +421,6 @@ describe('GoodsReceiptNoteService', () => {
       expect(stockRepo.upsertBalance).toHaveBeenNthCalledWith(
         1,
         new Types.ObjectId(itemId),
-        new Types.ObjectId(warehouseId),
         20,
         0,
         0,
@@ -447,7 +429,6 @@ describe('GoodsReceiptNoteService', () => {
       expect(stockRepo.upsertBalance).toHaveBeenNthCalledWith(
         2,
         new Types.ObjectId(itemId),
-        new Types.ObjectId(warehouseId),
         15,
         0,
         0,
@@ -486,7 +467,6 @@ describe('GoodsReceiptNoteService', () => {
       expect(putAwayService.createTaskFromGrn).toHaveBeenCalledTimes(1);
       expect(putAwayService.createTaskFromGrn).toHaveBeenCalledWith(
         grnId,
-        new Types.ObjectId(warehouseId),
         [
           { itemId: itemId, lotId: lotId1, quantity: 20 },
           { itemId: itemId, lotId: lotId2, quantity: 15 },
@@ -505,7 +485,7 @@ describe('GoodsReceiptNoteService', () => {
         unit: 'cái',
         altUnits: [{ unit: 'thùng', factor: 50 }],
       });
-      warehouseService.findStagingShelf.mockResolvedValue({
+      locationService.findStagingShelf.mockResolvedValue({
         _id: stagingShelfId,
       });
       const confirmed = { status: GoodsReceiptNoteStatus.CONFIRMED };
@@ -514,7 +494,6 @@ describe('GoodsReceiptNoteService', () => {
           _id: grnId,
           status: GoodsReceiptNoteStatus.DRAFT,
           purchaseOrderId,
-          warehouseId,
           items: [
             {
               itemId,
@@ -531,7 +510,6 @@ describe('GoodsReceiptNoteService', () => {
       // 2 thùng x factor 50 = 100 cái (baseQty), không phải 2
       expect(stockRepo.upsertBalance).toHaveBeenCalledWith(
         new Types.ObjectId(itemId),
-        new Types.ObjectId(warehouseId),
         100,
         0,
         0,
@@ -539,7 +517,6 @@ describe('GoodsReceiptNoteService', () => {
       );
       expect(stockRepo.upsertInventory).toHaveBeenCalledWith(
         new Types.ObjectId(itemId),
-        new Types.ObjectId(warehouseId),
         stagingShelfId,
         null,
         100,

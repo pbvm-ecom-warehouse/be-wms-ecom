@@ -9,7 +9,7 @@ import { GoodsReceiptNoteRepository } from './goods-receipt-note.repository';
 import { GoodsReceiptNoteService } from './goods-receipt-note.service';
 import { GoodsReceiptNoteController } from './goods-receipt-note.controller';
 import { PurchaseOrderModule } from '../purchase-order/purchase-order.module';
-import { WarehouseModule } from '../warehouse/warehouse.module';
+import { LocationModule } from '../location/location.module';
 import { StockModule } from '../stock/stock.module';
 import { PutAwayModule } from '../put-away/put-away.module';
 
@@ -19,7 +19,7 @@ import { PutAwayModule } from '../put-away/put-away.module';
       { name: GoodsReceiptNote.name, schema: GoodsReceiptNoteSchema },
     ]),
     PurchaseOrderModule, // getPurchaseOrder + applyReceivedQty
-    WarehouseModule, // findStagingShelf
+    LocationModule, // findStagingShelf
     StockModule, // StockRepository/StockService/StockTransactionHelper — cộng tồn 2 lớp
     PutAwayModule, // createTaskFromGrn — sinh việc put-away khi GRN CONFIRMED
   ],

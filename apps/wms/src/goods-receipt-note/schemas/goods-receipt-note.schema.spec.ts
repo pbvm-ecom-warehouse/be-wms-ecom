@@ -16,7 +16,6 @@ describe('GoodsReceiptNote schema', () => {
     const paths = GoodsReceiptNoteSchema.paths;
     expect(paths['grnNumber']).toBeDefined();
     expect(paths['purchaseOrderId']).toBeDefined();
-    expect(paths['warehouseId']).toBeDefined();
     expect(paths['status']).toBeDefined();
     expect(paths['items']).toBeDefined();
     expect(paths['createdBy']).toBeDefined();

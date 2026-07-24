@@ -50,7 +50,6 @@ export class UsersService {
       limit: query.limit,
       role: query.role,
       status: query.status,
-      warehouseId: query.warehouseId,
       search: query.search,
     });
   }

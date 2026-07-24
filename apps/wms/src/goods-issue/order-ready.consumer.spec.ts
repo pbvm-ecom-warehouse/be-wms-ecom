@@ -15,7 +15,6 @@ describe('OrderReadyConsumer', () => {
       name: EVENTS.ORDER_READY_TO_FULFILL,
       data: {
         orderId: 'order-1',
-        fulfillWarehouseId: 'wh-1',
         items: [{ sku: 'SKU-1', quantity: 5 }],
         shippingAddress: { street: '123 Le Loi' },
         recipient: { name: 'A', phone: '0900000000' },
@@ -28,7 +27,6 @@ describe('OrderReadyConsumer', () => {
 
     expect(service.createFromOrderReady).toHaveBeenCalledWith(
       'order-1',
-      'wh-1',
       [{ sku: 'SKU-1', quantity: 5 }],
       { street: '123 Le Loi' },
       { name: 'A', phone: '0900000000' },

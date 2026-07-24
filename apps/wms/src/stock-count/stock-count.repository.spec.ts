@@ -13,7 +13,6 @@ describe('StockCountRepository', () => {
     updateOne: jest.Mock;
   };
 
-  const warehouseId = new Types.ObjectId();
   const itemId = new Types.ObjectId();
   const shelfId = new Types.ObjectId();
   const lotId: Types.ObjectId | null = null;
@@ -47,12 +46,11 @@ describe('StockCountRepository', () => {
       model.create.mockResolvedValue([
         { _id: 'sc1', status: StockCountStatus.DRAFT },
       ]);
-      await repo.createStockCount(warehouseId, null, undefined, createdBy, [
+      await repo.createStockCount(null, undefined, createdBy, [
         { itemId, sku: 'SKU-1', shelfId, lotId: null, systemQty: 50 },
       ]);
       expect(model.create).toHaveBeenCalledWith([
         {
-          warehouseId,
           zoneId: null,
           note: undefined,
           status: StockCountStatus.DRAFT,
@@ -75,7 +73,7 @@ describe('StockCountRepository', () => {
   });
 
   describe('findAll', () => {
-    it('áp filter status + warehouseId, phân trang mặc định page=1 limit=20', async () => {
+    it('áp filter status, phân trang mặc định page=1 limit=20', async () => {
       const execMock = jest.fn().mockResolvedValue([{ _id: 'sc1' }]);
       model.find.mockReturnValue({
         sort: jest.fn().mockReturnThis(),
@@ -89,12 +87,10 @@ describe('StockCountRepository', () => {
 
       const result = await repo.findAll({
         status: StockCountStatus.DRAFT,
-        warehouseId,
       });
 
       expect(model.find).toHaveBeenCalledWith({
         status: StockCountStatus.DRAFT,
-        warehouseId,
       });
       expect(result).toEqual({ data: [{ _id: 'sc1' }], total: 1 });
     });

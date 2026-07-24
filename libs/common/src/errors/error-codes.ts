@@ -78,22 +78,14 @@ export const ERROR_CATALOG = {
     message: 'Đã có nhân viên trong hệ thống',
   },
 
-  // ── WMS — Warehouse Structure ──────────────────────────────────────────────
-  WAREHOUSE_NOT_FOUND: {
-    status: HttpStatus.NOT_FOUND,
-    message: 'Không tìm thấy kho',
-  },
-  WAREHOUSE_CODE_EXISTS: {
-    status: HttpStatus.CONFLICT,
-    message: 'Mã khu vực đã tồn tại trong kho này',
-  },
+  // ── WMS — Location Structure (Zone/Rack/Shelf) ──────────────────────────────
   ZONE_NOT_FOUND: {
     status: HttpStatus.NOT_FOUND,
     message: 'Không tìm thấy khu vực',
   },
   ZONE_CODE_EXISTS: {
     status: HttpStatus.CONFLICT,
-    message: 'Mã khu vực đã tồn tại trong kho này',
+    message: 'Mã khu vực đã tồn tại',
   },
   RACK_NOT_FOUND: {
     status: HttpStatus.NOT_FOUND,

@@ -39,9 +39,6 @@ export class GoodsIssue {
   @Prop({ required: true, unique: true })
   orderId!: string;
 
-  @Prop({ type: Types.ObjectId, required: true })
-  warehouseId!: Types.ObjectId;
-
   /** Snapshot địa chỉ giao — từ payload order.ready_to_fulfill, không đổi theo thời gian */
   @Prop({ type: Object, required: true })
   shippingAddress!: Record<string, unknown>;

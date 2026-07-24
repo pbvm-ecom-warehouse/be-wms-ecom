@@ -15,18 +15,15 @@ describe('PrintJobConsumer', () => {
       name: EVENTS.PRINT_REQUESTED,
       data: {
         orderId: 'order-1',
-        warehouseId: 'wh-1',
         items: [{ sku: 'CUP-PRINTED-1', quantity: 5, designFile: 'd.png' }],
       },
     } as never;
 
     await consumer.process(job);
 
-    expect(service.createFromPrintRequested).toHaveBeenCalledWith(
-      'order-1',
-      'wh-1',
-      [{ sku: 'CUP-PRINTED-1', quantity: 5, designFile: 'd.png' }],
-    );
+    expect(service.createFromPrintRequested).toHaveBeenCalledWith('order-1', [
+      { sku: 'CUP-PRINTED-1', quantity: 5, designFile: 'd.png' },
+    ]);
   });
 
   it('bỏ qua job không phải print.requested', async () => {

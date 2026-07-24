@@ -7,7 +7,7 @@ import { PrintJobRepository } from './print-job.repository';
 import { PrintJobService } from './print-job.service';
 import { PrintJobController } from './print-job.controller';
 import { PrintJobConsumer } from './print-job.consumer';
-import { WarehouseModule } from '../warehouse/warehouse.module';
+import { LocationModule } from '../location/location.module';
 import { StockModule } from '../stock/stock.module';
 
 @Module({
@@ -25,7 +25,7 @@ import { StockModule } from '../stock/stock.module';
     MongooseModule.forFeature([
       { name: PrintJob.name, schema: PrintJobSchema },
     ]),
-    WarehouseModule, // findShelfByCode
+    LocationModule, // findShelfByCode
     StockModule, // StockRepository + StockTransactionHelper
   ],
   providers: [PrintJobRepository, PrintJobService, PrintJobConsumer],

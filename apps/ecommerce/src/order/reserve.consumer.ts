@@ -95,15 +95,12 @@ export class ReservationReplyConsumer extends WorkerHost {
   }
 
   private async handleReserved(job: Job) {
-    const { orderId, fulfillWarehouseId } = job.data as StockReservedPayload;
+    const { orderId } = job.data as StockReservedPayload;
     const order = await this.orderRepo.findById(orderId);
     if (!order) return;
 
-    await this.orderRepo.updateOrder(orderId, { fulfillWarehouseId });
     await this.orderService.onStockReserved(orderId);
-    this.logger.log(
-      `Giữ kho thành công: Đơn hàng ${orderId} -> Kho ${fulfillWarehouseId}`,
-    );
+    this.logger.log(`Giữ kho thành công: Đơn hàng ${orderId}`);
   }
 
   private async handleReserveFailed(job: Job) {

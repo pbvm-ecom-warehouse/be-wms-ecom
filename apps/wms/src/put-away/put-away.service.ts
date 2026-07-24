@@ -7,8 +7,8 @@ import {
   QueryPutAwayTaskInput,
 } from './put-away.repository';
 import { StockRepository } from '../stock/stock.repository';
-import { WarehouseRepository } from '../warehouse/warehouse.repository';
-import { WarehouseService } from '../warehouse/warehouse.service';
+import { LocationRepository } from '../location/location.repository';
+import { LocationService } from '../location/location.service';
 import { StockTransactionHelper } from '../stock/helpers/with-stock-transaction.helper';
 import { MovementType } from '../stock/schemas/stock-movement.schema';
 import { BarcodeService } from '../stock/barcode/barcode.service';
@@ -32,8 +32,8 @@ export class PutAwayService {
   constructor(
     private readonly repo: PutAwayRepository,
     private readonly stockRepo: StockRepository,
-    private readonly warehouseRepo: WarehouseRepository,
-    private readonly warehouseService: WarehouseService,
+    private readonly locationRepo: LocationRepository,
+    private readonly locationService: LocationService,
     private readonly stockTransactionHelper: StockTransactionHelper,
     private readonly barcodeSvc: BarcodeService,
   ) {}
@@ -41,14 +41,12 @@ export class PutAwayService {
   /** Gọi từ GoodsReceiptNoteService.confirmGoodsReceiptNote, cùng transaction cộng tồn 2 lớp. */
   async createTaskFromGrn(
     grnId: Types.ObjectId,
-    warehouseId: Types.ObjectId,
     lines: CreatePutAwayLineFromGrnInput[],
     actorId: string,
     session: ClientSession,
   ): Promise<PutAwayTaskDocument> {
     return this.repo.createTask(
       grnId,
-      warehouseId,
       lines.map((l) => ({
         itemId: new Types.ObjectId(l.itemId),
         lotId: l.lotId,
@@ -78,20 +76,11 @@ export class PutAwayService {
     const item = await this.stockRepo.findItemByIdDocument(itemId.toString());
     if (!item) throw new AppException('PUTAWAY_ITEM_NOT_FOUND');
 
-    // Gọi thẳng WarehouseRepository (không qua WarehouseService.findShelfByCode) vì
+    // Gọi thẳng LocationRepository (không qua LocationService.findShelfByCode) vì
     // shelf-not-found ở luồng put-away phải throw code domain riêng PUTAWAY_SHELF_NOT_FOUND,
-    // không phải SHELF_NOT_FOUND cross-cutting của module warehouse (xem spec S2-04 dòng 77).
-    const shelf = await this.warehouseRepo.findShelfByCode(dto.shelfCode);
+    // không phải SHELF_NOT_FOUND cross-cutting của module location (xem spec S2-04 dòng 77).
+    const shelf = await this.locationRepo.findShelfByCode(dto.shelfCode);
     if (!shelf) throw new AppException('PUTAWAY_SHELF_NOT_FOUND');
-    // findShelfByCode tra theo code TOÀN CỤC (unique toàn hệ thống, không lọc
-    // theo kho) — nếu RECEIVER quét nhầm 1 shelf hợp lệ nhưng thuộc kho khác
-    // với task.warehouseId, phải chặn ở đây. Nếu không chặn, InventoryStock sẽ
-    // được ghi với warehouseId=task.warehouseId nhưng shelfId thực tế thuộc kho
-    // khác → dữ liệu tồn kho mâu thuẫn. Tái dùng PUTAWAY_SHELF_NOT_FOUND vì với
-    // kho của task này, shelf đó coi như không hợp lệ/không tồn tại.
-    if (shelf.warehouseId.toString() !== task.warehouseId.toString()) {
-      throw new AppException('PUTAWAY_SHELF_NOT_FOUND');
-    }
     if (shelf.isStaging) throw new AppException('PUTAWAY_SHELF_IS_STAGING');
 
     // Validate tường minh: item isPerishable bắt buộc phải quét kèm lotId.
@@ -115,16 +104,13 @@ export class PutAwayService {
       throw new AppException('PUTAWAY_QTY_EXCEEDS');
     }
 
-    const stagingShelf = await this.warehouseService.findStagingShelf(
-      task.warehouseId.toString(),
-    );
+    const stagingShelf = await this.locationService.findStagingShelf();
 
     await this.stockTransactionHelper.withStockTransaction(async (session) => {
       // Trừ ở staging, cộng ở shelf thật — tổng InventoryStock của item không đổi,
       // chỉ đổi phân bổ theo shelf. StockBalance.onHand không bị đụng tới.
       await this.stockRepo.upsertInventory(
         item._id,
-        task.warehouseId,
         stagingShelf._id,
         lotId,
         -dto.quantity,
@@ -132,7 +118,6 @@ export class PutAwayService {
       );
       await this.stockRepo.upsertInventory(
         item._id,
-        task.warehouseId,
         shelf._id,
         lotId,
         dto.quantity,
@@ -141,7 +126,6 @@ export class PutAwayService {
       await this.stockRepo.insertMovement(
         {
           itemId: item._id,
-          warehouseId: task.warehouseId,
           shelfId: stagingShelf._id,
           lotId,
           type: MovementType.PUTAWAY,
@@ -155,7 +139,6 @@ export class PutAwayService {
       await this.stockRepo.insertMovement(
         {
           itemId: item._id,
-          warehouseId: task.warehouseId,
           shelfId: shelf._id,
           lotId,
           type: MovementType.PUTAWAY,
