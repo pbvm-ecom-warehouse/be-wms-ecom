@@ -216,7 +216,7 @@ export class CatalogRepository {
 
     return products.map((p) => {
       const pVariants = variantsByProductId[p._id.toString()] ?? [];
-      const price = pVariants.length > 0 ? pVariants[0].price : 0;
+      const price = pVariants.length > 0 ? Math.min(...pVariants.map((v) => v.price)) : 0;
       const inStock = pVariants.some((v) => v.availableQty > 0);
       return {
         ...p,
@@ -250,6 +250,12 @@ export class CatalogRepository {
   async listVariantsByProduct(productId: string) {
     return this.variantModel
       .find({ productId: new Types.ObjectId(productId), isActive: true })
+      .lean();
+  }
+
+  async listAllVariantsByProduct(productId: string) {
+    return this.variantModel
+      .find({ productId: new Types.ObjectId(productId) })
       .lean();
   }
 

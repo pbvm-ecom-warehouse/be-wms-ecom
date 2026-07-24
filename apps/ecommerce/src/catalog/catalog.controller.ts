@@ -100,6 +100,17 @@ export class CatalogPublicController {
       excludeExtraneousValues: true,
     });
   }
+
+  @Get('products/:id/variants')
+  @ApiOperation({ summary: 'Lấy danh sách các biến thể của sản phẩm' })
+  @ApiParam({ name: 'id', description: 'ID sản phẩm' })
+  @ApiOkResponse({ type: [ProductVariantResponseDto] })
+  async getProductVariants(@Param('id') id: string) {
+    const list = await this.svc.getProductVariants(id, false);
+    return plainToInstance(ProductVariantResponseDto, list, {
+      excludeExtraneousValues: true,
+    });
+  }
 }
 
 /** Admin routes — cần JWT và role ECOM_MANAGER */
@@ -179,6 +190,17 @@ export class CatalogAdminController {
   async publishProduct(@Param('id') id: string) {
     const product = await this.svc.publishProduct(id);
     return plainToInstance(ProductResponseDto, product, {
+      excludeExtraneousValues: true,
+    });
+  }
+
+  @Get('products/:id/variants')
+  @ApiOperation({ summary: '[Admin] Lấy danh sách tất cả các biến thể của sản phẩm (bao gồm cả ẩn)' })
+  @ApiParam({ name: 'id', description: 'ID sản phẩm' })
+  @ApiOkResponse({ type: [ProductVariantResponseDto] })
+  async getAdminProductVariants(@Param('id') id: string) {
+    const list = await this.svc.getProductVariants(id, true);
+    return plainToInstance(ProductVariantResponseDto, list, {
       excludeExtraneousValues: true,
     });
   }

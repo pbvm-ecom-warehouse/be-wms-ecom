@@ -209,6 +209,16 @@ export class CatalogService {
     return this.repo.listProducts(query);
   }
 
+  async getProductVariants(productId: string, includeInactive = false) {
+    if (!Types.ObjectId.isValid(productId)) {
+      throw new AppException('VALIDATION_FAILED', 'ID sản phẩm không hợp lệ');
+    }
+    if (includeInactive) {
+      return this.repo.listAllVariantsByProduct(productId);
+    }
+    return this.repo.listVariantsByProduct(productId);
+  }
+
   async getProductDetail(slug: string) {
     // const cacheKey = `ecom:catalog:products:detail:${slug}`;
     // const cached = await this.cacheService.get<unknown>(cacheKey);
