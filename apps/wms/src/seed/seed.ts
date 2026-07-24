@@ -38,6 +38,7 @@ const SEED_ATTRIBUTE_OPTIONS: {
   { key: AttributeOptionKey.CAPACITY, name: '500ml', code: '500' },
   { key: AttributeOptionKey.COLOR, name: 'Trong suốt', code: 'CLR' },
   { key: AttributeOptionKey.MATERIAL_TYPE, name: 'Trà đen', code: 'BLK' },
+  { key: AttributeOptionKey.MATERIAL_TYPE, name: 'Đường trắng', code: 'WHT' },
   { key: AttributeOptionKey.FLAVOR, name: 'Nguyên bản', code: 'ORG' },
   { key: AttributeOptionKey.SPEC, name: '500g', code: '500G' },
   // Category value — code phải khớp SkuTemplate.category trong
@@ -245,7 +246,7 @@ async function seedZoneAndItems(
         optionIds['ORG'], // FLAVOR: Nguyên bản
         optionIds['500G'], // SPEC: 500g
       ],
-      name: 'Nguyên liệu seed',
+      name: 'Trà đen nguyên bản',
       unit: 'kg',
       isPerishable: false,
       minQuantity: 10,
@@ -265,7 +266,7 @@ async function seedZoneAndItems(
         optionIds['500'], // CAPACITY
         optionIds['CLR'], // COLOR
       ],
-      name: 'Ly nhựa trơn seed',
+      name: 'Ly nhựa PET 500ml trong suốt',
       unit: 'cái',
       isPerishable: false,
       minQuantity: 20,
@@ -275,26 +276,203 @@ async function seedZoneAndItems(
     },
     adminId,
   );
-
-  const supplier = await supplierService.createSupplier(
-    { code: 'SEED-NCC-001', name: 'Nhà cung cấp seed' },
+  const sugar = await stockService.createWarehouseItem(
+    {
+      type: ItemType.MATERIAL,
+      templateId: 'MATERIAL',
+      attributeOptionIds: [
+        optionIds['SUGAR'], // MATERIAL_CATEGORY: Đường
+        optionIds['WHT'], // MATERIAL_TYPE: Đường trắng
+        optionIds['500G'], // SPEC: 500g
+      ],
+      name: 'Đường trắng tinh luyện',
+      unit: 'kg',
+      isPerishable: false,
+      minQuantity: 15,
+      depth: 10,
+      width: 8,
+      height: 12,
+    },
     adminId,
   );
-  const supplierId = supplier._id.toString();
+  const straw = await stockService.createWarehouseItem(
+    {
+      type: ItemType.PACKAGING,
+      templateId: 'PACKAGING',
+      attributeOptionIds: [
+        optionIds['STRAW'], // PACKAGING_CATEGORY: Ống hút
+      ],
+      name: 'Ống hút nhựa tiêu chuẩn',
+      unit: 'cái',
+      isPerishable: false,
+      minQuantity: 50,
+      depth: 1,
+      width: 1,
+      height: 20,
+    },
+    adminId,
+  );
+
+  const SEED_SUPPLIERS: {
+    code: string;
+    name: string;
+    contactName: string;
+    phone: string;
+    email: string;
+    address: string;
+    taxCode: string;
+    note: string;
+  }[] = [
+    {
+      code: 'SEED-NCC-001',
+      name: 'Công ty TNHH Trà Thái Nguyên',
+      contactName: 'Nguyễn Văn An',
+      phone: '0901234567',
+      email: 'kinhdoanh@trathainguyen.vn',
+      address: '123 Lê Văn Lương, Quận 7, TP.HCM',
+      taxCode: '0300123456',
+      note: 'Cung cấp nguyên liệu trà các loại',
+    },
+    {
+      code: 'SEED-NCC-002',
+      name: 'Công ty CP Bao Bì Việt Thành',
+      contactName: 'Trần Thị Bích',
+      phone: '0912345678',
+      email: 'sales@vietthanhpack.com',
+      address: '45 Nguyễn Văn Linh, Quận 7, TP.HCM',
+      taxCode: '0301987654',
+      note: 'Cung cấp bao bì, ống hút, hộp giấy',
+    },
+    {
+      code: 'SEED-NCC-003',
+      name: 'Công ty TNHH Nhựa Đại Đồng Tiến',
+      contactName: 'Lê Hoàng Cường',
+      phone: '0913456789',
+      email: 'contact@daidongtien.com.vn',
+      address: '89 Tân Kỳ Tân Quý, Tân Phú, TP.HCM',
+      taxCode: '0302345678',
+      note: 'Sản xuất ly nhựa, cốc nhựa PET/PP',
+    },
+    {
+      code: 'SEED-NCC-004',
+      name: 'Công ty CP Đường Tân Thịnh Phát',
+      contactName: 'Phạm Thị Dung',
+      phone: '0914567890',
+      email: 'order@tanthinhphat-sugar.vn',
+      address: '01 Đường 3/2, Biên Hòa, Đồng Nai',
+      taxCode: '3600456789',
+      note: 'Cung cấp đường tinh luyện các loại',
+    },
+    {
+      code: 'SEED-NCC-005',
+      name: 'Công ty TNHH Sữa Nông Trại Xanh',
+      contactName: 'Hoàng Văn Em',
+      phone: '0915678901',
+      email: 'b2b@nongtraixanhmilk.vn',
+      address: '10 Tân Trào, Quận 7, TP.HCM',
+      taxCode: '0300588569',
+      note: 'Cung cấp sữa tươi, sữa đặc, kem béo',
+    },
+    {
+      code: 'SEED-NCC-006',
+      name: 'Công ty TNHH Hương Liệu Á Châu',
+      contactName: 'Vũ Thị Phương',
+      phone: '0916789012',
+      email: 'info@achauflavor.com',
+      address: '22 Phan Văn Trị, Gò Vấp, TP.HCM',
+      taxCode: '0303456789',
+      note: 'Cung cấp syrup, hương liệu, topping',
+    },
+    {
+      code: 'SEED-NCC-007',
+      name: 'Công ty CP Giấy Bao Bì Phương Nam',
+      contactName: 'Đặng Văn Giang',
+      phone: '0917890123',
+      email: 'sales@phuongnampaper.com',
+      address: '15 Nguyễn Thị Minh Khai, Quận 1, TP.HCM',
+      taxCode: '0301234567',
+      note: 'Cung cấp túi giấy, hộp giấy đựng đồ uống',
+    },
+    {
+      code: 'SEED-NCC-008',
+      name: 'Công ty TNHH Bột Thực Phẩm Miền Nam',
+      contactName: 'Bùi Thị Hoa',
+      phone: '0918901234',
+      email: 'contact@mnfoodpowder.vn',
+      address: '77 Quốc lộ 1A, Bình Tân, TP.HCM',
+      taxCode: '0304567890',
+      note: 'Cung cấp bột trân châu, bột pha chế',
+    },
+    {
+      code: 'SEED-NCC-009',
+      name: 'Công ty CP Cơ Khí In Ấn Minh Phát',
+      contactName: 'Ngô Văn Inh',
+      phone: '0919012345',
+      email: 'inanh@minhphat.com.vn',
+      address: '33 Lũy Bán Bích, Tân Phú, TP.HCM',
+      taxCode: '0305678901',
+      note: 'Cung cấp nắp ly, tem nhãn in sẵn',
+    },
+    {
+      code: 'SEED-NCC-010',
+      name: 'Công ty TNHH Xuất Nhập Khẩu Kim Long',
+      contactName: 'Đỗ Thị Kim',
+      phone: '0920123456',
+      email: 'xnk@kimlongimex.vn',
+      address: '5 Điện Biên Phủ, Bình Thạnh, TP.HCM',
+      taxCode: '0306789012',
+      note: 'Nhập khẩu nguyên liệu trà, topping từ Đài Loan',
+    },
+  ];
+
+  const supplierIds: string[] = [];
+  for (const s of SEED_SUPPLIERS) {
+    const supplier = await supplierService.createSupplier(s, adminId);
+    supplierIds.push(supplier._id.toString());
+  }
+  const [supplierId, supplier2Id] = supplierIds;
 
   await supplierService.upsertSupplierItem(
     {
       itemId: material._id.toString(),
       supplierId,
+      supplierItemCode: 'NL-TRA-DEN-500G',
       purchasePrice: 15000,
+      leadTimeDays: 3,
+      minOrderQty: 20,
     },
     adminId,
   );
   await supplierService.upsertSupplierItem(
     {
       itemId: cupBlank._id.toString(),
-      supplierId,
+      supplierId: supplierIds[2],
+      supplierItemCode: 'LY-TRON-500ML',
       purchasePrice: 3000,
+      leadTimeDays: 5,
+      minOrderQty: 100,
+    },
+    adminId,
+  );
+  await supplierService.upsertSupplierItem(
+    {
+      itemId: sugar._id.toString(),
+      supplierId: supplierIds[3],
+      supplierItemCode: 'DUONG-500G',
+      purchasePrice: 12000,
+      leadTimeDays: 2,
+      minOrderQty: 30,
+    },
+    adminId,
+  );
+  await supplierService.upsertSupplierItem(
+    {
+      itemId: straw._id.toString(),
+      supplierId: supplier2Id,
+      supplierItemCode: 'ONGHUT-STD',
+      purchasePrice: 200,
+      leadTimeDays: 7,
+      minOrderQty: 500,
     },
     adminId,
   );
@@ -306,7 +484,12 @@ async function seedZoneAndItems(
   return {
     stagingShelfId: stagingShelf._id.toString(),
     mainShelfId: mainShelf._id.toString(),
-    itemIds: [material._id.toString(), cupBlank._id.toString()],
+    itemIds: [
+      material._id.toString(),
+      cupBlank._id.toString(),
+      sugar._id.toString(),
+      straw._id.toString(),
+    ],
     supplierId,
   };
 }
