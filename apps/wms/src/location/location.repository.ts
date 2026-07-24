@@ -1,11 +1,9 @@
 import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
-import { Warehouse, WarehouseDocument } from './schemas/warehouse.schema';
 import { Zone, ZoneDocument } from './schemas/zone.schema';
 import { Rack, RackDocument } from './schemas/rack.schema';
 import { Shelf, ShelfDocument } from './schemas/shelf.schema';
-import { CreateWarehouseDto, UpdateWarehouseDto } from './dto/warehouse.dto';
 import { CreateZoneDto, UpdateZoneDto } from './dto/zone.dto';
 import { CreateRackDto, UpdateRackDto } from './dto/rack.dto';
 import { CreateShelfDto, UpdateShelfDto } from './dto/shelf.dto';
@@ -13,111 +11,34 @@ import { CreateShelfDto, UpdateShelfDto } from './dto/shelf.dto';
 const SOFT_DELETE_FILTER = { deletedAt: null } as const;
 
 @Injectable()
-export class WarehouseRepository {
+export class LocationRepository {
   constructor(
-    @InjectModel(Warehouse.name)
-    private readonly warehouseModel: Model<WarehouseDocument>,
     @InjectModel(Zone.name) private readonly zoneModel: Model<ZoneDocument>,
     @InjectModel(Rack.name) private readonly rackModel: Model<RackDocument>,
     @InjectModel(Shelf.name) private readonly shelfModel: Model<ShelfDocument>,
   ) {}
-
-  // ─── Warehouse ────────────────────────────────────────────────────────────
-
-  async createWarehouse(
-    dto: CreateWarehouseDto,
-    actorId: string,
-  ): Promise<WarehouseDocument> {
-    return this.warehouseModel.create({
-      ...dto,
-      createdBy: new Types.ObjectId(actorId),
-      updatedBy: new Types.ObjectId(actorId),
-    });
-  }
-
-  async findAllWarehouses(): Promise<WarehouseDocument[]> {
-    return this.warehouseModel
-      .find(SOFT_DELETE_FILTER)
-      .sort({ createdAt: 1 })
-      .exec();
-  }
-
-  /** Id của mọi kho active (isActive=true, chưa soft-delete) — dùng khi ReservationService chọn kho ứng viên. */
-  async findAllActiveWarehouseIds(): Promise<Types.ObjectId[]> {
-    const rows = await this.warehouseModel
-      .find({ ...SOFT_DELETE_FILTER, isActive: true })
-      .select('_id')
-      .sort({ createdAt: 1 })
-      .lean()
-      .exec();
-    return rows.map((r) => r._id);
-  }
-
-  async findWarehouseById(id: string): Promise<WarehouseDocument | null> {
-    return this.warehouseModel
-      .findOne({ _id: id, ...SOFT_DELETE_FILTER })
-      .exec();
-  }
-
-  async updateWarehouse(
-    id: string,
-    dto: UpdateWarehouseDto,
-    actorId: string,
-  ): Promise<WarehouseDocument | null> {
-    return this.warehouseModel
-      .findOneAndUpdate(
-        { _id: id, ...SOFT_DELETE_FILTER },
-        { ...dto, updatedBy: new Types.ObjectId(actorId) },
-        { new: true },
-      )
-      .exec();
-  }
-
-  async softDeleteWarehouse(id: string, actorId: string): Promise<boolean> {
-    const res = await this.warehouseModel
-      .updateOne(
-        { _id: id, ...SOFT_DELETE_FILTER },
-        { deletedAt: new Date(), updatedBy: new Types.ObjectId(actorId) },
-      )
-      .exec();
-    return res.modifiedCount > 0;
-  }
 
   // ─── Zone ─────────────────────────────────────────────────────────────────
 
   async createZone(dto: CreateZoneDto, actorId: string): Promise<ZoneDocument> {
     return this.zoneModel.create({
       ...dto,
-      warehouseId: new Types.ObjectId(dto.warehouseId),
       createdBy: new Types.ObjectId(actorId),
       updatedBy: new Types.ObjectId(actorId),
     });
   }
 
-  async findZonesByWarehouse(warehouseId: string): Promise<ZoneDocument[]> {
-    return this.zoneModel
-      .find({
-        warehouseId: new Types.ObjectId(warehouseId),
-        ...SOFT_DELETE_FILTER,
-      })
-      .sort({ code: 1 })
-      .exec();
+  async findAllZones(): Promise<ZoneDocument[]> {
+    return this.zoneModel.find(SOFT_DELETE_FILTER).sort({ code: 1 }).exec();
   }
 
   async findZoneById(id: string): Promise<ZoneDocument | null> {
     return this.zoneModel.findOne({ _id: id, ...SOFT_DELETE_FILTER }).exec();
   }
 
-  async findZoneByCode(
-    warehouseId: string,
-    code: string,
-  ): Promise<ZoneDocument | null> {
+  async findZoneByCode(code: string): Promise<ZoneDocument | null> {
     return this.zoneModel
-      .findOne({
-        warehouseId: new Types.ObjectId(warehouseId),
-        code,
-        ...SOFT_DELETE_FILTER,
-      })
+      .findOne({ code, ...SOFT_DELETE_FILTER })
       .exec();
   }
 
@@ -126,16 +47,12 @@ export class WarehouseRepository {
     dto: UpdateZoneDto,
     actorId: string,
   ): Promise<ZoneDocument | null> {
-    const update: Record<string, unknown> = {
-      ...dto,
-      updatedBy: new Types.ObjectId(actorId),
-    };
-    if (dto.warehouseId)
-      update['warehouseId'] = new Types.ObjectId(dto.warehouseId);
     return this.zoneModel
-      .findOneAndUpdate({ _id: id, ...SOFT_DELETE_FILTER }, update, {
-        new: true,
-      })
+      .findOneAndUpdate(
+        { _id: id, ...SOFT_DELETE_FILTER },
+        { ...dto, updatedBy: new Types.ObjectId(actorId) },
+        { new: true },
+      )
       .exec();
   }
 
@@ -216,14 +133,10 @@ export class WarehouseRepository {
   async createShelf(
     dto: CreateShelfDto,
     actorId: string,
-    warehouseId: string,
   ): Promise<ShelfDocument> {
-    // warehouseId không nhận từ client — WarehouseService đã resolve qua Rack.zoneId → Zone.warehouseId
-    // và validate zone còn tồn tại (không soft-delete) trước khi gọi xuống đây, tránh lặp lại lookup rack/zone.
     return this.shelfModel.create({
       ...dto,
       rackId: new Types.ObjectId(dto.rackId),
-      warehouseId: new Types.ObjectId(warehouseId),
       createdBy: new Types.ObjectId(actorId),
       updatedBy: new Types.ObjectId(actorId),
     });
@@ -237,10 +150,9 @@ export class WarehouseRepository {
   }
 
   /** Liệt kê shelf ứng viên cho gợi ý put-away: non-staging, chưa xoá, đã khai đủ 3 chiều. */
-  async findShelvesByWarehouse(warehouseId: string): Promise<ShelfDocument[]> {
+  async findShelves(): Promise<ShelfDocument[]> {
     return this.shelfModel
       .find({
-        warehouseId: new Types.ObjectId(warehouseId),
         isStaging: false,
         deletedAt: null,
         innerDepth: { $exists: true, $ne: null },
@@ -273,16 +185,10 @@ export class WarehouseRepository {
     return shelvesByRack.flat().map((s) => s._id);
   }
 
-  /** Tìm shelf staging (khu nhận hàng tạm) của 1 kho — dùng khi GRN CONFIRMED cộng tồn. */
-  async findStagingShelfByWarehouse(
-    warehouseId: string,
-  ): Promise<ShelfDocument | null> {
+  /** Tìm shelf staging (khu nhận hàng tạm) duy nhất toàn hệ thống — dùng khi GRN CONFIRMED cộng tồn. */
+  async findStagingShelf(): Promise<ShelfDocument | null> {
     return this.shelfModel
-      .findOne({
-        warehouseId: new Types.ObjectId(warehouseId),
-        isStaging: true,
-        deletedAt: null,
-      })
+      .findOne({ isStaging: true, deletedAt: null })
       .exec();
   }
 

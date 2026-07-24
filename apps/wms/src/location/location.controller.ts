@@ -1,4 +1,3 @@
-// apps/wms/src/warehouse/warehouse.controller.ts
 import {
   Body,
   Controller,
@@ -29,12 +28,7 @@ import {
   WmsRole,
 } from '@app/auth';
 import { plainToInstance } from 'class-transformer';
-import { WarehouseService } from './warehouse.service';
-import {
-  CreateWarehouseDto,
-  UpdateWarehouseDto,
-  WarehouseResponseDto,
-} from './dto/warehouse.dto';
+import { LocationService } from './location.service';
 import { CreateZoneDto, UpdateZoneDto, ZoneResponseDto } from './dto/zone.dto';
 import { CreateRackDto, UpdateRackDto, RackResponseDto } from './dto/rack.dto';
 import {
@@ -45,43 +39,12 @@ import {
 
 const TO_INSTANCE_OPTS = { excludeExtraneousValues: true } as const;
 
-@ApiTags('warehouse')
+@ApiTags('location')
 @ApiBearerAuth()
 @UseGuards(JwtAuthGuard, RolesGuard)
-@Controller('warehouse')
-export class WarehouseController {
-  constructor(private readonly svc: WarehouseService) {}
-
-  // ─── Warehouse ────────────────────────────────────────────────────────────
-
-  @Post()
-  @Roles(WmsRole.MANAGER)
-  @ApiOperation({ summary: 'Tạo kho — [MANAGER]' })
-  @ApiCreatedResponse({ type: WarehouseResponseDto })
-  async createWarehouse(
-    @Body() dto: CreateWarehouseDto,
-    @CurrentUser('sub') actorId: string,
-  ): Promise<WarehouseResponseDto> {
-    const doc = await this.svc.createWarehouse(dto, actorId);
-    return plainToInstance(
-      WarehouseResponseDto,
-      doc.toObject(),
-      TO_INSTANCE_OPTS,
-    );
-  }
-
-  @Get()
-  @Roles(WmsRole.MANAGER)
-  @ApiOperation({ summary: 'Danh sách kho — [MANAGER]' })
-  @ApiOkResponse({ type: [WarehouseResponseDto] })
-  async listWarehouses(): Promise<WarehouseResponseDto[]> {
-    const docs = await this.svc.listWarehouses();
-    return plainToInstance(
-      WarehouseResponseDto,
-      docs.map((d) => d.toObject()),
-      TO_INSTANCE_OPTS,
-    );
-  }
+@Controller('location')
+export class LocationController {
+  constructor(private readonly svc: LocationService) {}
 
   // ─── Zone (static sub-routes phải đặt TRƯỚC `:id` để tránh NestJS shadow) ──
 
@@ -99,13 +62,10 @@ export class WarehouseController {
 
   @Get('zones')
   @Roles(WmsRole.MANAGER)
-  @ApiOperation({ summary: 'Danh sách zone theo kho — [MANAGER]' })
-  @ApiQuery({ name: 'warehouseId', required: true })
+  @ApiOperation({ summary: 'Danh sách zone — [MANAGER]' })
   @ApiOkResponse({ type: [ZoneResponseDto] })
-  async listZones(
-    @Query('warehouseId') warehouseId: string,
-  ): Promise<ZoneResponseDto[]> {
-    const docs = await this.svc.listZones(warehouseId);
+  async listZones(): Promise<ZoneResponseDto[]> {
+    const docs = await this.svc.listZones();
     return plainToInstance(
       ZoneResponseDto,
       docs.map((d) => d.toObject()),
@@ -169,50 +129,6 @@ export class WarehouseController {
       docs.map((d) => d.toObject()),
       TO_INSTANCE_OPTS,
     );
-  }
-
-  // ─── Warehouse param routes (sau tất cả static sub-routes) ───────────────
-
-  @Get(':id')
-  @Roles(WmsRole.MANAGER)
-  @ApiOperation({ summary: 'Chi tiết kho — [MANAGER]' })
-  @ApiOkResponse({ type: WarehouseResponseDto })
-  async getWarehouse(@Param('id') id: string): Promise<WarehouseResponseDto> {
-    const doc = await this.svc.getWarehouse(id);
-    return plainToInstance(
-      WarehouseResponseDto,
-      doc.toObject(),
-      TO_INSTANCE_OPTS,
-    );
-  }
-
-  @Patch(':id')
-  @Roles(WmsRole.MANAGER)
-  @ApiOperation({ summary: 'Cập nhật kho — [MANAGER]' })
-  @ApiOkResponse({ type: WarehouseResponseDto })
-  async updateWarehouse(
-    @Param('id') id: string,
-    @Body() dto: UpdateWarehouseDto,
-    @CurrentUser('sub') actorId: string,
-  ): Promise<WarehouseResponseDto> {
-    const doc = await this.svc.updateWarehouse(id, dto, actorId);
-    return plainToInstance(
-      WarehouseResponseDto,
-      doc.toObject(),
-      TO_INSTANCE_OPTS,
-    );
-  }
-
-  @Delete(':id')
-  @Roles(WmsRole.MANAGER)
-  @HttpCode(HttpStatus.NO_CONTENT)
-  @ApiOperation({ summary: 'Xoá kho (soft-delete) — [MANAGER]' })
-  @ApiNoContentResponse()
-  async deleteWarehouse(
-    @Param('id') id: string,
-    @CurrentUser('sub') actorId: string,
-  ): Promise<void> {
-    await this.svc.deleteWarehouse(id, actorId);
   }
 
   // ─── Zone param routes ────────────────────────────────────────────────────
