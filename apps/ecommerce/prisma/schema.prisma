@@ -1,7 +1,7 @@
 // ============================================================
 // Ecommerce — ecom_db (1 trong 2 logical DB, cùng cluster với wms_db)
 // Sở hữu: catalog / order / auth-ecom
-// Liên kết sang WMS CHỈ qua `sku` + id tham chiếu (fulfillWarehouseId/printJobId) — không đọc chéo.
+// Liên kết sang WMS CHỈ qua `sku` + id tham chiếu (printJobId) — không đọc chéo.
 // availableQty là BẢN COPY do WMS sync qua event stock.changed (match theo sku).
 // Nguồn: docs/overview/erd.dbml + data-ownership.md
 // ============================================================
