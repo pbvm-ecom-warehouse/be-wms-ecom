@@ -40,9 +40,6 @@ export class User {
   @Prop({ enum: UserStatus, default: UserStatus.ACTIVE })
   status: UserStatus;
 
-  @Prop({ type: SchemaTypes.ObjectId })
-  warehouseId?: Types.ObjectId; // kho mặc định (ref scalar, không populate xuyên app)
-
   @Prop({ default: false })
   mustChangePassword: boolean;
 

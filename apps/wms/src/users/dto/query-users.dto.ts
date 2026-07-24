@@ -15,11 +15,6 @@ export class QueryUsersDto extends OffsetPaginationQuery {
   @IsEnum(UserStatus)
   status?: UserStatus;
 
-  @ApiPropertyOptional({ description: 'Mongo ObjectId của kho' })
-  @IsOptional()
-  @IsMongoId()
-  warehouseId?: string;
-
   @ApiPropertyOptional({ description: 'Tìm theo username, name hoặc email' })
   @IsOptional()
   @IsString()

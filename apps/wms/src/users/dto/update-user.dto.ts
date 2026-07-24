@@ -11,9 +11,4 @@ export class UpdateUserDto {
   @IsOptional()
   @IsEmail()
   email?: string;
-
-  @ApiPropertyOptional({ description: 'Mongo ObjectId của kho mặc định' })
-  @IsOptional()
-  @IsMongoId()
-  warehouseId?: string;
 }
