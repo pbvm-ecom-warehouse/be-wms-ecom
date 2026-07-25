@@ -233,11 +233,13 @@ export class CatalogService {
       throw new AppException('VALIDATION_FAILED', 'ID danh mục không hợp lệ');
     }
 
+    const updates: Partial<Product> = { ...dto } as any;
+    if (dto.categoryId) {
+      updates.categoryId = new Types.ObjectId(dto.categoryId);
+    }
+
     try {
-      const updated = await this.repo.updateProduct(
-        id,
-        dto as unknown as Partial<Product>,
-      );
+      const updated = await this.repo.updateProduct(id, updates);
       if (!updated) throw new AppException('CATALOG_PRODUCT_NOT_FOUND');
       return updated;
     } catch (err: unknown) {
@@ -296,11 +298,13 @@ export class CatalogService {
       throw new AppException('VALIDATION_FAILED', 'ID biến thể không hợp lệ');
     }
 
+    const updates: Partial<ProductVariant> = { ...dto } as any;
+    if (dto.productId) {
+      updates.productId = new Types.ObjectId(dto.productId);
+    }
+
     try {
-      const updated = await this.repo.updateVariant(
-        id,
-        dto as unknown as Partial<ProductVariant>,
-      );
+      const updated = await this.repo.updateVariant(id, updates);
       if (!updated) throw new AppException('CATALOG_VARIANT_NOT_FOUND');
       return updated;
     } catch (err: unknown) {
