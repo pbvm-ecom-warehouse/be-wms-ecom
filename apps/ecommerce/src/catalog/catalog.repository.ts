@@ -172,8 +172,9 @@ export class CatalogRepository {
       query.inStock
     ) {
       const productIds = products.map((p) => p._id);
+      const searchIds = [...productIds, ...productIds.map((id) => id.toString())];
       const variantFilter: Record<string, unknown> = {
-        productId: { $in: productIds },
+        productId: { $in: searchIds },
         isActive: true,
       };
       if (query.minPrice !== undefined)
@@ -201,9 +202,10 @@ export class CatalogRepository {
     if (products.length === 0) return [];
 
     const finalProductIds = products.map((p) => p._id);
+    const searchFinalIds = [...finalProductIds, ...finalProductIds.map((id) => id.toString())];
     const allVariants = await this.variantModel
       .find({
-        productId: { $in: finalProductIds },
+        productId: { $in: searchFinalIds },
         isActive: true,
       })
       .lean();
@@ -251,14 +253,22 @@ export class CatalogRepository {
   }
 
   async listVariantsByProduct(productId: string) {
+    const ids = [productId];
+    if (Types.ObjectId.isValid(productId)) {
+      ids.push(new Types.ObjectId(productId) as any);
+    }
     return this.variantModel
-      .find({ productId: new Types.ObjectId(productId), isActive: true })
+      .find({ productId: { $in: ids }, isActive: true })
       .lean();
   }
 
   async listAllVariantsByProduct(productId: string) {
+    const ids = [productId];
+    if (Types.ObjectId.isValid(productId)) {
+      ids.push(new Types.ObjectId(productId) as any);
+    }
     return this.variantModel
-      .find({ productId: new Types.ObjectId(productId) })
+      .find({ productId: { $in: ids } })
       .lean();
   }
 
