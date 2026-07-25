@@ -98,9 +98,17 @@ export class StockController {
   }
 
   @Get()
-  @Roles(WmsRole.ADMIN, WmsRole.MANAGER)
+  @Roles(
+    WmsRole.ADMIN,
+    WmsRole.MANAGER,
+    WmsRole.RECEIVER,
+    WmsRole.PICKER,
+    WmsRole.COUNTER,
+    WmsRole.PRINTER,
+  )
   @ApiOperation({
-    summary: 'Danh sách mặt hàng kho — [ADMIN, MANAGER]',
+    summary:
+      'Danh sách mặt hàng kho — [ADMIN, MANAGER, RECEIVER, PICKER, COUNTER, PRINTER]',
   })
   @ApiOkResponse({ type: [WarehouseItemResponseDto] })
   async list(@Query() query: QueryWarehouseItemDto): Promise<{
@@ -123,8 +131,18 @@ export class StockController {
   }
 
   @Get(':id')
-  @Roles(WmsRole.ADMIN, WmsRole.MANAGER)
-  @ApiOperation({ summary: 'Chi tiết mặt hàng kho — [ADMIN, MANAGER]' })
+  @Roles(
+    WmsRole.ADMIN,
+    WmsRole.MANAGER,
+    WmsRole.RECEIVER,
+    WmsRole.PICKER,
+    WmsRole.COUNTER,
+    WmsRole.PRINTER,
+  )
+  @ApiOperation({
+    summary:
+      'Chi tiết mặt hàng kho — [ADMIN, MANAGER, RECEIVER, PICKER, COUNTER, PRINTER]',
+  })
   @ApiOkResponse({ type: WarehouseItemResponseDto })
   async getOne(@Param('id') id: string): Promise<WarehouseItemResponseDto> {
     const doc = await this.svc.getWarehouseItem(id);
