@@ -129,14 +129,14 @@ export class CheckoutService {
     await this.cartService.clearCart(customerId);
 
     // Xóa cache danh sách đơn hàng
-    try {
-      await this.cacheService.del(`ecom:orders:list:${customerId}`);
-    } catch (cacheErr) {
-      this.logger.error(
-        `Lỗi khi xóa cache orders list của khách ${customerId}:`,
-        cacheErr,
-      );
-    }
+    // try {
+    //   await this.cacheService.del(`ecom:orders:list:${customerId}`);
+    // } catch (cacheErr) {
+    //   this.logger.error(
+    //     `Lỗi khi xóa cache orders list của khách ${customerId}:`,
+    //     cacheErr,
+    //   );
+    // }
 
     // Gửi yêu cầu kiểm kho và giữ tồn kho vật lý sang WMS
     await this.orderQueue.add(EVENTS.STOCK_RESERVE_REQUESTED, {

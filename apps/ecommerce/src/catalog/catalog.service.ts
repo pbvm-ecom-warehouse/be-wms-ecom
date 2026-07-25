@@ -233,23 +233,11 @@ export class CatalogService {
     }
 
     try {
-      const oldProduct = await this.repo.getProductById(id);
-      if (oldProduct) {
-        await this.cacheService.del(
-          `ecom:catalog:products:detail:${oldProduct.slug}`,
-        );
-      }
-
       const updated = await this.repo.updateProduct(
         id,
         dto as unknown as Partial<Product>,
       );
       if (!updated) throw new AppException('CATALOG_PRODUCT_NOT_FOUND');
-      if (updated.slug !== oldProduct?.slug) {
-        await this.cacheService.del(
-          `ecom:catalog:products:detail:${updated.slug}`,
-        );
-      }
       return updated;
     } catch (err: unknown) {
       if (err instanceof AppException) throw err;
@@ -270,7 +258,6 @@ export class CatalogService {
       status: ProductStatus.ACTIVE,
     });
     if (!updated) throw new AppException('CATALOG_PRODUCT_NOT_FOUND');
-    await this.cacheService.del(`ecom:catalog:products:detail:${updated.slug}`);
     return updated;
   }
 
@@ -293,9 +280,6 @@ export class CatalogService {
         price: dto.price,
         fulfillmentType: dto.fulfillmentType,
       });
-      await this.cacheService.del(
-        `ecom:catalog:products:detail:${product.slug}`,
-      );
       return created;
     } catch (err: unknown) {
       const mongoErr = err as { code?: number };
@@ -317,14 +301,6 @@ export class CatalogService {
         dto as unknown as Partial<ProductVariant>,
       );
       if (!updated) throw new AppException('CATALOG_VARIANT_NOT_FOUND');
-      const product = await this.repo.getProductById(
-        updated.productId.toString(),
-      );
-      if (product) {
-        await this.cacheService.del(
-          `ecom:catalog:products:detail:${product.slug}`,
-        );
-      }
       return updated;
     } catch (err: unknown) {
       if (err instanceof AppException) throw err;
