@@ -12,6 +12,7 @@ import {
 import { CreateDesignDto, UpdateDesignDto } from './dto/design.dto';
 import { Category } from './schemas/category.schema';
 import { Product, ProductStatus } from './schemas/product.schema';
+import { ProductVariant } from './schemas/product-variant.schema';
 import { Types } from 'mongoose';
 
 const DUPLICATE_KEY_CODE = 11000;
