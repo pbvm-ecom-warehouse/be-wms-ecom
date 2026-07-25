@@ -19,7 +19,6 @@ function makeService(
   overrides: { cloudinary?: Record<string, jest.Mock> } = {},
 ) {
   const repo = {};
-  const cacheService = {};
   const cloudinary = {
     uploadImage: jest.fn().mockResolvedValue({
       url: 'https://res.cloudinary.com/demo/image/upload/x.jpg',
@@ -31,7 +30,7 @@ function makeService(
     ),
     ...overrides.cloudinary,
   };
-  const svc = new CatalogService(repo as any, cacheService as any, cloudinary);
+  const svc = new CatalogService(repo as any, cloudinary);
   return { svc, cloudinary };
 }
 

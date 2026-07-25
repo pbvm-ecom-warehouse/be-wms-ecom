@@ -12,9 +12,7 @@ import {
 import { CreateDesignDto, UpdateDesignDto } from './dto/design.dto';
 import { Category } from './schemas/category.schema';
 import { Product, ProductStatus } from './schemas/product.schema';
-import { ProductVariant } from './schemas/product-variant.schema';
 import { Types } from 'mongoose';
-import { CacheService } from '../cache/cache.service';
 
 const DUPLICATE_KEY_CODE = 11000;
 
@@ -32,7 +30,6 @@ export interface UploadedImageFile {
 export class CatalogService {
   constructor(
     private readonly repo: CatalogRepository,
-    private readonly cacheService: CacheService,
     private readonly cloudinary: CloudinaryService,
   ) {}
 
@@ -104,7 +101,6 @@ export class CatalogService {
         parentId: dto.parentId ? new Types.ObjectId(dto.parentId) : null,
         position: dto.position ?? 0,
       });
-      await this.cacheService.delPattern('ecom:catalog:categories:*');
       return created;
     } catch (err: unknown) {
       const mongoErr = err as { code?: number };
@@ -122,9 +118,6 @@ export class CatalogService {
         'ID danh mục cha không hợp lệ',
       );
     }
-    const cacheKey = `ecom:catalog:categories:parent:${parentId ?? 'all'}`;
-    const cached = await this.cacheService.get<Category[]>(cacheKey);
-    if (cached) return cached;
 
     // parentId='root' -> lấy root (parentId=null); không truyền -> lấy tất cả
     const result =
@@ -132,7 +125,6 @@ export class CatalogService {
         ? await this.repo.listCategories(null)
         : await this.repo.listCategories(parentId);
 
-    await this.cacheService.set(cacheKey, result, 86400); // Cache 24h
     return result;
   }
 
@@ -153,7 +145,6 @@ export class CatalogService {
         dto as unknown as Partial<Category>,
       );
       if (!updated) throw new AppException('CATALOG_CATEGORY_NOT_FOUND');
-      await this.cacheService.delPattern('ecom:catalog:categories:*');
       return updated;
     } catch (err: unknown) {
       if (err instanceof AppException) throw err;
@@ -172,7 +163,6 @@ export class CatalogService {
 
     const deleted = await this.repo.deleteCategory(id);
     if (!deleted) throw new AppException('CATALOG_CATEGORY_NOT_FOUND');
-    await this.cacheService.delPattern('ecom:catalog:categories:*');
     return { message: 'Đã xóa danh mục thành công' };
   }
 
