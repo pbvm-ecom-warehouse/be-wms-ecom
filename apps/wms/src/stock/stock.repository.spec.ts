@@ -98,12 +98,12 @@ describe('StockRepository', () => {
   });
 
   describe('findItemsByIds', () => {
-    it('gọi find với $in trên danh sách itemId, select sku, lean', async () => {
+    it('gọi find với $in trên danh sách itemId, select sku+name, lean', async () => {
       const itemIds = [itemId, new Types.ObjectId()];
       warehouseItemModel.find = jest.fn().mockReturnThis();
       warehouseItemModel.exec.mockResolvedValueOnce([
-        { _id: itemIds[0], sku: 'SKU-1' },
-        { _id: itemIds[1], sku: 'SKU-2' },
+        { _id: itemIds[0], sku: 'SKU-1', name: 'Item 1' },
+        { _id: itemIds[1], sku: 'SKU-2', name: 'Item 2' },
       ]);
 
       const result = await repo.findItemsByIds(itemIds);
@@ -111,11 +111,11 @@ describe('StockRepository', () => {
       expect(warehouseItemModel.find).toHaveBeenCalledWith({
         _id: { $in: itemIds },
       });
-      expect(warehouseItemModel.select).toHaveBeenCalledWith('sku');
+      expect(warehouseItemModel.select).toHaveBeenCalledWith('sku name');
       expect(warehouseItemModel.lean).toHaveBeenCalled();
       expect(result).toEqual([
-        { _id: itemIds[0], sku: 'SKU-1' },
-        { _id: itemIds[1], sku: 'SKU-2' },
+        { _id: itemIds[0], sku: 'SKU-1', name: 'Item 1' },
+        { _id: itemIds[1], sku: 'SKU-2', name: 'Item 2' },
       ]);
     });
 

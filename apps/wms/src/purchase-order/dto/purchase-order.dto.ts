@@ -25,11 +25,6 @@ export class CreatePurchaseOrderItemDto {
   @IsMongoId()
   itemId!: string;
 
-  @ApiProperty({ example: 'SKU-001' })
-  @IsString()
-  @MinLength(1)
-  sku!: string;
-
   @ApiProperty({
     example: 100,
     description:
@@ -81,6 +76,23 @@ export class CreatePurchaseOrderDto {
   items!: CreatePurchaseOrderItemDto[];
 }
 
+export class QueryReceivingPurchaseOrderDto {
+  @ApiPropertyOptional({ default: 1, minimum: 1 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  page?: number;
+
+  @ApiPropertyOptional({ default: 20, minimum: 1, maximum: 100 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(100)
+  limit?: number;
+}
+
 export class QueryPurchaseOrderDto {
   @ApiPropertyOptional({ enum: PurchaseOrderStatus })
   @IsOptional()
@@ -120,6 +132,11 @@ export class PurchaseOrderItemResponseDto {
   @ApiProperty()
   sku!: string;
 
+  /** Denormalize từ WarehouseItem.name tại thời điểm build response — không lưu trong PurchaseOrderItem schema. */
+  @Expose()
+  @ApiPropertyOptional()
+  itemName?: string;
+
   @Expose()
   @ApiProperty()
   expectedQty!: number;
@@ -131,6 +148,25 @@ export class PurchaseOrderItemResponseDto {
   @Expose()
   @ApiProperty()
   unitPrice!: number;
+}
+
+/** Thông tin NCC rút gọn gắn vào PO response — không lộ contactName/phone/email/address/taxCode. */
+export class SupplierSummaryResponseDto {
+  @Expose()
+  @ApiProperty()
+  id!: string;
+
+  @Expose()
+  @ApiProperty()
+  code!: string;
+
+  @Expose()
+  @ApiProperty()
+  name!: string;
+
+  @Expose()
+  @ApiProperty()
+  status!: string;
 }
 
 export class PurchaseOrderResponseDto {
@@ -151,6 +187,12 @@ export class PurchaseOrderResponseDto {
   )
   @ApiProperty()
   supplierId!: string;
+
+  /** Gắn ở service (tra Supplier theo supplierId) — không dùng Mongoose populate (rule data-and-mongoose.md). */
+  @Expose()
+  @Type(() => SupplierSummaryResponseDto)
+  @ApiPropertyOptional({ type: SupplierSummaryResponseDto })
+  supplier?: SupplierSummaryResponseDto;
 
   @Expose()
   @ApiProperty({ enum: PurchaseOrderStatus })
@@ -180,4 +222,63 @@ export class PurchaseOrderResponseDto {
   @Expose()
   @ApiProperty()
   updatedAt!: Date;
+}
+
+/** 1 dòng hàng của PO ở màn hình RECEIVER chọn đơn để nhận — đã tính sẵn remainingQty. */
+export class ReceivingPurchaseOrderItemResponseDto {
+  @Expose()
+  @ApiProperty()
+  itemId!: string;
+
+  @Expose()
+  @ApiProperty()
+  itemName!: string;
+
+  @Expose()
+  @ApiProperty()
+  sku!: string;
+
+  @Expose()
+  @ApiProperty()
+  unit!: string;
+
+  @Expose()
+  @ApiProperty()
+  expectedQty!: number;
+
+  @Expose()
+  @ApiProperty()
+  receivedQty!: number;
+
+  /** = expectedQty - receivedQty, tính ở service — FE không tự trừ lại. */
+  @Expose()
+  @ApiProperty()
+  remainingQty!: number;
+}
+
+/**
+ * PO còn receivable (chưa CANCELLED/COMPLETED), chỉ trả các dòng còn remainingQty > 0 —
+ * dùng cho RECEIVER chọn đơn để tạo GRN. Không lộ unitPrice (không cần cho nghiệp vụ nhận hàng).
+ */
+export class ReceivingPurchaseOrderResponseDto {
+  @Expose()
+  @ApiProperty()
+  id!: string;
+
+  @Expose()
+  @ApiProperty()
+  poNumber!: string;
+
+  @Expose()
+  @ApiProperty()
+  supplierName!: string;
+
+  @Expose()
+  @ApiPropertyOptional()
+  expectedDate?: Date;
+
+  @Expose()
+  @Type(() => ReceivingPurchaseOrderItemResponseDto)
+  @ApiProperty({ type: [ReceivingPurchaseOrderItemResponseDto] })
+  items!: ReceivingPurchaseOrderItemResponseDto[];
 }

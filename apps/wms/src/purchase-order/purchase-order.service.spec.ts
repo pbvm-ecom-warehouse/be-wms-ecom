@@ -1,11 +1,13 @@
 // apps/wms/src/purchase-order/purchase-order.service.spec.ts
 import { Logger } from '@nestjs/common';
+import { Types } from 'mongoose';
 import { PurchaseOrderService } from './purchase-order.service';
 
 const makeRepo = () => ({
   createPurchaseOrder: jest.fn(),
   findPurchaseOrderById: jest.fn(),
   findPurchaseOrders: jest.fn(),
+  findReceivablePurchaseOrders: jest.fn(),
   countByPoNumberPrefix: jest.fn(),
   findPurchaseOrderByIdWithSession: jest.fn(),
   applyReceivedQtyAndStatus: jest.fn(),
@@ -14,10 +16,12 @@ const makeRepo = () => ({
 const makeSupplierService = () => ({
   assertSupplierActive: jest.fn(),
   getSupplierItemByItemAndSupplier: jest.fn(),
+  listSuppliersByIds: jest.fn().mockResolvedValue([]),
 });
 
 const makeStockRepo = () => ({
   findItemById: jest.fn(),
+  findItemsByIds: jest.fn().mockResolvedValue([]),
 });
 
 describe('PurchaseOrderService', () => {
@@ -40,13 +44,17 @@ describe('PurchaseOrderService', () => {
     );
     repo.countByPoNumberPrefix.mockResolvedValue(0);
     supplierSvc.assertSupplierActive.mockResolvedValue(undefined);
-    stockRepo.findItemById.mockResolvedValue({ _id: itemId, deletedAt: null });
+    stockRepo.findItemById.mockResolvedValue({
+      _id: itemId,
+      sku: 'SKU-1',
+      deletedAt: null,
+    });
   });
 
   describe('createPurchaseOrder', () => {
     const baseDto = {
       supplierId,
-      items: [{ itemId, sku: 'SKU-1', expectedQty: 10, unit: 'cái' }],
+      items: [{ itemId, expectedQty: 10, unit: 'cái' }],
     };
 
     it('throw SUPPLIER_NOT_ACTIVE khi NCC blacklist/inactive', async () => {
@@ -112,7 +120,6 @@ describe('PurchaseOrderService', () => {
         items: [
           {
             itemId,
-            sku: 'SKU-1',
             expectedQty: 10,
             unit: 'cái',
             unitPrice: 9999,
@@ -148,7 +155,6 @@ describe('PurchaseOrderService', () => {
         items: [
           {
             itemId,
-            sku: 'SKU-1',
             expectedQty: 10,
             unit: 'cái',
             unitPrice: 7000,
@@ -173,7 +179,6 @@ describe('PurchaseOrderService', () => {
         items: [
           {
             itemId,
-            sku: 'SKU-1',
             expectedQty: 10,
             unit: 'cái',
             unitPrice: 9999,
@@ -214,7 +219,6 @@ describe('PurchaseOrderService', () => {
         items: [
           {
             itemId,
-            sku: 'SKU-1',
             expectedQty: 10,
             unit: 'cái',
             unitPrice: 9999,
@@ -253,7 +257,6 @@ describe('PurchaseOrderService', () => {
         items: [
           {
             itemId,
-            sku: 'SKU-1',
             expectedQty: 10,
             unit: 'cái',
             unitPrice: 9999,
@@ -346,9 +349,7 @@ describe('PurchaseOrderService', () => {
     it('không check MOQ khi unitPrice nhập tay nhưng SKU chưa có báo giá NCC', async () => {
       const dtoWithPrice = {
         ...baseDto,
-        items: [
-          { itemId, sku: 'SKU-1', expectedQty: 1, unit: 'cái', unitPrice: 500 },
-        ],
+        items: [{ itemId, expectedQty: 1, unit: 'cái', unitPrice: 500 }],
       };
       supplierSvc.getSupplierItemByItemAndSupplier.mockRejectedValue({
         code: 'SUPPLIER_ITEM_NOT_FOUND',
@@ -369,7 +370,6 @@ describe('PurchaseOrderService', () => {
         items: [
           {
             itemId,
-            sku: 'SKU-1',
             expectedQty: 1,
             unit: 'cái',
             unitPrice: 7000,
@@ -441,14 +441,17 @@ describe('PurchaseOrderService', () => {
       const multiItemDto = {
         supplierId,
         items: [
-          { itemId, sku: 'SKU-1', expectedQty: 10, unit: 'cái' },
-          { itemId: 'item002', sku: 'SKU-2', expectedQty: 10, unit: 'cái' },
+          { itemId, expectedQty: 10, unit: 'cái' },
+          { itemId: 'item002', expectedQty: 10, unit: 'cái' },
         ],
       };
-      stockRepo.findItemById.mockResolvedValue({
-        _id: 'item002',
-        deletedAt: null,
-      });
+      stockRepo.findItemById.mockImplementation((id: string) =>
+        Promise.resolve({
+          _id: id,
+          sku: id === itemId ? 'SKU-1' : 'SKU-2',
+          deletedAt: null,
+        }),
+      );
       supplierSvc.getSupplierItemByItemAndSupplier
         .mockResolvedValueOnce({
           purchasePrice: 7000,
@@ -557,6 +560,93 @@ describe('PurchaseOrderService', () => {
       await expect(
         svc.applyReceivedQty(poId, itemId, 20, session),
       ).rejects.toMatchObject({ code: 'PO_NOT_FOUND' });
+    });
+  });
+
+  describe('listReceivingPurchaseOrders', () => {
+    const poObjectId = new Types.ObjectId();
+    const supplierObjectId = new Types.ObjectId();
+    const itemObjectId1 = new Types.ObjectId();
+    const itemObjectId2 = new Types.ObjectId();
+
+    it('chỉ trả các dòng còn remainingQty > 0, gắn itemName + supplierName', async () => {
+      repo.findReceivablePurchaseOrders.mockResolvedValue({
+        data: [
+          {
+            _id: poObjectId,
+            poNumber: 'PO-X',
+            supplierId: supplierObjectId,
+            expectedDate: undefined,
+            items: [
+              {
+                itemId: itemObjectId1,
+                sku: 'SKU-1',
+                unit: 'cái',
+                expectedQty: 100,
+                receivedQty: 30,
+              },
+              {
+                itemId: itemObjectId2,
+                sku: 'SKU-2',
+                unit: 'thùng',
+                expectedQty: 20,
+                receivedQty: 20,
+              },
+            ],
+          },
+        ],
+        total: 1,
+      });
+      supplierSvc.listSuppliersByIds.mockResolvedValue([
+        { _id: supplierObjectId, name: 'NCC A' },
+      ]);
+      stockRepo.findItemsByIds.mockResolvedValue([
+        { _id: itemObjectId1, name: 'Ly nhựa' },
+        { _id: itemObjectId2, name: 'Ống hút' },
+      ]);
+
+      const result = await svc.listReceivingPurchaseOrders({});
+
+      expect(result.total).toBe(1);
+      expect(result.data).toEqual([
+        {
+          id: poObjectId.toString(),
+          poNumber: 'PO-X',
+          supplierName: 'NCC A',
+          expectedDate: undefined,
+          items: [
+            {
+              itemId: itemObjectId1.toString(),
+              itemName: 'Ly nhựa',
+              sku: 'SKU-1',
+              unit: 'cái',
+              expectedQty: 100,
+              receivedQty: 30,
+              remainingQty: 70,
+            },
+          ],
+        },
+      ]);
+    });
+
+    it('fallback supplierName khi không tra được NCC', async () => {
+      repo.findReceivablePurchaseOrders.mockResolvedValue({
+        data: [
+          {
+            _id: poObjectId,
+            poNumber: 'PO-X',
+            supplierId: supplierObjectId,
+            expectedDate: undefined,
+            items: [],
+          },
+        ],
+        total: 1,
+      });
+      supplierSvc.listSuppliersByIds.mockResolvedValue([]);
+
+      const result = await svc.listReceivingPurchaseOrders({});
+
+      expect(result.data[0].supplierName).toBe('Không xác định');
     });
   });
 });

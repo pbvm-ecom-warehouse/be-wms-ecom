@@ -22,6 +22,7 @@ import {
 import { PurchaseOrderStatus } from '../purchase-order/schemas/purchase-order.schema';
 import type {
   CreateGoodsReceiptNoteDto,
+  CreateGoodsReceiptNoteItemDto,
   QueryGoodsReceiptNoteDto,
 } from './dto/goods-receipt-note.dto';
 
@@ -68,8 +69,25 @@ export class GoodsReceiptNoteService {
     }
 
     const poItemIds = new Set(po.items.map((i) => i.itemId.toString()));
+    // items để trống → RECEIVER xác nhận "nhận đủ theo PO": tự lấy các dòng còn thiếu
+    // (expectedQty - receivedQty), actualQty mặc định = phần còn thiếu. Dòng perishable
+    // vẫn thiếu lotNumber/expiryDate (không thể tự đoán) nên GRN_LOT_INFO_MISSING sẽ chặn
+    // ngay dưới, buộc client gửi lại kèm items đầy đủ cho riêng dòng đó.
+    const items: CreateGoodsReceiptNoteItemDto[] =
+      dto.items && dto.items.length > 0
+        ? dto.items
+        : po.items
+            .filter((poItem) => poItem.receivedQty < poItem.expectedQty)
+            .map((poItem) => ({
+              itemId: poItem.itemId.toString(),
+              actualQty: poItem.expectedQty - poItem.receivedQty,
+            }));
+    if (items.length === 0) {
+      throw new AppException('PO_NOT_RECEIVABLE');
+    }
+
     const resolvedItems: ResolvedGoodsReceiptNoteItem[] = [];
-    for (const item of dto.items) {
+    for (const item of items) {
       const poItem = po.items.find((i) => i.itemId.toString() === item.itemId);
       if (!poItemIds.has(item.itemId) || !poItem) {
         throw new AppException('GRN_ITEM_NOT_IN_PO');
@@ -85,10 +103,13 @@ export class GoodsReceiptNoteService {
 
       resolvedItems.push({
         itemId: item.itemId,
-        sku: item.sku,
+        // sku luôn denormalize từ PO (đã gắn 1-1 với itemId lúc tạo PO) — không tin sku client tự gửi,
+        // tránh lệch dữ liệu nếu client gõ nhầm hoặc dùng bản cũ.
+        sku: poItem.sku,
         expectedQty: poItem.expectedQty,
         actualQty: item.actualQty,
-        unit: item.unit,
+        // unit cho phép khác PO (RECEIVER đếm theo đơn vị phụ) — bỏ trống thì lấy theo PO.
+        unit: item.unit ?? poItem.unit,
         lotNumber: item.lotNumber,
         expiryDate: item.expiryDate ? new Date(item.expiryDate) : undefined,
         note: item.note,
@@ -334,6 +355,54 @@ export class GoodsReceiptNoteService {
     const doc = await this.repo.findGoodsReceiptNoteById(id);
     if (!doc) throw new AppException('GRN_NOT_FOUND');
     return doc;
+  }
+
+  /**
+   * Gắn itemName (mỗi dòng) + purchaseOrderNumber/supplierName (cấp GRN) vào 1 hoặc nhiều
+   * GRN để trả về GET — tra rồi gắn thủ công thay vì Mongoose populate xuyên collection
+   * (rule data-and-mongoose.md). Dedupe itemId/purchaseOrderId qua Set để tránh N+1.
+   */
+  async attachDisplayInfo(
+    docs: GoodsReceiptNoteDocument[],
+  ): Promise<Record<string, unknown>[]> {
+    const itemIds = [
+      ...new Set(docs.flatMap((d) => d.items.map((i) => i.itemId.toString()))),
+    ];
+    const purchaseOrderIds = [
+      ...new Set(docs.map((d) => d.purchaseOrderId.toString())),
+    ];
+    const [items, purchaseOrders] = await Promise.all([
+      this.stockRepo.findItemsByIds(
+        itemIds.map((id) => new Types.ObjectId(id)),
+      ),
+      this.purchaseOrderService.listPurchaseOrdersByIds(purchaseOrderIds),
+    ]);
+    const itemNameById = new Map(items.map((i) => [i._id.toString(), i.name]));
+    const poById = new Map(purchaseOrders.map((po) => [po._id.toString(), po]));
+    const supplierIds = [
+      ...new Set(purchaseOrders.map((po) => po.supplierId.toString())),
+    ];
+    const suppliers =
+      await this.supplierService.listSuppliersByIds(supplierIds);
+    const supplierNameById = new Map(
+      suppliers.map((s) => [s._id.toString(), s.name]),
+    );
+
+    return docs.map((doc) => {
+      const plain = doc.toObject() as unknown as Record<string, unknown>;
+      const po = poById.get(doc.purchaseOrderId.toString());
+      return {
+        ...plain,
+        purchaseOrderNumber: po?.poNumber,
+        supplierName: po
+          ? supplierNameById.get(po.supplierId.toString())
+          : undefined,
+        items: doc.items.map((item) => ({
+          ...(item as unknown as Record<string, unknown>),
+          itemName: itemNameById.get(item.itemId.toString()),
+        })),
+      };
+    });
   }
 
   /**

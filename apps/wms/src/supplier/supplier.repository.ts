@@ -53,6 +53,13 @@ export class SupplierRepository {
       .exec();
   }
 
+  /** Tra nhiều NCC theo danh sách id cùng lúc — dùng gắn supplier summary vào PO list, tránh N+1. */
+  async findSuppliersByIds(ids: string[]): Promise<SupplierDocument[]> {
+    return this.supplierModel
+      .find({ _id: { $in: ids.map((id) => new Types.ObjectId(id)) } })
+      .exec();
+  }
+
   async findSupplierByCode(code: string): Promise<SupplierDocument | null> {
     return this.supplierModel.findOne({ code, ...SOFT_DELETE_FILTER }).exec();
   }

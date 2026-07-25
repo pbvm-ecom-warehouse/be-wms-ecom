@@ -125,13 +125,16 @@ export class StockRepository {
       .exec();
   }
 
-  /** Lấy sku của nhiều mặt hàng theo id (batch) — dùng khi tạo StockCount để tránh N+1 query. */
+  /**
+   * Lấy sku/name của nhiều mặt hàng theo id (batch) — dùng khi tạo StockCount
+   * (tránh N+1 query) và khi gắn itemName vào PO response.
+   */
   findItemsByIds(
     itemIds: Types.ObjectId[],
-  ): Promise<{ _id: Types.ObjectId; sku: string }[]> {
+  ): Promise<{ _id: Types.ObjectId; sku: string; name: string }[]> {
     return this.itemModel
       .find({ _id: { $in: itemIds } })
-      .select('sku')
+      .select('sku name')
       .lean()
       .exec();
   }

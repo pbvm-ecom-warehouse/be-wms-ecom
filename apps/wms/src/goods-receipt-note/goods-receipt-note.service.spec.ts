@@ -34,6 +34,7 @@ function fakeImageFile(
 const makePurchaseOrderService = () => ({
   getPurchaseOrder: jest.fn(),
   applyReceivedQty: jest.fn(),
+  listPurchaseOrdersByIds: jest.fn().mockResolvedValue([]),
 });
 
 const makeLocationService = () => ({
@@ -47,6 +48,7 @@ const makeStockRepository = () => ({
   upsertBalance: jest.fn(),
   upsertInventory: jest.fn(),
   insertMovement: jest.fn(),
+  findItemsByIds: jest.fn().mockResolvedValue([]),
 });
 
 const makeStockService = () => ({
@@ -64,6 +66,7 @@ const makePutAwayService = () => ({
 
 const makeSupplierService = () => ({
   getSupplier: jest.fn(),
+  listSuppliersByIds: jest.fn().mockResolvedValue([]),
 });
 
 describe('GoodsReceiptNoteService', () => {
@@ -118,7 +121,6 @@ describe('GoodsReceiptNoteService', () => {
       items: [
         {
           itemId,
-          sku: 'SKU-1',
           actualQty: 20,
           unit: 'cái',
         },
@@ -129,7 +131,15 @@ describe('GoodsReceiptNoteService', () => {
       poService.getPurchaseOrder.mockResolvedValue({
         _id: purchaseOrderId,
         status: PurchaseOrderStatus.CANCELLED,
-        items: [{ itemId, expectedQty: 100, receivedQty: 0 }],
+        items: [
+          {
+            itemId,
+            sku: 'SKU-1',
+            unit: 'cái',
+            expectedQty: 100,
+            receivedQty: 0,
+          },
+        ],
       });
       await expect(
         svc.createGoodsReceiptNote(baseDto as never, actorId),
@@ -140,7 +150,15 @@ describe('GoodsReceiptNoteService', () => {
       poService.getPurchaseOrder.mockResolvedValue({
         _id: purchaseOrderId,
         status: PurchaseOrderStatus.COMPLETED,
-        items: [{ itemId, expectedQty: 100, receivedQty: 100 }],
+        items: [
+          {
+            itemId,
+            sku: 'SKU-1',
+            unit: 'cái',
+            expectedQty: 100,
+            receivedQty: 100,
+          },
+        ],
       });
       await expect(
         svc.createGoodsReceiptNote(baseDto as never, actorId),
@@ -151,7 +169,15 @@ describe('GoodsReceiptNoteService', () => {
       poService.getPurchaseOrder.mockResolvedValue({
         _id: purchaseOrderId,
         status: PurchaseOrderStatus.SENT,
-        items: [{ itemId: 'other-item', expectedQty: 100, receivedQty: 0 }],
+        items: [
+          {
+            itemId: 'other-item',
+            sku: 'SKU-1',
+            unit: 'cái',
+            expectedQty: 100,
+            receivedQty: 0,
+          },
+        ],
       });
       await expect(
         svc.createGoodsReceiptNote(baseDto as never, actorId),
@@ -162,7 +188,15 @@ describe('GoodsReceiptNoteService', () => {
       poService.getPurchaseOrder.mockResolvedValue({
         _id: purchaseOrderId,
         status: PurchaseOrderStatus.SENT,
-        items: [{ itemId, expectedQty: 100, receivedQty: 0 }],
+        items: [
+          {
+            itemId,
+            sku: 'SKU-1',
+            unit: 'cái',
+            expectedQty: 100,
+            receivedQty: 0,
+          },
+        ],
       });
       stockRepo.findItemById.mockResolvedValue({ isPerishable: true });
       await expect(
@@ -170,11 +204,19 @@ describe('GoodsReceiptNoteService', () => {
       ).rejects.toMatchObject({ code: 'GRN_LOT_INFO_MISSING' });
     });
 
-    it('tạo GRN DRAFT thành công khi mọi validate qua', async () => {
+    it('tạo GRN DRAFT thành công khi mọi validate qua — sku luôn lấy từ PO, không tin sku client gửi', async () => {
       poService.getPurchaseOrder.mockResolvedValue({
         _id: purchaseOrderId,
         status: PurchaseOrderStatus.SENT,
-        items: [{ itemId, expectedQty: 100, receivedQty: 0 }],
+        items: [
+          {
+            itemId,
+            sku: 'SKU-1',
+            unit: 'thùng',
+            expectedQty: 100,
+            receivedQty: 0,
+          },
+        ],
       });
       stockRepo.findItemById.mockResolvedValue({ isPerishable: false });
       repo.createGoodsReceiptNote.mockResolvedValue({
@@ -190,6 +232,86 @@ describe('GoodsReceiptNoteService', () => {
             sku: 'SKU-1',
             expectedQty: 100,
             actualQty: 20,
+            unit: 'cái', // client gửi 'cái' khác PO 'thùng' — RECEIVER đếm theo đơn vị phụ, vẫn giữ nguyên
+            lotNumber: undefined,
+            expiryDate: undefined,
+            note: undefined,
+          },
+        ],
+        actorId,
+      );
+    });
+
+    it('fallback unit về theo PO khi client không gửi unit', async () => {
+      poService.getPurchaseOrder.mockResolvedValue({
+        _id: purchaseOrderId,
+        status: PurchaseOrderStatus.SENT,
+        items: [
+          {
+            itemId,
+            sku: 'SKU-1',
+            unit: 'thùng',
+            expectedQty: 100,
+            receivedQty: 0,
+          },
+        ],
+      });
+      stockRepo.findItemById.mockResolvedValue({ isPerishable: false });
+      repo.createGoodsReceiptNote.mockResolvedValue({ grnNumber: 'GRN-X' });
+
+      await svc.createGoodsReceiptNote(
+        {
+          purchaseOrderId,
+          items: [{ itemId, actualQty: 20 }],
+        },
+        actorId,
+      );
+
+      expect(repo.createGoodsReceiptNote).toHaveBeenCalledWith(
+        purchaseOrderId,
+        expect.any(String),
+        [expect.objectContaining({ itemId, sku: 'SKU-1', unit: 'thùng' })],
+        actorId,
+      );
+    });
+
+    it('tự lấy các dòng PO còn thiếu làm items khi dto.items để trống', async () => {
+      const itemId2 = new Types.ObjectId().toString();
+      poService.getPurchaseOrder.mockResolvedValue({
+        _id: purchaseOrderId,
+        status: PurchaseOrderStatus.SENT,
+        items: [
+          {
+            itemId,
+            sku: 'SKU-1',
+            unit: 'cái',
+            expectedQty: 100,
+            receivedQty: 30,
+          },
+          {
+            itemId: itemId2,
+            sku: 'SKU-2',
+            unit: 'thùng',
+            expectedQty: 50,
+            receivedQty: 50,
+          },
+        ],
+      });
+      stockRepo.findItemById.mockResolvedValue({ isPerishable: false });
+      repo.createGoodsReceiptNote.mockResolvedValue({ grnNumber: 'GRN-X' });
+
+      await svc.createGoodsReceiptNote({ purchaseOrderId }, actorId);
+
+      // itemId2 đã nhận đủ (receivedQty === expectedQty) → không đưa vào GRN tự sinh
+      expect(repo.createGoodsReceiptNote).toHaveBeenCalledWith(
+        purchaseOrderId,
+        expect.any(String),
+        [
+          {
+            itemId,
+            sku: 'SKU-1',
+            expectedQty: 100,
+            actualQty: 70,
             unit: 'cái',
             lotNumber: undefined,
             expiryDate: undefined,
@@ -198,6 +320,46 @@ describe('GoodsReceiptNoteService', () => {
         ],
         actorId,
       );
+    });
+
+    it('throw PO_NOT_RECEIVABLE khi dto.items để trống và PO đã nhận đủ mọi dòng', async () => {
+      poService.getPurchaseOrder.mockResolvedValue({
+        _id: purchaseOrderId,
+        status: PurchaseOrderStatus.PARTIALLY_RECEIVED,
+        items: [
+          {
+            itemId,
+            sku: 'SKU-1',
+            unit: 'cái',
+            expectedQty: 100,
+            receivedQty: 100,
+          },
+        ],
+      });
+      await expect(
+        svc.createGoodsReceiptNote({ purchaseOrderId }, actorId),
+      ).rejects.toMatchObject({ code: 'PO_NOT_RECEIVABLE' });
+      expect(repo.createGoodsReceiptNote).not.toHaveBeenCalled();
+    });
+
+    it('throw GRN_LOT_INFO_MISSING khi auto-fill gặp item perishable (server không tự đoán được lot/expiry)', async () => {
+      poService.getPurchaseOrder.mockResolvedValue({
+        _id: purchaseOrderId,
+        status: PurchaseOrderStatus.SENT,
+        items: [
+          {
+            itemId,
+            sku: 'SKU-1',
+            unit: 'cái',
+            expectedQty: 100,
+            receivedQty: 0,
+          },
+        ],
+      });
+      stockRepo.findItemById.mockResolvedValue({ isPerishable: true });
+      await expect(
+        svc.createGoodsReceiptNote({ purchaseOrderId }, actorId),
+      ).rejects.toMatchObject({ code: 'GRN_LOT_INFO_MISSING' });
     });
   });
 
@@ -738,6 +900,81 @@ describe('GoodsReceiptNoteService', () => {
         page: 2,
         limit: 10,
       });
+    });
+  });
+
+  describe('attachDisplayInfo', () => {
+    const grnObjectId = new Types.ObjectId();
+    const poObjectId = new Types.ObjectId();
+    const supplierObjectId = new Types.ObjectId();
+    const itemObjectId = new Types.ObjectId();
+
+    it('gắn itemName vào từng dòng item + purchaseOrderNumber/supplierName vào GRN', async () => {
+      const doc = {
+        _id: grnObjectId,
+        purchaseOrderId: poObjectId,
+        grnNumber: 'GRN-X',
+        items: [
+          {
+            itemId: itemObjectId,
+            sku: 'SKU-1',
+            actualQty: 10,
+          },
+        ],
+        toObject: () => ({
+          _id: grnObjectId,
+          purchaseOrderId: poObjectId,
+          grnNumber: 'GRN-X',
+          items: [{ itemId: itemObjectId, sku: 'SKU-1', actualQty: 10 }],
+        }),
+      };
+      stockRepo.findItemsByIds.mockResolvedValue([
+        { _id: itemObjectId, name: 'Ly nhựa' },
+      ]);
+      poService.listPurchaseOrdersByIds.mockResolvedValue([
+        {
+          _id: poObjectId,
+          poNumber: 'PO-X',
+          supplierId: supplierObjectId,
+        },
+      ]);
+      supplierService.listSuppliersByIds.mockResolvedValue([
+        { _id: supplierObjectId, name: 'NCC A' },
+      ]);
+
+      const [result] = await svc.attachDisplayInfo([doc as never]);
+
+      expect(result.purchaseOrderNumber).toBe('PO-X');
+      expect(result.supplierName).toBe('NCC A');
+      expect(result.items).toEqual([
+        {
+          itemId: itemObjectId,
+          sku: 'SKU-1',
+          actualQty: 10,
+          itemName: 'Ly nhựa',
+        },
+      ]);
+    });
+
+    it('purchaseOrderNumber/supplierName undefined khi không tra được PO', async () => {
+      const doc = {
+        _id: grnObjectId,
+        purchaseOrderId: poObjectId,
+        grnNumber: 'GRN-X',
+        items: [],
+        toObject: () => ({
+          _id: grnObjectId,
+          purchaseOrderId: poObjectId,
+          grnNumber: 'GRN-X',
+          items: [],
+        }),
+      };
+      poService.listPurchaseOrdersByIds.mockResolvedValue([]);
+
+      const [result] = await svc.attachDisplayInfo([doc as never]);
+
+      expect(result.purchaseOrderNumber).toBeUndefined();
+      expect(result.supplierName).toBeUndefined();
     });
   });
 });

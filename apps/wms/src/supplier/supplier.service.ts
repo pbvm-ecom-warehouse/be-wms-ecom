@@ -45,6 +45,12 @@ export class SupplierService {
     return doc;
   }
 
+  /** Tra nhiều NCC theo id — dùng bởi PurchaseOrderService để gắn supplier summary vào PO response. */
+  async listSuppliersByIds(ids: string[]): Promise<SupplierDocument[]> {
+    if (ids.length === 0) return [];
+    return this.repo.findSuppliersByIds(ids);
+  }
+
   async updateSupplier(
     id: string,
     dto: UpdateSupplierDto,
