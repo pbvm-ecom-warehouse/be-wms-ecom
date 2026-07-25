@@ -159,8 +159,13 @@ export class CatalogRepository {
 
   async listProducts(query: ProductQueryDto) {
     const filter: Record<string, unknown> = { status: ProductStatus.ACTIVE };
-    if (query.categoryId)
-      filter.categoryId = new Types.ObjectId(query.categoryId);
+    if (query.categoryId) {
+      const catIds = [query.categoryId];
+      if (Types.ObjectId.isValid(query.categoryId)) {
+        catIds.push(new Types.ObjectId(query.categoryId) as any);
+      }
+      filter.categoryId = { $in: catIds };
+    }
     if (query.q) filter.name = { $regex: query.q, $options: 'i' };
 
     let products = await this.productModel.find(filter).lean();
