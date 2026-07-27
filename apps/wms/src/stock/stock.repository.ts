@@ -570,6 +570,18 @@ export class StockRepository {
     }));
   }
 
+  async hasPositiveInventoryOnShelf(
+    shelfId: Types.ObjectId,
+    session?: ClientSession,
+  ): Promise<boolean> {
+    const query = this.inventoryModel
+      .findOne({ shelfId, quantity: { $gt: 0 } })
+      .select('_id')
+      .lean();
+    if (session) query.session(session);
+    return (await query.exec()) !== null;
+  }
+
   /**
    * Tồn kho thật tại 1 shelf — join InventoryStock → WarehouseItem (tên/unit)
    * → Lot (số lô/hạn dùng, optional). Dùng cho rack elevation view (FE) hiển

@@ -1,7 +1,7 @@
 // apps/wms/src/put-away/put-away.service.ts
 import { Injectable } from '@nestjs/common';
 import { ClientSession, Types } from 'mongoose';
-import { AppException } from '@app/common';
+import { AppException } from '@app/common/errors/app.exception';
 import {
   PutAwayRepository,
   QueryPutAwayTaskInput,
@@ -107,6 +107,15 @@ export class PutAwayService {
     const stagingShelf = await this.locationService.findStagingShelf();
 
     await this.stockTransactionHelper.withStockTransaction(async (session) => {
+      const activeShelf = await this.locationRepo.lockActiveShelfForInventory(
+        shelf._id.toString(),
+        session,
+      );
+      if (!activeShelf) throw new AppException('PUTAWAY_SHELF_NOT_FOUND');
+      if (activeShelf.isStaging) {
+        throw new AppException('PUTAWAY_SHELF_IS_STAGING');
+      }
+
       // Trừ ở staging, cộng ở shelf thật — tổng InventoryStock của item không đổi,
       // chỉ đổi phân bổ theo shelf. StockBalance.onHand không bị đụng tới.
       await this.stockRepo.upsertInventory(
@@ -118,7 +127,7 @@ export class PutAwayService {
       );
       await this.stockRepo.upsertInventory(
         item._id,
-        shelf._id,
+        activeShelf._id,
         lotId,
         dto.quantity,
         session,
@@ -139,7 +148,7 @@ export class PutAwayService {
       await this.stockRepo.insertMovement(
         {
           itemId: item._id,
-          shelfId: shelf._id,
+          shelfId: activeShelf._id,
           lotId,
           type: MovementType.PUTAWAY,
           quantity: dto.quantity,

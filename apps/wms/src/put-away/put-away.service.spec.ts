@@ -23,6 +23,7 @@ const makeBarcodeService = () => ({
 // không tự throw) — PutAwayService tự throw PUTAWAY_SHELF_NOT_FOUND khi null.
 const makeLocationRepo = () => ({
   findShelfByCode: jest.fn(),
+  lockActiveShelfForInventory: jest.fn(),
 });
 
 const makeLocationService = () => ({
@@ -88,6 +89,41 @@ describe('PutAwayService', () => {
     const taskId = 'task1';
     const shelfId = new Types.ObjectId();
     const stagingShelfId = new Types.ObjectId();
+
+    it('revalidate shelf đích còn active bên trong transaction trước khi ghi tồn', async () => {
+      const transactionSession = {};
+      txHelper.withStockTransaction.mockImplementation(
+        (work: (session: unknown) => unknown) => work(transactionSession),
+      );
+      repo.findTaskById
+        .mockResolvedValueOnce(baseTask())
+        .mockResolvedValueOnce(baseTask());
+      barcodeSvc.findItemIdByCode.mockResolvedValue(itemId);
+      stockRepo.findItemByIdDocument.mockResolvedValue({ _id: itemId });
+      locationRepo.findShelfByCode.mockResolvedValue({
+        _id: shelfId,
+        isStaging: false,
+      });
+      locationRepo.lockActiveShelfForInventory.mockResolvedValue(null);
+      locationService.findStagingShelf.mockResolvedValue({
+        _id: stagingShelfId,
+      });
+
+      await expect(
+        svc.confirmLine(
+          taskId,
+          { itemBarcode: 'X', shelfCode: 'A1', quantity: 5 },
+          actorId,
+        ),
+      ).rejects.toMatchObject({ code: 'PUTAWAY_SHELF_NOT_FOUND' });
+
+      expect(locationRepo.lockActiveShelfForInventory).toHaveBeenCalledWith(
+        shelfId.toString(),
+        transactionSession,
+      );
+      expect(stockRepo.upsertInventory).not.toHaveBeenCalled();
+      expect(stockRepo.insertMovement).not.toHaveBeenCalled();
+    });
 
     const baseTask = () => ({
       _id: taskId,
@@ -231,6 +267,10 @@ describe('PutAwayService', () => {
       barcodeSvc.findItemIdByCode.mockResolvedValue(itemId);
       stockRepo.findItemByIdDocument.mockResolvedValue({ _id: itemId });
       locationRepo.findShelfByCode.mockResolvedValue({
+        _id: shelfId,
+        isStaging: false,
+      });
+      locationRepo.lockActiveShelfForInventory.mockResolvedValue({
         _id: shelfId,
         isStaging: false,
       });

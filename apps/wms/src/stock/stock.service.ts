@@ -264,8 +264,26 @@ export class StockService {
     id: string,
     dto: UpdateWarehouseItemDto,
     actorId: string,
+    imageFiles?: UploadedImageFile[],
   ): Promise<WarehouseItemDocument> {
-    const doc = await this.stockRepo.updateItem(id, dto, actorId);
+    const updateData: UpdateWarehouseItemDto & { images?: string[] } = {
+      ...dto,
+    };
+
+    if (imageFiles?.length) {
+      const images: string[] = [];
+      for (const file of imageFiles) {
+        this.validateImageFile(file);
+        const { url } = await this.cloudinary.uploadImage(
+          file.buffer,
+          'wms/warehouse-item',
+        );
+        images.push(url);
+      }
+      updateData.images = images;
+    }
+
+    const doc = await this.stockRepo.updateItem(id, updateData, actorId);
     if (!doc) throw new AppException('STOCK_ITEM_NOT_FOUND');
     return doc;
   }

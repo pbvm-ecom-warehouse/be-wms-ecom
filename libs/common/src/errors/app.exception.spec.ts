@@ -30,6 +30,22 @@ describe('AppException', () => {
   });
 });
 
+describe('warehouse layout error codes', () => {
+  it.each([
+    ['LAYOUT_REVISION_CONFLICT', 409],
+    ['LAYOUT_VALIDATION_FAILED', 422],
+    ['ZONE_HAS_RACKS', 409],
+    ['RACK_HAS_SHELVES', 409],
+    ['STAGING_SHELF_CANNOT_DELETE', 409],
+    ['SHELF_HAS_STOCK', 409],
+    ['LAYOUT_DUPLICATE_CLIENT_ID', 400],
+    ['LAYOUT_INVALID_REFERENCE', 400],
+    ['LAYOUT_OPERATION_NOT_ALLOWED', 400],
+  ] as const)('AppException(%s) → status %i', (code, status) => {
+    const exception = new AppException(code);
+    expect(exception.getStatus()).toBe(status);
+  });
+});
 describe('auth error codes', () => {
   it.each([
     ['AUTH_INVALID_CREDENTIALS', 401],
