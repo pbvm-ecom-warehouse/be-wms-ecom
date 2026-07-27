@@ -240,4 +240,24 @@ export class LocationService {
     const deleted = await this.repo.softDeleteGate(id, actorId);
     if (!deleted) throw new AppException('GATE_NOT_FOUND');
   }
+
+  // ─── Layout tổng hợp ──────────────────────────────────────────────────────
+
+  /** Ráp toàn bộ zone/rack/aisle/gate/rackTemplate thành 1 object cho FE vẽ sơ đồ 2D. Singleton — không phân trang, không lọc theo warehouseId (app = 1 kho). */
+  async getLayout(): Promise<{
+    zones: ZoneDocument[];
+    racks: RackDocument[];
+    aisles: AisleDocument[];
+    gates: GateDocument[];
+    rackTemplate: RackTemplateDocument;
+  }> {
+    const [zones, racks, aisles, gates, rackTemplate] = await Promise.all([
+      this.repo.findAllZones(),
+      this.repo.findAllRacks(),
+      this.repo.findAllAisles(),
+      this.repo.findAllGates(),
+      this.repo.getRackTemplate(),
+    ]);
+    return { zones, racks, aisles, gates, rackTemplate };
+  }
 }

@@ -51,6 +51,7 @@ import {
   UpdateGateDto,
   GateResponseDto,
 } from './dto/gate.dto';
+import { LayoutResponseDto } from './dto/layout.dto';
 
 const TO_INSTANCE_OPTS = { excludeExtraneousValues: true } as const;
 
@@ -60,6 +61,29 @@ const TO_INSTANCE_OPTS = { excludeExtraneousValues: true } as const;
 @Controller('location')
 export class LocationController {
   constructor(private readonly svc: LocationService) {}
+
+  // ─── Layout tổng hợp (đặt đầu tiên, route cố định không xung đột) ────────
+
+  @Get('layout')
+  @Roles(WmsRole.MANAGER, WmsRole.ADMIN)
+  @ApiOperation({
+    summary: 'Sơ đồ kho 2D tổng hợp (zone+rack+aisle+gate) — [MANAGER, ADMIN]',
+  })
+  @ApiOkResponse({ type: LayoutResponseDto })
+  async getLayout(): Promise<LayoutResponseDto> {
+    const layout = await this.svc.getLayout();
+    return plainToInstance(
+      LayoutResponseDto,
+      {
+        zones: layout.zones.map((z) => z.toObject()),
+        racks: layout.racks.map((r) => r.toObject()),
+        aisles: layout.aisles.map((a) => a.toObject()),
+        gates: layout.gates.map((g) => g.toObject()),
+        rackTemplate: layout.rackTemplate.toObject(),
+      },
+      TO_INSTANCE_OPTS,
+    );
+  }
 
   // ─── RackTemplate (singleton — route cố định) ────────────────────────────
 

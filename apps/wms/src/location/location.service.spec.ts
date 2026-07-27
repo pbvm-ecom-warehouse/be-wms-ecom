@@ -13,6 +13,11 @@ const makeRepo = () => ({
   createRack: jest.fn(),
   createShelf: jest.fn(),
   createAisle: jest.fn(),
+  findAllZones: jest.fn(),
+  findAllRacks: jest.fn(),
+  findAllAisles: jest.fn(),
+  findAllGates: jest.fn(),
+  getRackTemplate: jest.fn(),
 });
 
 describe('LocationService', () => {
@@ -155,6 +160,31 @@ describe('LocationService', () => {
 
       expect(repo.createAisle).toHaveBeenCalledWith(baseDto, 'actor1');
       expect(result).toEqual(created);
+    });
+  });
+
+  describe('getLayout', () => {
+    it('ráp zones, racks, aisles, gates, rackTemplate thành 1 object layout', async () => {
+      const mockZones = [{ id: 'z1' }];
+      const mockRacks = [{ id: 'r1' }];
+      const mockAisles = [{ id: 'a1' }];
+      const mockGates = [{ id: 'g1' }];
+      const mockRackTemplate = { widthM: 10, depthM: 1.5, levelCount: 3, bayCount: 3 };
+      repo.findAllZones.mockResolvedValue(mockZones);
+      repo.findAllRacks.mockResolvedValue(mockRacks);
+      repo.findAllAisles.mockResolvedValue(mockAisles);
+      repo.findAllGates.mockResolvedValue(mockGates);
+      repo.getRackTemplate.mockResolvedValue(mockRackTemplate);
+
+      const result = await svc.getLayout();
+
+      expect(result).toEqual({
+        zones: mockZones,
+        racks: mockRacks,
+        aisles: mockAisles,
+        gates: mockGates,
+        rackTemplate: mockRackTemplate,
+      });
     });
   });
 });

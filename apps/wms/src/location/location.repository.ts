@@ -95,6 +95,11 @@ export class LocationRepository {
       .exec();
   }
 
+  /** Toàn bộ rack chưa xoá, không lọc theo zone — dùng ráp layout tổng thể. */
+  async findAllRacks(): Promise<RackDocument[]> {
+    return this.rackModel.find(SOFT_DELETE_FILTER).sort({ code: 1 }).exec();
+  }
+
   async findRackById(id: string): Promise<RackDocument | null> {
     return this.rackModel.findOne({ _id: id, ...SOFT_DELETE_FILTER }).exec();
   }
