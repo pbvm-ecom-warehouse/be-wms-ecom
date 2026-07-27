@@ -1,6 +1,6 @@
 # Warehouse 2D Map & Put-away Suggestion — Phân tích & Phương án
 
-Status: DRAFT — đang phân tích, chưa chốt phương án
+Status: CHỐT SCOPE — tất cả câu hỏi thiết kế đã có quyết định (mục 4a, 4b, 4c), sẵn sàng viết implementation plan
 Phạm vi: `be/apps/wms` (location, put-away-suggestion) + `fe-pbvm-warehouse` (warehouse-layout, warehouse-navigation, warehouse-structure)
 
 ## 1. Bối cảnh — tại sao viết doc này
@@ -63,15 +63,48 @@ Model phân cấp `Zone → Rack → Shelf`, mỗi tầng là 1 collection Mongo
 | Gợi ý vị trí đặt hàng | ✅ Thuật toán theo thể tích (bin-packing đơn giản) | Không biết khoảng cách/vị trí không gian → không thể ưu tiên "gần nhất", "cùng khu ưu tiên" |
 | Aisle (lối đi), Gate (cổng) | ✅ Type + UI vẽ | Chưa có entity BE tương ứng |
 
-## 4. Câu hỏi thiết kế cần quyết định trước khi chọn phương án
+## 4a. Thuật toán gợi ý vị trí — AI hay thuật toán cổ điển? (ĐÃ CHỐT)
 
-Đây là những điểm chưa rõ, cần chốt trước khi viết implementation plan (sẽ hỏi user):
+**Quyết định: KHÔNG dùng AI/ML. Dùng weighted multi-criteria scoring (thuật toán cổ điển, xác định).**
 
-1. **Phạm vi "map"**: chỉ cần sơ đồ 2D layout tĩnh (zone/rack đặt ở đâu trong kho) để nhìn trực quan, hay cần mô hình hoá cả lối đi (aisle)/cổng (gate) để sau này tính khoảng cách di chuyển thực sự (ví dụ Dijkstra/A* trên đồ thị aisle)?
-2. **1 kho hay nhiều kho**: `data-and-mongoose.md` và `ShelfSchema` ghi chú "App = 1 kho duy nhất" (ràng buộc unique `isStaging` toàn hệ thống, không scope theo `warehouseId`). Vậy `WarehouseLayout` chỉ cần là **1 bản duy nhất** (singleton), không cần multi-warehouse, multi-canvas.
-3. **Ai chỉnh sơ đồ**: MANAGER/ADMIN vẽ/kéo-thả zone/rack 1 lần khi setup kho (ít thay đổi), hay cần workflow DRAFT→PUBLISH như FE đã thiết kế sẵn (`WarehouseLayoutStatus`)?
-4. **Gợi ý vị trí có cần xét khoảng cách không**: nếu có, cần điểm gốc tham chiếu (cổng nhập hàng / staging shelf) và cách tính khoảng cách (Euclid đơn giản theo toạ độ tâm rack, hay đường đi theo aisle). Euclid đơn giản là đủ cho v1 và tận dụng được toạ độ x/y sắp thêm.
-5. **Rack elevation (mặt cắt đứng từng kệ) có nằm trong scope đợt này không**, hay chỉ làm floor plan 2D (map tổng thể) trước, rack elevation để sau?
+Lý do loại AI/ML:
+- **Cold-start**: kho mới, chưa có đủ dữ liệu lịch sử để train.
+- **Bài toán không mơ hồ**: đầu vào (kích thước item, thể tích trống, toạ độ, tần suất xuất) đều đo được trực tiếp — không cần "học" quan hệ ẩn.
+- **Cần giải thích được**: MANAGER/RECEIVER phải hiểu *tại sao* hệ thống gợi ý shelf này — AI dạng hộp đen vi phạm nguyên tắc minh bạch vận hành kho.
+- **Chi phí không tương xứng**: train/retrain/theo dõi drift là overhead không cần thiết ở quy mô 1 kho.
+
+Thuật toán chọn: **weighted scoring**, mở rộng trực tiếp từ `PutAwaySuggestionService` hiện có — không thay thế, chỉ cộng thêm tiêu chí khoảng cách vào bước ranking:
+
+```
+score = same_sku_bonus + distance_score + best_fit_score
+```
+
+- `same_sku_bonus`: giữ nguyên logic hiện tại (ưu tiên tuyệt đối nếu có shelf cùng SKU đủ chứa).
+- `distance_score`: khoảng cách Euclid từ tâm rack (tính từ toạ độ `xM/yM` + `widthM/depthM` sắp thêm ở Zone/Rack) tới điểm nhập hàng tham chiếu (staging shelf — đã có `isStaging` unique toàn hệ thống, dùng làm điểm gốc "0" tự nhiên, không cần thêm khái niệm "gate" cho v1 thuật toán).
+- `best_fit_score`: giữ nguyên logic hiện tại (free space nhỏ nhất trong các shelf đủ chứa).
+
+Đây là cách các WMS thương mại (SAP EWM, Manhattan Associates) làm slotting — không phải giản lược, mà là đúng chuẩn ngành cho bài toán này. Đường nâng cấp tương lai nếu cần (không phải v1): ABC slotting theo tần suất xuất kho (`StockMovement` đã có sẵn dữ liệu để aggregate), hoặc Dijkstra/A* trên đồ thị aisle nếu Euclid không đủ chính xác do layout kho phức tạp (nhiều vật cản/đường vòng).
+
+## 4b. Kích thước rack — mỗi rack khác nhau hay chung 1 chuẩn? (ĐÃ CHỐT — CẬP NHẬT 2026-07-27, đảo ngược quyết định trước)
+
+**Quyết định cuối: TẤT CẢ rack dùng chung 1 template kích thước chuẩn toàn app.** Đảo ngược so với quyết định trước đó trong doc này (mục này ghi lại lý do để tránh nhầm lẫn khi đọc lại lịch sử).
+
+- Thêm 1 document **singleton** `RackTemplate` chứa `widthM`, `depthM`, `levelCount`, `bayCount`.
+- `Rack` document **không còn lưu kích thước riêng** — chỉ giữ vị trí (`xM`, `yM`, `rotation`) + định danh (`zoneId`, `code`, `name`). Kích thước luôn đọc từ `RackTemplate` chung, không có ngoại lệ per-rack.
+- Sửa `RackTemplate` = đổi kích thước cho **toàn bộ rack cùng lúc** — khớp đúng ý "kệ đồng bộ toàn app" của user.
+- Hệ quả UI: `RackConfigurationDialog` (đồng bộ kích thước từ 1 rack mẫu sang rack khác) **không còn cần thiết** — vì mọi rack đã luôn đồng bộ kích thước theo template, không có gì để "đồng bộ" nữa. Component này sẽ được bỏ khỏi luồng chính (xem plan triển khai).
+- Tạo rack mới: chỉ cần vị trí + code/name, kích thước tự động lấy từ `RackTemplate` hiện hành — không nhập tay từng rack.
+
+→ Cần thêm 1 collection nhỏ mới `RackTemplate` (khác với quyết định "không cần thêm bảng" trước đó).
+
+## 4c. Các câu hỏi thiết kế còn lại (ĐÃ CHỐT)
+
+1. **Phạm vi map — có aisle/gate không**: **CÓ, làm luôn đợt này.** Map sẽ đầy đủ zone + rack + aisle (lối đi) + gate (cổng), không chỉ zone/rack tối giản. UI đã vẽ sẵn cả 3 loại phần tử này, làm luôn tránh phải quay lại sau.
+2. **1 kho hay nhiều kho**: xác nhận **singleton** — đúng như ghi chú trong `data-and-mongoose.md`/`ShelfSchema` ("App = 1 kho duy nhất"). `WarehouseLayout` chỉ có **1 bản duy nhất**, không multi-warehouse/multi-canvas.
+3. **Draft/Publish hay chỉnh trực tiếp**: **Chỉnh trực tiếp, áp dụng ngay.** Không cần trạng thái `DRAFT`/`PUBLISHED`, không cần workflow duyệt. Đơn giản hoá: `WarehouseLayoutStatus` trong type FE hiện có có thể bỏ hoặc giữ nhưng luôn `PUBLISHED` (không dùng `DRAFT` ở BE).
+4. **Rack elevation**: **CÓ, làm luôn cùng đợt với floor plan.** `WarehouseArchitectureScene` (chế độ "rack" — xem chi tiết từng tầng + vị trí lô hàng) sẽ được nối dữ liệu thật song song với floor plan, không tách đợt sau.
+
+**Kết luận: scope đợt này = TRỌN VẸN** — floor plan 2D (zone/rack/aisle/gate, kéo-thả, resize, kích thước rack dùng chung 1 template chuẩn) + rack elevation (chi tiết từng tầng/lô hàng) + put-away suggestion nâng cấp weighted scoring, tất cả chỉnh trực tiếp không qua draft/publish, singleton 1 kho.
 
 ## 5. Phương án
 
@@ -80,15 +113,17 @@ Model phân cấp `Zone → Rack → Shelf`, mỗi tầng là 1 collection Mongo
 Tận dụng toàn bộ UI floor-plan/inspector/rack-elevation đã viết (chất lượng tốt, đã có test), chỉ xây tầng dữ liệu BE + service FE còn thiếu:
 
 **BE:**
-- Thêm field toạ độ/kích thước vào `Zone` (`xM,yM,widthM,heightM,rotation`) và `Rack` (`xM,yM,widthM,depthM,rotation,levelCount,bayCount,accessPoint`) — mở rộng schema hiện có, không phá cấu trúc Zone→Rack→Shelf.
-- Thêm 2 collection mới nhỏ: `Aisle` (lối đi) và `Gate` (cổng) — hoặc gộp làm 1 document `WarehouseLayoutMeta` singleton chứa `canvas` + `aisles[]` + `gates[]` (đơn giản hơn vì đây là "khung nền" ít thay đổi, không cần CRUD riêng lẻ theo phân trang).
-- Endpoint mới: `GET /location/layout` (ráp Zone+Rack+aisles+gates thành `WarehouseLayout`), `PUT /location/layout` (lưu toạ độ hàng loạt — MANAGER only). Không cần DRAFT/PUBLISH ở v1 nếu user xác nhận câu hỏi #3 là "chỉnh trực tiếp".
-- Mở rộng `PutAwaySuggestionService`: khi có toạ độ, thêm bước ranking phụ theo khoảng cách Euclid từ tâm rack tới staging shelf (điểm nhập hàng), cộng vào tiêu chí ưu tiên hiện có (same-SKU → gần nhất → best-fit).
+- Thêm field toạ độ vào `Zone` (`xM,yM,widthM,heightM,rotation`) — không đổi so với trước.
+- `Rack` chỉ thêm **vị trí** (`xM,yM,rotation,accessPoint`) — **không** thêm `widthM/depthM/levelCount/bayCount` vào từng document Rack (đảo ngược so với thiết kế trước).
+- Thêm collection singleton mới `RackTemplate` (`widthM, depthM, levelCount, bayCount`) — nguồn sự thật DUY NHẤT cho kích thước mọi rack. Sửa template = đổi kích thước toàn bộ rack cùng lúc.
+- Thêm 2 collection mới nhỏ: `Aisle` (lối đi) và `Gate` (cổng).
+- Endpoint mới: `GET /location/layout` (ráp Zone+Rack(kèm kích thước từ template)+Aisle+Gate thành `WarehouseLayout`), `GET/PUT /location/rack-template` (đọc/sửa template chung — MANAGER only). Chỉnh trực tiếp, áp dụng ngay — không có DRAFT/PUBLISH (đã chốt mục 4c #3).
+- Mở rộng `PutAwaySuggestionService` sang **weighted scoring** (đã chốt ở mục 4a): thay lọc-rồi-sort tuần tự bằng công thức điểm `score = same_sku_bonus + distance_score + best_fit_score`, dùng staging shelf làm điểm gốc tính khoảng cách Euclid. Khoảng cách tính từ tâm rack = vị trí rack (`xM/yM`) + kích thước từ `RackTemplate` (không đổi công thức, chỉ đổi nguồn đọc `widthM/depthM`).
 
 **FE:**
-- Thêm `warehouse-layout.service.ts` gọi 2 endpoint trên (hiện chưa tồn tại).
+- Thêm `warehouse-layout.service.ts` gọi các endpoint trên (hiện chưa tồn tại).
 - Thêm page mới (ví dụ `/locations/map` hoặc tab trong `/locations`) render `WarehouseArchitectureScene`/`WarehouseFloorPlan` với data thật thay vì prop rỗng.
-- Sửa `WarehouseLayoutInspector`/`RackConfigurationDialog` để `onPatch`/`onApply` thực sự gọi `PUT /location/layout` (hiện chỉ là callback treo).
+- Sửa `WarehouseLayoutInspector` để `onPatch` gọi API thật cho vị trí zone/rack/aisle/gate. **Bỏ `RackConfigurationDialog` khỏi luồng chính** — không còn ý nghĩa "đồng bộ từ 1 rack mẫu" khi mọi rack đã luôn đồng bộ theo template; thay bằng 1 form sửa `RackTemplate` chung (áp dụng toàn app ngay lập tức).
 
 **Ưu điểm**: không lãng phí UI đã làm kỹ, thời gian tập trung vào lõi dữ liệu + kết nối — phần rủi ro/công sức lớn nhất (UI 2D tương tác) coi như đã xong.
 **Rủi ro**: cần đọc hiểu kỹ code UI cũ (đã làm ở trên) để không đoán sai field; nếu UI cũ có bug tiềm ẩn (chưa từng chạy thật) sẽ lộ ra khi nối API thật.
@@ -104,9 +139,14 @@ Bỏ qua `warehouse-layout`/`warehouse-navigation` hiện có, thiết kế sche
 
 **Phương án A.** Lý do: UI hiện có đã đúng chuẩn (zone/rack/aisle/gate, kéo-thả, resize, snap-to-grid, rack elevation) và khớp tự nhiên với model Zone→Rack→Shelf đã có ở BE — chỉ thiếu đúng 1 lớp toạ độ. Không có tín hiệu nào cho thấy thiết kế cũ sai hướng, chỉ là dang dở.
 
-## 6. Việc CHƯA quyết định (cần user trả lời trước khi viết implementation plan)
+## 6. Checklist quyết định — TẤT CẢ ĐÃ CHỐT
 
-- Trả lời 5 câu hỏi ở mục 4.
-- Xác nhận chọn Phương án A hay B.
-- Xác nhận có cần workflow DRAFT/PUBLISH layout hay chỉnh trực tiếp (ảnh hưởng thiết kế API + schema).
-- Xác nhận rack elevation (mặt cắt đứng, box placement từng lô hàng) có trong scope đợt 1 hay để đợt sau (chỉ làm floor plan 2D tổng thể trước).
+- [x] Thuật toán gợi ý vị trí → weighted scoring, không AI/ML (mục 4a).
+- [x] Kích thước rack → **1 template chuẩn dùng chung toàn app** (`RackTemplate` singleton), rack không lưu kích thước riêng (mục 4b, cập nhật 2026-07-27).
+- [x] Phương án triển khai → **Phương án A** (nối dữ liệu thật cho UI đã có).
+- [x] Aisle/Gate → có, làm luôn đợt này (mục 4c #1).
+- [x] Số lượng kho → singleton, 1 kho duy nhất (mục 4c #2).
+- [x] Draft/Publish → không, chỉnh trực tiếp áp dụng ngay (mục 4c #3).
+- [x] Rack elevation → có, làm luôn cùng đợt (mục 4c #4).
+
+→ Bước tiếp theo: viết implementation plan chi tiết (BE schema/migration/API, FE service/route wiring) qua skill `writing-plans`.
