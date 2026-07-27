@@ -215,9 +215,7 @@ export class PutAwaySuggestionService {
     candidates: Candidate[],
     qty: number,
   ): PutAwaySuggestionResult {
-    const sorted = [...candidates].sort((a, b) =>
-      this.compareForCombine(a, b),
-    );
+    const sorted = [...candidates].sort((a, b) => this.compareForCombine(a, b));
     const chosen: PutAwaySuggestionItem[] = [];
     let covered = 0;
     for (const c of sorted) {
