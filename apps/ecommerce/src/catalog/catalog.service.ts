@@ -199,7 +199,9 @@ export class CatalogService {
     }
     return this.repo.listProducts(query);
   }
-
+  async listInactiveVariants() {
+    return this.repo.listInactiveVariants();
+  }
   async getProductVariants(productId: string, includeInactive = false) {
     if (!Types.ObjectId.isValid(productId)) {
       throw new AppException('VALIDATION_FAILED', 'ID sản phẩm không hợp lệ');

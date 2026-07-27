@@ -123,7 +123,25 @@ export class CatalogAdminController {
   constructor(private readonly svc: CatalogService) {}
 
   // ── Categories ────────────────────────────────────────────────────────────
-
+  @Get('variants/inactive')
+  @ApiOperation({ summary: '[Admin] Lấy danh sách biến thể chưa kích hoạt (isActive = false)' })
+  @ApiOkResponse({ type: [ProductVariantResponseDto] })
+  async getInactiveVariants() {
+    const list = await this.svc.listInactiveVariants();
+    return plainToInstance(ProductVariantResponseDto, list, {
+      excludeExtraneousValues: true,
+    });
+  }
+  @Patch('variants/:id/activate')
+  @ApiOperation({ summary: '[Admin] Kích hoạt hoạt động biến thể (isActive = true)' })
+  @ApiParam({ name: 'id', description: 'ID biến thể' })
+  @ApiOkResponse({ type: ProductVariantResponseDto })
+  async activateVariant(@Param('id') id: string) {
+    const variant = await this.svc.updateVariant(id, { isActive: true });
+    return plainToInstance(ProductVariantResponseDto, variant, {
+      excludeExtraneousValues: true,
+    });
+  }
   @Post('categories')
   @ApiOperation({ summary: '[Admin] Tạo danh mục mới' })
   @ApiCreatedResponse({ type: CategoryResponseDto })

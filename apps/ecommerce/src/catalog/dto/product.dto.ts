@@ -1,6 +1,7 @@
 import { ApiProperty, ApiPropertyOptional, PartialType } from '@nestjs/swagger';
 import {
   IsArray,
+  IsBoolean,
   IsEnum,
   IsNotEmpty,
   IsNumber,
@@ -128,6 +129,11 @@ export class ProductQueryDto {
   @ApiPropertyOptional({ example: true })
   @IsOptional()
   inStock?: boolean | string;
+
+  @ApiPropertyOptional({ example: true })
+  @IsBoolean()
+  @IsOptional()
+  isActive?: boolean;
 }
 export class ProductVariantResponseDto {
   @Expose()
