@@ -9,6 +9,23 @@ export class Zone {
   @Prop({ required: true })
   code!: string;
 
+  /** Toạ độ góc trên-trái trên sơ đồ kho, đơn vị mét. */
+  @Prop({ type: Number, default: 0 })
+  xM!: number;
+
+  @Prop({ type: Number, default: 0 })
+  yM!: number;
+
+  @Prop({ type: Number, default: 0 })
+  widthM!: number;
+
+  @Prop({ type: Number, default: 0 })
+  heightM!: number;
+
+  /** 0 hoặc 90 độ — xoay hình chữ nhật trên map, không xoay tự do. */
+  @Prop({ type: Number, enum: [0, 90], default: 0 })
+  rotation!: number;
+
   @Prop({ type: Types.ObjectId })
   createdBy?: Types.ObjectId;
 
