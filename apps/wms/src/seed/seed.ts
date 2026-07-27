@@ -34,13 +34,56 @@ const SEED_ATTRIBUTE_OPTIONS: {
   code: string;
 }[] = [
   { key: AttributeOptionKey.CUP_STYLE, name: 'Trái tim', code: 'HRT' },
+  { key: AttributeOptionKey.CUP_STYLE, name: 'Trụ tròn', code: 'RND' },
   { key: AttributeOptionKey.MATERIAL, name: 'Nhựa PET', code: 'PET' },
+  { key: AttributeOptionKey.MATERIAL, name: 'Nhựa PP', code: 'PP' },
   { key: AttributeOptionKey.CAPACITY, name: '500ml', code: '500' },
+  { key: AttributeOptionKey.CAPACITY, name: '700ml', code: '700' },
   { key: AttributeOptionKey.COLOR, name: 'Trong suốt', code: 'CLR' },
+  { key: AttributeOptionKey.COLOR, name: 'Trắng sữa', code: 'WHT' },
   { key: AttributeOptionKey.MATERIAL_TYPE, name: 'Trà đen', code: 'BLK' },
-  { key: AttributeOptionKey.MATERIAL_TYPE, name: 'Đường trắng', code: 'WHT' },
+  { key: AttributeOptionKey.MATERIAL_TYPE, name: 'Trà xanh', code: 'GRN' },
+  {
+    key: AttributeOptionKey.MATERIAL_TYPE,
+    name: 'Đường trắng',
+    code: 'WHITE_SUGAR',
+  },
+  {
+    key: AttributeOptionKey.MATERIAL_TYPE,
+    name: 'Sữa tươi',
+    code: 'FRESH_MILK',
+  },
+  {
+    key: AttributeOptionKey.MATERIAL_TYPE,
+    name: 'Sữa đặc',
+    code: 'CONDENSED_MILK',
+  },
+  {
+    key: AttributeOptionKey.MATERIAL_TYPE,
+    name: 'Trân châu đen',
+    code: 'PEARL',
+  },
+  {
+    key: AttributeOptionKey.MATERIAL_TYPE,
+    name: 'Topping trái cây',
+    code: 'FRUIT_TOPPING',
+  },
+  {
+    key: AttributeOptionKey.MATERIAL_TYPE,
+    name: 'Bột pha chế',
+    code: 'MIX_POWDER',
+  },
+  {
+    key: AttributeOptionKey.MATERIAL_TYPE,
+    name: 'Syrup đường đen',
+    code: 'BROWN_SYRUP',
+  },
   { key: AttributeOptionKey.FLAVOR, name: 'Nguyên bản', code: 'ORG' },
+  { key: AttributeOptionKey.FLAVOR, name: 'Vị đào', code: 'PEACH' },
+  { key: AttributeOptionKey.FLAVOR, name: 'Vị dâu', code: 'STRAWBERRY' },
   { key: AttributeOptionKey.SPEC, name: '500g', code: '500G' },
+  { key: AttributeOptionKey.SPEC, name: '1kg', code: '1KG' },
+  { key: AttributeOptionKey.SPEC, name: '1 lít', code: '1L' },
   // Category value — code phải khớp SkuTemplate.category trong
   // sku-template.registry.ts (AttributeOptionService.create validate điều
   // này), thiếu thì bước chọn category khi tạo item MATERIAL/PACKAGING sẽ rỗng.
@@ -236,6 +279,9 @@ async function seedZoneAndItems(
     adminId,
   );
 
+  // Đơn vị cơ sở seed để mặc định là "thùng" — khớp thói quen mua/nhập hàng
+  // thực tế (đặt NCC theo thùng), altUnits khai "cái"/"kg"/"g"/"ml" lẻ để vẫn
+  // quy đổi được khi cần xuất/kiểm lẻ dưới 1 thùng.
   const material = await stockService.createWarehouseItem(
     {
       type: ItemType.MATERIAL,
@@ -247,12 +293,34 @@ async function seedZoneAndItems(
         optionIds['500G'], // SPEC: 500g
       ],
       name: 'Trà đen nguyên bản',
-      unit: 'kg',
+      unit: 'thùng',
+      altUnits: [{ unit: 'kg', factor: 20 }],
       isPerishable: false,
-      minQuantity: 10,
-      depth: 10,
-      width: 8,
-      height: 12,
+      minQuantity: 2,
+      depth: 40,
+      width: 30,
+      height: 30,
+    },
+    adminId,
+  );
+  const teaGreen = await stockService.createWarehouseItem(
+    {
+      type: ItemType.MATERIAL,
+      templateId: 'MATERIAL',
+      attributeOptionIds: [
+        optionIds['TEA'], // MATERIAL_CATEGORY: Trà
+        optionIds['GRN'], // MATERIAL_TYPE: Trà xanh
+        optionIds['ORG'], // FLAVOR: Nguyên bản
+        optionIds['500G'], // SPEC: 500g
+      ],
+      name: 'Trà xanh nguyên bản (nhập khẩu)',
+      unit: 'thùng',
+      altUnits: [{ unit: 'kg', factor: 20 }],
+      isPerishable: false,
+      minQuantity: 2,
+      depth: 40,
+      width: 30,
+      height: 30,
     },
     adminId,
   );
@@ -267,12 +335,34 @@ async function seedZoneAndItems(
         optionIds['CLR'], // COLOR
       ],
       name: 'Ly nhựa PET 500ml trong suốt',
-      unit: 'cái',
+      unit: 'thùng',
+      altUnits: [{ unit: 'cái', factor: 1000 }],
       isPerishable: false,
-      minQuantity: 20,
-      depth: 8,
-      width: 8,
-      height: 15,
+      minQuantity: 2,
+      depth: 50,
+      width: 40,
+      height: 60,
+    },
+    adminId,
+  );
+  const cupBlank700 = await stockService.createWarehouseItem(
+    {
+      type: ItemType.CUP_BLANK,
+      templateId: 'CUP_BLANK',
+      attributeOptionIds: [
+        optionIds['RND'], // CUP_STYLE
+        optionIds['PP'], // MATERIAL
+        optionIds['700'], // CAPACITY
+        optionIds['WHT'], // COLOR
+      ],
+      name: 'Ly nhựa PP 700ml trắng sữa',
+      unit: 'thùng',
+      altUnits: [{ unit: 'cái', factor: 1000 }],
+      isPerishable: false,
+      minQuantity: 2,
+      depth: 50,
+      width: 40,
+      height: 65,
     },
     adminId,
   );
@@ -282,16 +372,143 @@ async function seedZoneAndItems(
       templateId: 'MATERIAL',
       attributeOptionIds: [
         optionIds['SUGAR'], // MATERIAL_CATEGORY: Đường
-        optionIds['WHT'], // MATERIAL_TYPE: Đường trắng
-        optionIds['500G'], // SPEC: 500g
+        optionIds['WHITE_SUGAR'], // MATERIAL_TYPE: Đường trắng
+        optionIds['1KG'], // SPEC: 1kg
       ],
       name: 'Đường trắng tinh luyện',
-      unit: 'kg',
+      unit: 'thùng',
+      altUnits: [{ unit: 'kg', factor: 25 }],
       isPerishable: false,
-      minQuantity: 15,
-      depth: 10,
-      width: 8,
-      height: 12,
+      minQuantity: 2,
+      depth: 40,
+      width: 30,
+      height: 30,
+    },
+    adminId,
+  );
+  const freshMilk = await stockService.createWarehouseItem(
+    {
+      type: ItemType.MATERIAL,
+      templateId: 'MATERIAL',
+      attributeOptionIds: [
+        optionIds['MILK'], // MATERIAL_CATEGORY: Sữa
+        optionIds['FRESH_MILK'], // MATERIAL_TYPE: Sữa tươi
+        optionIds['1L'], // SPEC: 1 lít
+      ],
+      name: 'Sữa tươi không đường',
+      unit: 'thùng',
+      altUnits: [{ unit: 'lít', factor: 12 }],
+      isPerishable: true,
+      nearExpiryDays: 15,
+      minQuantity: 3,
+      depth: 30,
+      width: 25,
+      height: 25,
+    },
+    adminId,
+  );
+  const condensedMilk = await stockService.createWarehouseItem(
+    {
+      type: ItemType.MATERIAL,
+      templateId: 'MATERIAL',
+      attributeOptionIds: [
+        optionIds['MILK'], // MATERIAL_CATEGORY: Sữa
+        optionIds['CONDENSED_MILK'], // MATERIAL_TYPE: Sữa đặc
+        optionIds['500G'], // SPEC: 500g
+      ],
+      name: 'Sữa đặc có đường',
+      unit: 'thùng',
+      altUnits: [{ unit: 'lon', factor: 24 }],
+      isPerishable: true,
+      nearExpiryDays: 30,
+      minQuantity: 2,
+      depth: 30,
+      width: 25,
+      height: 20,
+    },
+    adminId,
+  );
+  const brownSyrup = await stockService.createWarehouseItem(
+    {
+      type: ItemType.MATERIAL,
+      templateId: 'MATERIAL',
+      attributeOptionIds: [
+        optionIds['SYRUP'], // MATERIAL_CATEGORY: Syrup
+        optionIds['BROWN_SYRUP'], // MATERIAL_TYPE: Syrup đường đen
+        optionIds['1L'], // SPEC: 1 lít
+      ],
+      name: 'Syrup đường đen',
+      unit: 'thùng',
+      altUnits: [{ unit: 'chai', factor: 12 }],
+      isPerishable: false,
+      minQuantity: 2,
+      depth: 30,
+      width: 25,
+      height: 25,
+    },
+    adminId,
+  );
+  const pearlTopping = await stockService.createWarehouseItem(
+    {
+      type: ItemType.MATERIAL,
+      templateId: 'MATERIAL',
+      attributeOptionIds: [
+        optionIds['TOPPING'], // MATERIAL_CATEGORY: Topping
+        optionIds['PEARL'], // MATERIAL_TYPE: Trân châu đen
+        optionIds['1KG'], // SPEC: 1kg
+      ],
+      name: 'Trân châu đen',
+      unit: 'thùng',
+      altUnits: [{ unit: 'kg', factor: 10 }],
+      isPerishable: true,
+      nearExpiryDays: 60,
+      minQuantity: 2,
+      depth: 35,
+      width: 30,
+      height: 25,
+    },
+    adminId,
+  );
+  const peachTopping = await stockService.createWarehouseItem(
+    {
+      type: ItemType.MATERIAL,
+      templateId: 'MATERIAL',
+      attributeOptionIds: [
+        optionIds['TOPPING'], // MATERIAL_CATEGORY: Topping
+        optionIds['FRUIT_TOPPING'], // MATERIAL_TYPE: Topping trái cây
+        optionIds['PEACH'], // FLAVOR: Vị đào
+        optionIds['1KG'], // SPEC: 1kg
+      ],
+      name: 'Topping đào miếng',
+      unit: 'thùng',
+      altUnits: [{ unit: 'kg', factor: 10 }],
+      isPerishable: true,
+      nearExpiryDays: 90,
+      minQuantity: 2,
+      depth: 35,
+      width: 30,
+      height: 25,
+    },
+    adminId,
+  );
+  const mixPowder = await stockService.createWarehouseItem(
+    {
+      type: ItemType.MATERIAL,
+      templateId: 'MATERIAL',
+      attributeOptionIds: [
+        optionIds['POWDER'], // MATERIAL_CATEGORY: Bột
+        optionIds['MIX_POWDER'], // MATERIAL_TYPE: Bột pha chế
+        optionIds['STRAWBERRY'], // FLAVOR: Vị dâu
+        optionIds['1KG'], // SPEC: 1kg
+      ],
+      name: 'Bột pha chế vị dâu',
+      unit: 'thùng',
+      altUnits: [{ unit: 'kg', factor: 10 }],
+      isPerishable: false,
+      minQuantity: 2,
+      depth: 35,
+      width: 30,
+      height: 25,
     },
     adminId,
   );
@@ -303,12 +520,67 @@ async function seedZoneAndItems(
         optionIds['STRAW'], // PACKAGING_CATEGORY: Ống hút
       ],
       name: 'Ống hút nhựa tiêu chuẩn',
-      unit: 'cái',
+      unit: 'thùng',
+      altUnits: [{ unit: 'cái', factor: 5000 }],
       isPerishable: false,
-      minQuantity: 50,
-      depth: 1,
-      width: 1,
-      height: 20,
+      minQuantity: 2,
+      depth: 30,
+      width: 20,
+      height: 40,
+    },
+    adminId,
+  );
+  const paperBag = await stockService.createWarehouseItem(
+    {
+      type: ItemType.PACKAGING,
+      templateId: 'PACKAGING',
+      attributeOptionIds: [
+        optionIds['BAG'], // PACKAGING_CATEGORY: Túi
+      ],
+      name: 'Túi giấy đựng đồ uống',
+      unit: 'thùng',
+      altUnits: [{ unit: 'cái', factor: 1000 }],
+      isPerishable: false,
+      minQuantity: 2,
+      depth: 40,
+      width: 30,
+      height: 30,
+    },
+    adminId,
+  );
+  const paperBox = await stockService.createWarehouseItem(
+    {
+      type: ItemType.PACKAGING,
+      templateId: 'PACKAGING',
+      attributeOptionIds: [
+        optionIds['BOX'], // PACKAGING_CATEGORY: Hộp
+      ],
+      name: 'Hộp giấy đựng đồ uống',
+      unit: 'thùng',
+      altUnits: [{ unit: 'cái', factor: 500 }],
+      isPerishable: false,
+      minQuantity: 2,
+      depth: 40,
+      width: 30,
+      height: 30,
+    },
+    adminId,
+  );
+  const cupLid = await stockService.createWarehouseItem(
+    {
+      type: ItemType.PACKAGING,
+      templateId: 'PACKAGING',
+      attributeOptionIds: [
+        optionIds['LID'], // PACKAGING_CATEGORY: Nắp ly
+      ],
+      name: 'Nắp ly nhựa in sẵn',
+      unit: 'thùng',
+      altUnits: [{ unit: 'cái', factor: 1000 }],
+      isPerishable: false,
+      minQuantity: 2,
+      depth: 40,
+      width: 30,
+      height: 25,
     },
     adminId,
   );
@@ -430,52 +702,154 @@ async function seedZoneAndItems(
     const supplier = await supplierService.createSupplier(s, adminId);
     supplierIds.push(supplier._id.toString());
   }
-  const [supplierId, supplier2Id] = supplierIds;
+  const [
+    trathainguyenId, // NCC-TTN-001 — trà
+    vietthanhId, // NCC-VTH-001 — bao bì/ống hút/hộp giấy
+    daidongtienId, // NCC-DDT-001 — ly nhựa
+    tanthinhphatId, // NCC-TTP-001 — đường
+    nongtraixanhId, // NCC-NTX-001 — sữa
+    achauId, // NCC-ACF-001 — syrup/hương liệu/topping
+    phuongnamId, // NCC-PN-001 — túi giấy/hộp giấy
+    mienNamId, // NCC-MN-001 — bột trân châu/bột pha chế
+    minhphatId, // NCC-MP-001 — nắp ly/tem nhãn
+    kimlongId, // NCC-KL-001 — nhập khẩu trà/topping
+  ] = supplierIds;
 
-  await supplierService.upsertSupplierItem(
+  // supplierItemCode: PPPP-XXX — đơn vị mua mặc định là "thùng" (SEED_SUPPLIERS
+  // note khớp lĩnh vực từng NCC), purchasePrice tính theo giá 1 thùng.
+  const SEED_SUPPLIER_ITEMS: {
+    itemId: string;
+    supplierId: string;
+    supplierItemCode: string;
+    purchasePrice: number;
+    leadTimeDays: number;
+    minOrderQty: number;
+  }[] = [
     {
       itemId: material._id.toString(),
-      supplierId,
-      supplierItemCode: 'NL-TRA-DEN-500G',
-      purchasePrice: 15000,
+      supplierId: trathainguyenId,
+      supplierItemCode: 'NL-TRA-DEN-THUNG20KG',
+      purchasePrice: 280000,
       leadTimeDays: 3,
-      minOrderQty: 20,
+      minOrderQty: 2,
     },
-    adminId,
-  );
-  await supplierService.upsertSupplierItem(
+    {
+      itemId: teaGreen._id.toString(),
+      supplierId: kimlongId,
+      supplierItemCode: 'NK-TRA-XANH-THUNG20KG',
+      purchasePrice: 320000,
+      leadTimeDays: 10,
+      minOrderQty: 2,
+    },
     {
       itemId: cupBlank._id.toString(),
-      supplierId: supplierIds[2],
-      supplierItemCode: 'LY-TRON-500ML',
-      purchasePrice: 3000,
+      supplierId: daidongtienId,
+      supplierItemCode: 'LY-PET-500ML-THUNG1000',
+      purchasePrice: 2800000,
       leadTimeDays: 5,
-      minOrderQty: 100,
+      minOrderQty: 2,
     },
-    adminId,
-  );
-  await supplierService.upsertSupplierItem(
+    {
+      itemId: cupBlank700._id.toString(),
+      supplierId: daidongtienId,
+      supplierItemCode: 'LY-PP-700ML-THUNG1000',
+      purchasePrice: 3200000,
+      leadTimeDays: 5,
+      minOrderQty: 2,
+    },
     {
       itemId: sugar._id.toString(),
-      supplierId: supplierIds[3],
-      supplierItemCode: 'DUONG-500G',
-      purchasePrice: 12000,
+      supplierId: tanthinhphatId,
+      supplierItemCode: 'DUONG-THUNG25KG',
+      purchasePrice: 300000,
       leadTimeDays: 2,
-      minOrderQty: 30,
+      minOrderQty: 2,
     },
-    adminId,
-  );
-  await supplierService.upsertSupplierItem(
+    {
+      itemId: freshMilk._id.toString(),
+      supplierId: nongtraixanhId,
+      supplierItemCode: 'SUA-TUOI-THUNG12L',
+      purchasePrice: 240000,
+      leadTimeDays: 2,
+      minOrderQty: 3,
+    },
+    {
+      itemId: condensedMilk._id.toString(),
+      supplierId: nongtraixanhId,
+      supplierItemCode: 'SUA-DAC-THUNG24LON',
+      purchasePrice: 360000,
+      leadTimeDays: 2,
+      minOrderQty: 2,
+    },
+    {
+      itemId: brownSyrup._id.toString(),
+      supplierId: achauId,
+      supplierItemCode: 'SYRUP-DDEN-THUNG12CHAI',
+      purchasePrice: 420000,
+      leadTimeDays: 4,
+      minOrderQty: 2,
+    },
+    {
+      itemId: peachTopping._id.toString(),
+      supplierId: achauId,
+      supplierItemCode: 'TOPPING-DAO-THUNG10KG',
+      purchasePrice: 500000,
+      leadTimeDays: 4,
+      minOrderQty: 2,
+    },
+    {
+      itemId: pearlTopping._id.toString(),
+      supplierId: mienNamId,
+      supplierItemCode: 'TRANCHAU-DEN-THUNG10KG',
+      purchasePrice: 450000,
+      leadTimeDays: 3,
+      minOrderQty: 2,
+    },
+    {
+      itemId: mixPowder._id.toString(),
+      supplierId: mienNamId,
+      supplierItemCode: 'BOT-PHACHE-DAU-THUNG10KG',
+      purchasePrice: 480000,
+      leadTimeDays: 3,
+      minOrderQty: 2,
+    },
     {
       itemId: straw._id.toString(),
-      supplierId: supplier2Id,
-      supplierItemCode: 'ONGHUT-STD',
-      purchasePrice: 200,
+      supplierId: vietthanhId,
+      supplierItemCode: 'ONGHUT-THUNG5000',
+      purchasePrice: 900000,
       leadTimeDays: 7,
-      minOrderQty: 500,
+      minOrderQty: 2,
     },
-    adminId,
-  );
+    {
+      itemId: paperBag._id.toString(),
+      supplierId: phuongnamId,
+      supplierItemCode: 'TUIGIAY-THUNG1000',
+      purchasePrice: 1200000,
+      leadTimeDays: 5,
+      minOrderQty: 2,
+    },
+    {
+      itemId: paperBox._id.toString(),
+      supplierId: phuongnamId,
+      supplierItemCode: 'HOPGIAY-THUNG500',
+      purchasePrice: 850000,
+      leadTimeDays: 5,
+      minOrderQty: 2,
+    },
+    {
+      itemId: cupLid._id.toString(),
+      supplierId: minhphatId,
+      supplierItemCode: 'NAPLY-INSAN-THUNG1000',
+      purchasePrice: 950000,
+      leadTimeDays: 6,
+      minOrderQty: 2,
+    },
+  ];
+
+  for (const supplierItem of SEED_SUPPLIER_ITEMS) {
+    await supplierService.upsertSupplierItem(supplierItem, adminId);
+  }
 
   logger.log(
     `Zone seed: ${zoneId}, shelf staging: ${stagingShelf._id.toString()}, shelf chính: ${mainShelf._id.toString()}`,
@@ -486,11 +860,22 @@ async function seedZoneAndItems(
     mainShelfId: mainShelf._id.toString(),
     itemIds: [
       material._id.toString(),
+      teaGreen._id.toString(),
       cupBlank._id.toString(),
+      cupBlank700._id.toString(),
       sugar._id.toString(),
+      freshMilk._id.toString(),
+      condensedMilk._id.toString(),
+      brownSyrup._id.toString(),
+      pearlTopping._id.toString(),
+      peachTopping._id.toString(),
+      mixPowder._id.toString(),
       straw._id.toString(),
+      paperBag._id.toString(),
+      paperBox._id.toString(),
+      cupLid._id.toString(),
     ],
-    supplierId,
+    supplierId: trathainguyenId,
   };
 }
 
