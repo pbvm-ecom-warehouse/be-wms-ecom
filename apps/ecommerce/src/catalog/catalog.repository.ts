@@ -160,6 +160,9 @@ export class CatalogRepository {
   async createProduct(data: Partial<Product>) {
     return this.productModel.create(data);
   }
+  async listInactiveVariants() {
+    return this.variantModel.find({ isActive: false }).lean();
+  }
 
   async listProducts(query: ProductQueryDto) {
     const filter: Record<string, unknown> = { status: ProductStatus.ACTIVE };
