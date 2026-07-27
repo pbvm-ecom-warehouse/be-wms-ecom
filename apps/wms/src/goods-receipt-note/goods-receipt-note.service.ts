@@ -386,7 +386,7 @@ export class GoodsReceiptNoteService {
       ),
       this.purchaseOrderService.listPurchaseOrdersByIds(purchaseOrderIds),
     ]);
-    const itemNameById = new Map(items.map((i) => [i._id.toString(), i.name]));
+    const itemById = new Map(items.map((i) => [i._id.toString(), i]));
     const poById = new Map(purchaseOrders.map((po) => [po._id.toString(), po]));
     const supplierIds = [
       ...new Set(purchaseOrders.map((po) => po.supplierId.toString())),
@@ -406,10 +406,18 @@ export class GoodsReceiptNoteService {
         supplierName: po
           ? supplierNameById.get(po.supplierId.toString())
           : undefined,
-        items: doc.items.map((item) => ({
-          ...(item as unknown as Record<string, unknown>),
-          itemName: itemNameById.get(item.itemId.toString()),
-        })),
+        items: doc.items.map((item) => {
+          const warehouseItem = itemById.get(item.itemId.toString());
+          return {
+            ...(item as unknown as Record<string, unknown>),
+            itemName: warehouseItem?.name,
+            itemBarcode: warehouseItem?.barcode,
+            itemCategory: warehouseItem?.category,
+            itemType: warehouseItem?.type,
+            itemImages: warehouseItem?.images,
+            isPerishable: warehouseItem?.isPerishable,
+          };
+        }),
       };
     });
   }

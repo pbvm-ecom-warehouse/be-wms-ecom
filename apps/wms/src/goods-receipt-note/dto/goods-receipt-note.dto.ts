@@ -17,6 +17,7 @@ import {
 } from 'class-validator';
 import { Types } from 'mongoose';
 import { GoodsReceiptNoteStatus } from '../schemas/goods-receipt-note.schema';
+import { ItemType } from '../../stock/schemas/warehouse-item.schema';
 
 export class CreateGoodsReceiptNoteItemDto {
   @ApiProperty({
@@ -125,10 +126,30 @@ export class GoodsReceiptNoteItemResponseDto {
   @ApiProperty()
   sku!: string;
 
-  /** Denormalize từ WarehouseItem.name tại thời điểm build response — không lưu trong GRN item. */
+  /** Denormalize từ WarehouseItem tại thời điểm build response — không lưu trong GRN item. */
   @Expose()
   @ApiPropertyOptional()
   itemName?: string;
+
+  @Expose()
+  @ApiPropertyOptional()
+  itemBarcode?: string;
+
+  @Expose()
+  @ApiPropertyOptional()
+  itemCategory?: string;
+
+  @Expose()
+  @ApiPropertyOptional({ enum: ItemType })
+  itemType?: ItemType;
+
+  @Expose()
+  @ApiPropertyOptional({ type: [String] })
+  itemImages?: string[];
+
+  @Expose()
+  @ApiPropertyOptional()
+  isPerishable?: boolean;
 
   @Expose()
   @ApiProperty()

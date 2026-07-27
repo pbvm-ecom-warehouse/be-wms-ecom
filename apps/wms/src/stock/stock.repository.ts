@@ -127,7 +127,8 @@ export class StockRepository {
 
   /**
    * Lấy thông tin hiển thị của nhiều mặt hàng theo id (batch) — dùng khi tạo StockCount
-   * (tránh N+1 query) và khi gắn itemName/barcode/category/type/images vào PO response.
+   * (tránh N+1 query) và khi gắn itemName/barcode/category/type/images/isPerishable
+   * vào PO/GRN response.
    */
   findItemsByIds(itemIds: Types.ObjectId[]): Promise<
     {
@@ -138,11 +139,12 @@ export class StockRepository {
       category?: string;
       type: ItemType;
       images: string[];
+      isPerishable: boolean;
     }[]
   > {
     return this.itemModel
       .find({ _id: { $in: itemIds } })
-      .select('sku name barcode category type images')
+      .select('sku name barcode category type images isPerishable')
       .lean()
       .exec();
   }
