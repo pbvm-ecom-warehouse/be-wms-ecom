@@ -191,7 +191,7 @@ export class LocationRepository {
     shelfIds: Types.ObjectId[],
   ): Promise<Map<string, { xM: number; yM: number }>> {
     const shelves = await this.shelfModel
-      .find({ _id: { $in: shelfIds } })
+      .find({ _id: { $in: shelfIds }, ...SOFT_DELETE_FILTER })
       .select('_id rackId')
       .lean()
       .exec();
@@ -200,7 +200,7 @@ export class LocationRepository {
     );
     const [racks, template] = await Promise.all([
       this.rackModel
-        .find({ _id: { $in: rackIds } })
+        .find({ _id: { $in: rackIds }, ...SOFT_DELETE_FILTER })
         .select('_id xM yM')
         .lean()
         .exec(),

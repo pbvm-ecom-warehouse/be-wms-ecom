@@ -133,23 +133,60 @@ export class PutAwaySuggestionService {
   }
 
   /**
-   * Điểm tổng hợp weighted scoring: same-SKU (ưu tiên tuyệt đối, +1000) +
-   * khoảng cách tới staging (càng gần càng cao, cap 100m) + best-fit thể
-   * tích (free càng nhỏ càng khít, chia /1000 để chỉ phân định khi 2 tiêu
-   * chí trên đã ngang nhau — free tính bằng cm³ nên đơn vị chênh lệch quá
-   * lớn nếu không chuẩn hoá).
+   * same-SKU bonus dùng chung cho cả 2 tiêu chí sắp xếp (single & combine):
+   * shelf đã chứa đúng SKU này luôn được ưu tiên tuyệt đối.
+   */
+  private sameSkuBonus(candidate: Candidate): number {
+    return candidate.hasSameSku ? SAME_SKU_BONUS : 0;
+  }
+
+  /**
+   * Điểm khoảng cách tới staging (càng gần càng cao, cap 100m) — dùng chung
+   * cho cả 2 tiêu chí sắp xếp.
+   */
+  private distanceScore(candidate: Candidate): number {
+    return candidate.distanceMeters === null
+      ? 0
+      : Math.max(
+          0,
+          DISTANCE_SCORE_CAP_METERS -
+            Math.min(DISTANCE_SCORE_CAP_METERS, candidate.distanceMeters),
+        );
+  }
+
+  /**
+   * Điểm tổng hợp weighted scoring cho path chọn 1 shelf đơn (best-fit):
+   * same-SKU (ưu tiên tuyệt đối, +1000) + khoảng cách tới staging (cap 100m)
+   * + best-fit thể tích (free càng nhỏ càng khít, chia /1000 để chỉ phân
+   * định khi 2 tiêu chí trên đã ngang nhau — free tính bằng cm³ nên đơn vị
+   * chênh lệch quá lớn nếu không chuẩn hoá). CHỈ dùng cho `rankSingleShelf`
+   * — path `combineShelves` cần tiêu chí ngược (free lớn ưu tiên hơn, xem
+   * `compareForCombine`), vì gộp nhiều shelf cần ưu tiên shelf nhiều chỗ
+   * trống để dùng ít shelf nhất có thể — dùng best-fit ở đây sẽ chọn nhầm
+   * shelf chật trước, gây tốn nhiều shelf hơn cần thiết.
    */
   private score(candidate: Candidate): number {
-    const sameSkuBonus = candidate.hasSameSku ? SAME_SKU_BONUS : 0;
-    const distanceScore =
-      candidate.distanceMeters === null
-        ? 0
-        : Math.max(
-            0,
-            DISTANCE_SCORE_CAP_METERS -
-              Math.min(DISTANCE_SCORE_CAP_METERS, candidate.distanceMeters),
-          );
-    return sameSkuBonus + distanceScore - candidate.free / 1000;
+    return (
+      this.sameSkuBonus(candidate) +
+      this.distanceScore(candidate) -
+      candidate.free / 1000
+    );
+  }
+
+  /**
+   * Comparator riêng cho `combineShelves`: same-SKU trước (ưu tiên tuyệt
+   * đối) → rồi khoảng cách tới staging (gần hơn ưu tiên hơn) → rồi
+   * capacity/free space DESC (nhiều chỗ trống hơn ưu tiên hơn — NGƯỢC với
+   * best-fit của `rankSingleShelf`) để gộp đủ qty bằng ít shelf nhất.
+   */
+  private compareForCombine(a: Candidate, b: Candidate): number {
+    const sameSkuDiff = this.sameSkuBonus(b) - this.sameSkuBonus(a);
+    if (sameSkuDiff !== 0) return sameSkuDiff;
+
+    const distanceDiff = this.distanceScore(b) - this.distanceScore(a);
+    if (distanceDiff !== 0) return distanceDiff;
+
+    return b.free - a.free;
   }
 
   private fits(itemDimsDesc: number[], shelf: ShelfDocument): boolean {
@@ -178,8 +215,8 @@ export class PutAwaySuggestionService {
     candidates: Candidate[],
     qty: number,
   ): PutAwaySuggestionResult {
-    const sorted = [...candidates].sort(
-      (a, b) => this.score(b) - this.score(a),
+    const sorted = [...candidates].sort((a, b) =>
+      this.compareForCombine(a, b),
     );
     const chosen: PutAwaySuggestionItem[] = [];
     let covered = 0;
