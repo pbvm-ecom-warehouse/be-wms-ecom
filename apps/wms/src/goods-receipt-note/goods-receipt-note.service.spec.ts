@@ -421,11 +421,23 @@ describe('GoodsReceiptNoteService', () => {
       ).rejects.toMatchObject({ code: 'GRN_INVALID_STATUS_TRANSITION' });
     });
 
+    it('throw GRN_IMAGE_REQUIRED khi GRN chưa có ảnh minh chứng', async () => {
+      repo.findGoodsReceiptNoteById.mockResolvedValue({
+        status: GoodsReceiptNoteStatus.DRAFT,
+        images: [],
+      });
+      await expect(
+        svc.confirmGoodsReceiptNote(grnId, actorId),
+      ).rejects.toMatchObject({ code: 'GRN_IMAGE_REQUIRED' });
+      expect(poService.getPurchaseOrder).not.toHaveBeenCalled();
+    });
+
     it('throw GRN_QTY_EXCEEDS_PO khi vượt expectedQty còn lại', async () => {
       repo.findGoodsReceiptNoteById.mockResolvedValue({
         _id: grnId,
         status: GoodsReceiptNoteStatus.DRAFT,
         purchaseOrderId,
+        images: ['https://img'],
         items: [{ itemId, sku: 'SKU-1', actualQty: 60, unit: 'cái' }],
       });
       poService.getPurchaseOrder.mockResolvedValue({
@@ -458,6 +470,7 @@ describe('GoodsReceiptNoteService', () => {
           _id: grnId,
           status: GoodsReceiptNoteStatus.DRAFT,
           purchaseOrderId,
+          images: ['https://img'],
           items: [
             {
               itemId,
@@ -560,6 +573,7 @@ describe('GoodsReceiptNoteService', () => {
           status: GoodsReceiptNoteStatus.DRAFT,
           purchaseOrderId,
           grnNumber: 'GRN-X',
+          images: ['https://img'],
           items: [{ itemId, sku: 'SKU-1', actualQty: 20, unit: 'cái' }],
         })
         .mockResolvedValueOnce(confirmed);
@@ -593,6 +607,7 @@ describe('GoodsReceiptNoteService', () => {
           _id: grnId,
           status: GoodsReceiptNoteStatus.DRAFT,
           purchaseOrderId,
+          images: ['https://img'],
           items: [
             {
               itemId,
@@ -746,6 +761,7 @@ describe('GoodsReceiptNoteService', () => {
           _id: grnId,
           status: GoodsReceiptNoteStatus.DRAFT,
           purchaseOrderId,
+          images: ['https://img'],
           items: [
             {
               itemId,
@@ -948,7 +964,7 @@ describe('GoodsReceiptNoteService', () => {
     const supplierObjectId = new Types.ObjectId();
     const itemObjectId = new Types.ObjectId();
 
-    it('gắn itemName/itemBarcode/itemCategory/itemType/itemImages/isPerishable vào từng dòng item + purchaseOrderNumber/supplierName vào GRN', async () => {
+    it('gắn itemName/barcode/category/type/images/isPerishable/unitPrice/receivedQty/remainingQty vào từng dòng item + purchaseOrderNumber/supplierName vào GRN', async () => {
       const doc = {
         _id: grnObjectId,
         purchaseOrderId: poObjectId,
@@ -983,6 +999,14 @@ describe('GoodsReceiptNoteService', () => {
           _id: poObjectId,
           poNumber: 'PO-X',
           supplierId: supplierObjectId,
+          items: [
+            {
+              itemId: itemObjectId,
+              expectedQty: 100,
+              receivedQty: 30,
+              unitPrice: 500000,
+            },
+          ],
         },
       ]);
       supplierService.listSuppliersByIds.mockResolvedValue([
@@ -999,11 +1023,14 @@ describe('GoodsReceiptNoteService', () => {
           sku: 'SKU-1',
           actualQty: 10,
           itemName: 'Ly nhựa',
-          itemBarcode: '2000000000015',
-          itemCategory: 'CUP',
-          itemType: 'CUP_BLANK',
-          itemImages: ['https://img'],
+          barcode: '2000000000015',
+          category: 'CUP',
+          type: 'CUP_BLANK',
+          images: ['https://img'],
           isPerishable: false,
+          unitPrice: 500000,
+          receivedQty: 30,
+          remainingQty: 70,
         },
       ]);
     });

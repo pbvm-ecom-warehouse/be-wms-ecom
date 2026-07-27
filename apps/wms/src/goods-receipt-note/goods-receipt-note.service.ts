@@ -146,6 +146,11 @@ export class GoodsReceiptNoteService {
     if (grn.status !== GoodsReceiptNoteStatus.DRAFT) {
       throw new AppException('GRN_INVALID_STATUS_TRANSITION');
     }
+    // Bắt buộc có ảnh minh chứng trước khi cộng tồn — chặn sớm trước transaction,
+    // tránh RECEIVER xác nhận nhận hàng mà không có bằng chứng đối soát sau này.
+    if (grn.images.length === 0) {
+      throw new AppException('GRN_IMAGE_REQUIRED');
+    }
 
     const po = await this.purchaseOrderService.getPurchaseOrder(
       grn.purchaseOrderId.toString(),
@@ -408,14 +413,26 @@ export class GoodsReceiptNoteService {
           : undefined,
         items: doc.items.map((item) => {
           const warehouseItem = itemById.get(item.itemId.toString());
+          // receivedQty/remainingQty lấy TẠI THỜI ĐIỂM trả response (không phải
+          // lúc tạo GRN) — phản ánh tổng đã nhận từ MỌI GRN đã CONFIRMED của PO
+          // này, để FE đối chiếu còn thiếu bao nhiêu so với PO.
+          const poItem = po?.items.find(
+            (i) => i.itemId.toString() === item.itemId.toString(),
+          );
           return {
             ...(item as unknown as Record<string, unknown>),
             itemName: warehouseItem?.name,
-            itemBarcode: warehouseItem?.barcode,
-            itemCategory: warehouseItem?.category,
-            itemType: warehouseItem?.type,
-            itemImages: warehouseItem?.images,
+            barcode: warehouseItem?.barcode,
+            category: warehouseItem?.category,
+            type: warehouseItem?.type,
+            images: warehouseItem?.images,
             isPerishable: warehouseItem?.isPerishable,
+            unitPrice: poItem?.unitPrice,
+            receivedQty: poItem?.receivedQty,
+            remainingQty:
+              poItem != null
+                ? poItem.expectedQty - poItem.receivedQty
+                : undefined,
           };
         }),
       };

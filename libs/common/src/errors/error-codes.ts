@@ -194,6 +194,10 @@ export const ERROR_CATALOG = {
     status: HttpStatus.NOT_FOUND,
     message: 'Kho chưa cấu hình vị trí nhận hàng (staging)',
   },
+  GRN_IMAGE_REQUIRED: {
+    status: HttpStatus.BAD_REQUEST,
+    message: 'Cần ít nhất 1 ảnh minh chứng trước khi xác nhận nhận hàng',
+  },
   PO_NOT_RECEIVABLE: {
     status: HttpStatus.CONFLICT,
     message:

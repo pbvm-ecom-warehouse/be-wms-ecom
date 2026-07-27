@@ -133,19 +133,19 @@ export class GoodsReceiptNoteItemResponseDto {
 
   @Expose()
   @ApiPropertyOptional()
-  itemBarcode?: string;
+  barcode?: string;
 
   @Expose()
   @ApiPropertyOptional()
-  itemCategory?: string;
+  category?: string;
 
   @Expose()
   @ApiPropertyOptional({ enum: ItemType })
-  itemType?: ItemType;
+  type?: ItemType;
 
   @Expose()
   @ApiPropertyOptional({ type: [String] })
-  itemImages?: string[];
+  images?: string[];
 
   @Expose()
   @ApiPropertyOptional()
@@ -154,6 +154,21 @@ export class GoodsReceiptNoteItemResponseDto {
   @Expose()
   @ApiProperty()
   expectedQty!: number;
+
+  /** Denormalize từ PurchaseOrderItem.unitPrice tại thời điểm build response. */
+  @Expose()
+  @ApiPropertyOptional()
+  unitPrice?: number;
+
+  /** Tổng đã nhận của PO tính đến hiện tại (mọi GRN đã CONFIRMED) — không phải riêng GRN này. */
+  @Expose()
+  @ApiPropertyOptional()
+  receivedQty?: number;
+
+  /** = expectedQty - receivedQty tại thời điểm trả response — FE không tự trừ lại. */
+  @Expose()
+  @ApiPropertyOptional()
+  remainingQty?: number;
 
   @Expose()
   @ApiProperty()
