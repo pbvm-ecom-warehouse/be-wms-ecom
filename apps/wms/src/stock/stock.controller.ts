@@ -151,16 +151,45 @@ export class StockController {
 
   @Patch(':id')
   @Roles(WmsRole.ADMIN, WmsRole.MANAGER)
+  @UseInterceptors(FilesInterceptor('images'))
   @ApiOperation({
     summary: 'Cập nhật mặt hàng kho (không sửa sku) — [ADMIN, MANAGER]',
+  })
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    description: 'Cập nhật thông tin và thay ảnh mặt hàng (optional): field `images`, có thể nhiều file.',
+    schema: {
+      type: 'object',
+      properties: {
+        name: { type: 'string' },
+        unit: { type: 'string' },
+        altUnits: { type: 'array', items: { type: 'object' } },
+        isPerishable: { type: 'boolean' },
+        nearExpiryDays: { type: 'number' },
+        minQuantity: { type: 'number' },
+        depth: { type: 'number' },
+        width: { type: 'number' },
+        height: { type: 'number' },
+        images: {
+          type: 'array',
+          items: { type: 'string', format: 'binary' },
+        },
+      },
+    },
   })
   @ApiOkResponse({ type: WarehouseItemResponseDto })
   async update(
     @Param('id') id: string,
     @Body() dto: UpdateWarehouseItemDto,
     @CurrentUser('sub') actorId: string,
+    @UploadedFiles() files?: Express.Multer.File[],
   ): Promise<WarehouseItemResponseDto> {
-    const doc = await this.svc.updateWarehouseItem(id, dto, actorId);
+    const imageFiles: UploadedImageFile[] = (files ?? []).map((file) => ({
+      buffer: file.buffer,
+      mimetype: file.mimetype,
+      size: file.size,
+    }));
+    const doc = await this.svc.updateWarehouseItem(id, dto, actorId, imageFiles);
     return plainToInstance(WarehouseItemResponseDto, doc.toObject(), TO_OPTS);
   }
 
