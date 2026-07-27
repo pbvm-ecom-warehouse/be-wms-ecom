@@ -7,6 +7,7 @@ import {
   RackTemplate,
   RackTemplateSchema,
 } from './schemas/rack-template.schema';
+import { Aisle, AisleSchema } from './schemas/aisle.schema';
 import { LocationRepository } from './location.repository';
 import { LocationService } from './location.service';
 import { LocationController } from './location.controller';
@@ -18,6 +19,7 @@ import { LocationController } from './location.controller';
       { name: Rack.name, schema: RackSchema },
       { name: Shelf.name, schema: ShelfSchema },
       { name: RackTemplate.name, schema: RackTemplateSchema },
+      { name: Aisle.name, schema: AisleSchema },
     ]),
   ],
   providers: [LocationRepository, LocationService],

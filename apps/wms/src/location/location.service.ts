@@ -9,6 +9,8 @@ import type { CreateRackDto, UpdateRackDto } from './dto/rack.dto';
 import type { CreateShelfDto, UpdateShelfDto } from './dto/shelf.dto';
 import type { RackTemplateDocument } from './schemas/rack-template.schema';
 import type { UpdateRackTemplateDto } from './dto/rack-template.dto';
+import type { AisleDocument } from './schemas/aisle.schema';
+import type { CreateAisleDto, UpdateAisleDto } from './dto/aisle.dto';
 
 @Injectable()
 export class LocationService {
@@ -156,5 +158,46 @@ export class LocationService {
     actorId: string,
   ): Promise<RackTemplateDocument> {
     return this.repo.updateRackTemplate(dto, actorId);
+  }
+
+  // ─── Aisle ────────────────────────────────────────────────────────────────
+
+  async createAisle(
+    dto: CreateAisleDto,
+    actorId: string,
+  ): Promise<AisleDocument> {
+    const existing = await this.repo.findAisleByCode(dto.code);
+    if (existing) throw new AppException('AISLE_CODE_EXISTS');
+    return this.repo.createAisle(dto, actorId);
+  }
+
+  async listAisles(): Promise<AisleDocument[]> {
+    return this.repo.findAllAisles();
+  }
+
+  async getAisle(id: string): Promise<AisleDocument> {
+    const doc = await this.repo.findAisleById(id);
+    if (!doc) throw new AppException('AISLE_NOT_FOUND');
+    return doc;
+  }
+
+  async updateAisle(
+    id: string,
+    dto: UpdateAisleDto,
+    actorId: string,
+  ): Promise<AisleDocument> {
+    if (dto.code) {
+      const existing = await this.repo.findAisleByCode(dto.code);
+      if (existing && existing._id.toString() !== id)
+        throw new AppException('AISLE_CODE_EXISTS');
+    }
+    const doc = await this.repo.updateAisle(id, dto, actorId);
+    if (!doc) throw new AppException('AISLE_NOT_FOUND');
+    return doc;
+  }
+
+  async deleteAisle(id: string, actorId: string): Promise<void> {
+    const deleted = await this.repo.softDeleteAisle(id, actorId);
+    if (!deleted) throw new AppException('AISLE_NOT_FOUND');
   }
 }

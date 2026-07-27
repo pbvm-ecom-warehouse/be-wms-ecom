@@ -8,9 +8,11 @@ const makeRepo = () => ({
   findZoneByCode: jest.fn(),
   findRackByCode: jest.fn(),
   findShelfByCode: jest.fn(),
+  findAisleByCode: jest.fn(),
   createZone: jest.fn(),
   createRack: jest.fn(),
   createShelf: jest.fn(),
+  createAisle: jest.fn(),
 });
 
 describe('LocationService', () => {
@@ -129,6 +131,29 @@ describe('LocationService', () => {
       const result = await svc.createShelf(baseDto, 'actor1');
 
       expect(repo.createShelf).toHaveBeenCalledWith(baseDto, 'actor1');
+      expect(result).toEqual(created);
+    });
+  });
+
+  describe('createAisle', () => {
+    const baseDto = { code: 'MAIN-01', type: 'MAIN' as const };
+
+    it('throw AISLE_CODE_EXISTS khi code đã tồn tại', async () => {
+      repo.findAisleByCode.mockResolvedValue({ _id: 'aisle-existing' });
+      await expect(svc.createAisle(baseDto, 'actor1')).rejects.toMatchObject({
+        code: 'AISLE_CODE_EXISTS',
+      });
+      expect(repo.createAisle).not.toHaveBeenCalled();
+    });
+
+    it('tạo aisle thành công khi code chưa tồn tại', async () => {
+      repo.findAisleByCode.mockResolvedValue(null);
+      const created = { _id: 'aisle1', code: 'MAIN-01' };
+      repo.createAisle.mockResolvedValue(created);
+
+      const result = await svc.createAisle(baseDto, 'actor1');
+
+      expect(repo.createAisle).toHaveBeenCalledWith(baseDto, 'actor1');
       expect(result).toEqual(created);
     });
   });

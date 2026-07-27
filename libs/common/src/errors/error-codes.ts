@@ -78,7 +78,7 @@ export const ERROR_CATALOG = {
     message: 'Đã có nhân viên trong hệ thống',
   },
 
-  // ── WMS — Location Structure (Zone/Rack/Shelf) ──────────────────────────────
+  // ── WMS — Location Structure (Zone/Rack/Shelf/Aisle/Gate) ───────────────────
   ZONE_NOT_FOUND: {
     status: HttpStatus.NOT_FOUND,
     message: 'Không tìm thấy khu vực',
@@ -102,6 +102,22 @@ export const ERROR_CATALOG = {
   SHELF_CODE_EXISTS: {
     status: HttpStatus.CONFLICT,
     message: 'Mã barcode tầng đã tồn tại',
+  },
+  AISLE_NOT_FOUND: {
+    status: HttpStatus.NOT_FOUND,
+    message: 'Không tìm thấy lối đi',
+  },
+  AISLE_CODE_EXISTS: {
+    status: HttpStatus.CONFLICT,
+    message: 'Mã lối đi đã tồn tại',
+  },
+  GATE_NOT_FOUND: {
+    status: HttpStatus.NOT_FOUND,
+    message: 'Không tìm thấy cổng',
+  },
+  GATE_CODE_EXISTS: {
+    status: HttpStatus.CONFLICT,
+    message: 'Mã cổng đã tồn tại',
   },
   RACK_TEMPLATE_NOT_FOUND: {
     status: HttpStatus.NOT_FOUND,

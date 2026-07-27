@@ -7,6 +7,7 @@ import { Zone } from './schemas/zone.schema';
 import { Rack } from './schemas/rack.schema';
 import { Shelf } from './schemas/shelf.schema';
 import { RackTemplate } from './schemas/rack-template.schema';
+import { Aisle } from './schemas/aisle.schema';
 
 const makeModel = (overrides: Record<string, jest.Mock> = {}) => ({
   findOne: jest.fn().mockReturnThis(),
@@ -25,6 +26,7 @@ describe('LocationRepository', () => {
   let rackModel: ReturnType<typeof makeModel>;
   let shelfModel: ReturnType<typeof makeModel>;
   let rackTemplateModel: ReturnType<typeof makeModel>;
+  let aisleModel: ReturnType<typeof makeModel>;
   const zoneId = new Types.ObjectId();
   const actorId = new Types.ObjectId().toString();
 
@@ -33,6 +35,7 @@ describe('LocationRepository', () => {
     rackModel = makeModel();
     shelfModel = makeModel();
     rackTemplateModel = makeModel();
+    aisleModel = makeModel();
     const module = await Test.createTestingModule({
       providers: [
         LocationRepository,
@@ -43,6 +46,7 @@ describe('LocationRepository', () => {
           provide: getModelToken(RackTemplate.name),
           useValue: rackTemplateModel,
         },
+        { provide: getModelToken(Aisle.name), useValue: aisleModel },
       ],
     }).compile();
     repo = module.get(LocationRepository);
@@ -207,6 +211,54 @@ describe('LocationRepository', () => {
         updatedBy: new Types.ObjectId(actorId),
       });
       expect(result).toBe(mockDoc);
+    });
+  });
+
+  describe('createAisle', () => {
+    it('gọi create với createdBy/updatedBy', async () => {
+      const dto = { code: 'MAIN-01', type: 'MAIN' as const };
+      const mockDoc = { _id: new Types.ObjectId(), ...dto };
+      aisleModel.create.mockResolvedValue(mockDoc);
+
+      const result = await repo.createAisle(dto, actorId);
+
+      expect(aisleModel.create).toHaveBeenCalledWith({
+        ...dto,
+        createdBy: new Types.ObjectId(actorId),
+        updatedBy: new Types.ObjectId(actorId),
+      });
+      expect(result).toBe(mockDoc);
+    });
+  });
+
+  describe('findAllAisles', () => {
+    it('lọc chưa soft-delete, sort theo code asc', async () => {
+      aisleModel.exec.mockResolvedValue([]);
+      await repo.findAllAisles();
+      expect(aisleModel.find).toHaveBeenCalledWith({ deletedAt: null });
+      expect(aisleModel.sort).toHaveBeenCalledWith({ code: 1 });
+    });
+  });
+
+  describe('findAisleByCode', () => {
+    it('lọc theo code, chưa soft-delete', async () => {
+      aisleModel.exec.mockResolvedValue(null);
+      await repo.findAisleByCode('MAIN-01');
+      expect(aisleModel.findOne).toHaveBeenCalledWith({
+        code: 'MAIN-01',
+        deletedAt: null,
+      });
+    });
+  });
+
+  describe('softDeleteAisle', () => {
+    it('trả về true khi modifiedCount > 0', async () => {
+      aisleModel.exec.mockResolvedValue({ modifiedCount: 1 });
+      const result = await repo.softDeleteAisle(
+        new Types.ObjectId().toString(),
+        actorId,
+      );
+      expect(result).toBe(true);
     });
   });
 

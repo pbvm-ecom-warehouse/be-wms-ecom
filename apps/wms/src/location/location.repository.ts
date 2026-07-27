@@ -12,6 +12,8 @@ import { CreateZoneDto, UpdateZoneDto } from './dto/zone.dto';
 import { CreateRackDto, UpdateRackDto } from './dto/rack.dto';
 import { CreateShelfDto, UpdateShelfDto } from './dto/shelf.dto';
 import { UpdateRackTemplateDto } from './dto/rack-template.dto';
+import { Aisle, AisleDocument } from './schemas/aisle.schema';
+import { CreateAisleDto, UpdateAisleDto } from './dto/aisle.dto';
 
 const SOFT_DELETE_FILTER = { deletedAt: null } as const;
 
@@ -23,6 +25,7 @@ export class LocationRepository {
     @InjectModel(Shelf.name) private readonly shelfModel: Model<ShelfDocument>,
     @InjectModel(RackTemplate.name)
     private readonly rackTemplateModel: Model<RackTemplateDocument>,
+    @InjectModel(Aisle.name) private readonly aisleModel: Model<AisleDocument>,
   ) {}
 
   // ─── Zone ─────────────────────────────────────────────────────────────────
@@ -239,5 +242,54 @@ export class LocationRepository {
     current.set({ ...dto, updatedBy: new Types.ObjectId(actorId) });
     await current.save();
     return current;
+  }
+
+  // ─── Aisle ────────────────────────────────────────────────────────────────
+
+  async createAisle(
+    dto: CreateAisleDto,
+    actorId: string,
+  ): Promise<AisleDocument> {
+    return this.aisleModel.create({
+      ...dto,
+      createdBy: new Types.ObjectId(actorId),
+      updatedBy: new Types.ObjectId(actorId),
+    });
+  }
+
+  async findAllAisles(): Promise<AisleDocument[]> {
+    return this.aisleModel.find(SOFT_DELETE_FILTER).sort({ code: 1 }).exec();
+  }
+
+  async findAisleById(id: string): Promise<AisleDocument | null> {
+    return this.aisleModel.findOne({ _id: id, ...SOFT_DELETE_FILTER }).exec();
+  }
+
+  async findAisleByCode(code: string): Promise<AisleDocument | null> {
+    return this.aisleModel.findOne({ code, ...SOFT_DELETE_FILTER }).exec();
+  }
+
+  async updateAisle(
+    id: string,
+    dto: UpdateAisleDto,
+    actorId: string,
+  ): Promise<AisleDocument | null> {
+    return this.aisleModel
+      .findOneAndUpdate(
+        { _id: id, ...SOFT_DELETE_FILTER },
+        { ...dto, updatedBy: new Types.ObjectId(actorId) },
+        { new: true },
+      )
+      .exec();
+  }
+
+  async softDeleteAisle(id: string, actorId: string): Promise<boolean> {
+    const res = await this.aisleModel
+      .updateOne(
+        { _id: id, ...SOFT_DELETE_FILTER },
+        { deletedAt: new Date(), updatedBy: new Types.ObjectId(actorId) },
+      )
+      .exec();
+    return res.modifiedCount > 0;
   }
 }
