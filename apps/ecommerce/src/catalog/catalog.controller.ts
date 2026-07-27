@@ -142,6 +142,7 @@ export class CatalogAdminController {
       excludeExtraneousValues: true,
     });
   }
+  //siuuuuuuuuuuuuuuu
   @Post('categories')
   @ApiOperation({ summary: '[Admin] Tạo danh mục mới' })
   @ApiCreatedResponse({ type: CategoryResponseDto })
