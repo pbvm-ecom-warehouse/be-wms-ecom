@@ -267,6 +267,102 @@ describe('StockService', () => {
     });
   });
 
+  describe('updateWarehouseItemImages', () => {
+    const actorId = new Types.ObjectId().toString();
+    const file = {
+      buffer: Buffer.from('fake'),
+      mimetype: 'image/png',
+      size: 1024,
+    };
+
+    it('throw STOCK_ITEM_NOT_FOUND khi item không tồn tại, không gọi upload', async () => {
+      repo.findItemByIdDocument.mockResolvedValue(null);
+
+      await expect(
+        svc.updateWarehouseItemImages('missing', actorId, [file]),
+      ).rejects.toMatchObject({ code: 'STOCK_ITEM_NOT_FOUND' });
+      expect(cloudinary.uploadImage).not.toHaveBeenCalled();
+      expect(repo.updateItem).not.toHaveBeenCalled();
+    });
+
+    it('upload ảnh mới rồi thay thế toàn bộ mảng images cũ', async () => {
+      repo.findItemByIdDocument.mockResolvedValue({
+        _id: new Types.ObjectId(),
+        sku: 'SKU-1',
+        images: ['https://old-url'],
+      });
+      cloudinary.uploadImage.mockResolvedValue({
+        url: 'https://new-url',
+        publicId: 'wms/warehouse-item/abc',
+      });
+      const updatedDoc = {
+        _id: new Types.ObjectId(),
+        images: ['https://new-url'],
+      };
+      repo.updateItem.mockResolvedValue(updatedDoc);
+
+      const result = await svc.updateWarehouseItemImages('item1', actorId, [
+        file,
+      ]);
+
+      expect(cloudinary.uploadImage).toHaveBeenCalledWith(
+        file.buffer,
+        'wms/warehouse-item',
+      );
+      expect(repo.updateItem).toHaveBeenCalledWith(
+        'item1',
+        { images: ['https://new-url'] },
+        actorId,
+      );
+      expect(result).toBe(updatedDoc);
+    });
+
+    it('mảng file rỗng → thay thế bằng images: [] (xoá hết ảnh)', async () => {
+      repo.findItemByIdDocument.mockResolvedValue({
+        _id: new Types.ObjectId(),
+        sku: 'SKU-1',
+      });
+      const updatedDoc = { _id: new Types.ObjectId(), images: [] };
+      repo.updateItem.mockResolvedValue(updatedDoc);
+
+      const result = await svc.updateWarehouseItemImages('item1', actorId, []);
+
+      expect(cloudinary.uploadImage).not.toHaveBeenCalled();
+      expect(repo.updateItem).toHaveBeenCalledWith(
+        'item1',
+        { images: [] },
+        actorId,
+      );
+      expect(result).toBe(updatedDoc);
+    });
+
+    it('reject file sai định dạng, không ghi DB', async () => {
+      repo.findItemByIdDocument.mockResolvedValue({
+        _id: new Types.ObjectId(),
+        sku: 'SKU-1',
+      });
+
+      await expect(
+        svc.updateWarehouseItemImages('item1', actorId, [
+          { ...file, mimetype: 'application/pdf' },
+        ]),
+      ).rejects.toMatchObject({ code: 'VALIDATION_FAILED' });
+      expect(repo.updateItem).not.toHaveBeenCalled();
+    });
+
+    it('throw STOCK_ITEM_NOT_FOUND nếu bị xoá giữa lúc check tồn tại và lúc update (race)', async () => {
+      repo.findItemByIdDocument.mockResolvedValue({
+        _id: new Types.ObjectId(),
+        sku: 'SKU-1',
+      });
+      repo.updateItem.mockResolvedValue(null);
+
+      await expect(
+        svc.updateWarehouseItemImages('item1', actorId, []),
+      ).rejects.toMatchObject({ code: 'STOCK_ITEM_NOT_FOUND' });
+    });
+  });
+
   describe('checkAndEmitStockLow', () => {
     const itemId = new Types.ObjectId();
 

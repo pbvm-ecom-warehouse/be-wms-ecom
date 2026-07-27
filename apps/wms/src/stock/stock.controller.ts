@@ -164,6 +164,46 @@ export class StockController {
     return plainToInstance(WarehouseItemResponseDto, doc.toObject(), TO_OPTS);
   }
 
+  @Patch(':id/images')
+  @Roles(WmsRole.ADMIN, WmsRole.MANAGER)
+  @UseInterceptors(FilesInterceptor('images'))
+  @ApiOperation({
+    summary:
+      'Thay thế toàn bộ ảnh mặt hàng (ghi đè, không cộng dồn) — [ADMIN, MANAGER]',
+  })
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    description:
+      'Ảnh mặt hàng: field `images`, có thể nhiều file. Danh sách này thay thế hoàn toàn ảnh cũ (gửi rỗng để xoá hết ảnh).',
+    schema: {
+      type: 'object',
+      properties: {
+        images: {
+          type: 'array',
+          items: { type: 'string', format: 'binary' },
+        },
+      },
+    },
+  })
+  @ApiOkResponse({ type: WarehouseItemResponseDto })
+  async updateImages(
+    @Param('id') id: string,
+    @CurrentUser('sub') actorId: string,
+    @UploadedFiles() files?: Express.Multer.File[],
+  ): Promise<WarehouseItemResponseDto> {
+    const imageFiles: UploadedImageFile[] = (files ?? []).map((file) => ({
+      buffer: file.buffer,
+      mimetype: file.mimetype,
+      size: file.size,
+    }));
+    const doc = await this.svc.updateWarehouseItemImages(
+      id,
+      actorId,
+      imageFiles,
+    );
+    return plainToInstance(WarehouseItemResponseDto, doc.toObject(), TO_OPTS);
+  }
+
   @Delete(':id')
   @Roles(WmsRole.ADMIN)
   @HttpCode(HttpStatus.NO_CONTENT)

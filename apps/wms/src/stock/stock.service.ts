@@ -274,4 +274,33 @@ export class StockService {
     const deleted = await this.stockRepo.softDeleteItem(id, actorId);
     if (!deleted) throw new AppException('STOCK_ITEM_NOT_FOUND');
   }
+
+  /**
+   * Thay thế toàn bộ ảnh của 1 WarehouseItem — không cộng dồn vào mảng cũ.
+   * Check item tồn tại TRƯỚC khi upload lên Cloudinary, tránh tốn ảnh mồ côi
+   * khi id sai. Không xoá ảnh cũ trên Cloudinary (project chưa quản lý vòng
+   * đời ảnh trên Cloudinary ở đâu cả — nhất quán, không tự thêm ở đây).
+   */
+  async updateWarehouseItemImages(
+    id: string,
+    actorId: string,
+    imageFiles: UploadedImageFile[],
+  ): Promise<WarehouseItemDocument> {
+    const existing = await this.stockRepo.findItemByIdDocument(id);
+    if (!existing) throw new AppException('STOCK_ITEM_NOT_FOUND');
+
+    const images: string[] = [];
+    for (const file of imageFiles) {
+      this.validateImageFile(file);
+      const { url } = await this.cloudinary.uploadImage(
+        file.buffer,
+        'wms/warehouse-item',
+      );
+      images.push(url);
+    }
+
+    const doc = await this.stockRepo.updateItem(id, { images }, actorId);
+    if (!doc) throw new AppException('STOCK_ITEM_NOT_FOUND');
+    return doc;
+  }
 }
