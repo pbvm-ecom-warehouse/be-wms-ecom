@@ -184,6 +184,45 @@ describe('GoodsReceiptNoteService', () => {
       ).rejects.toMatchObject({ code: 'GRN_ITEM_NOT_IN_PO' });
     });
 
+    it('throw GRN_QTY_EXCEEDS_PO khi dòng PO đã nhận đủ (receivedQty === expectedQty)', async () => {
+      poService.getPurchaseOrder.mockResolvedValue({
+        _id: purchaseOrderId,
+        status: PurchaseOrderStatus.PARTIALLY_RECEIVED,
+        items: [
+          {
+            itemId,
+            sku: 'SKU-1',
+            unit: 'cái',
+            expectedQty: 100,
+            receivedQty: 100,
+          },
+        ],
+      });
+      await expect(
+        svc.createGoodsReceiptNote(baseDto as never, actorId),
+      ).rejects.toMatchObject({ code: 'GRN_QTY_EXCEEDS_PO' });
+    });
+
+    it('throw GRN_QTY_EXCEEDS_PO khi actualQty vượt phần còn thiếu của dòng PO', async () => {
+      poService.getPurchaseOrder.mockResolvedValue({
+        _id: purchaseOrderId,
+        status: PurchaseOrderStatus.SENT,
+        items: [
+          {
+            itemId,
+            sku: 'SKU-1',
+            unit: 'cái',
+            expectedQty: 100,
+            receivedQty: 90,
+          },
+        ],
+      });
+      // baseDto gửi actualQty: 20, chỉ còn thiếu 10 → vượt
+      await expect(
+        svc.createGoodsReceiptNote(baseDto as never, actorId),
+      ).rejects.toMatchObject({ code: 'GRN_QTY_EXCEEDS_PO' });
+    });
+
     it('throw GRN_LOT_INFO_MISSING khi item perishable thiếu lotNumber/expiryDate', async () => {
       poService.getPurchaseOrder.mockResolvedValue({
         _id: purchaseOrderId,

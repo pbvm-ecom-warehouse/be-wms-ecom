@@ -93,6 +93,15 @@ export class GoodsReceiptNoteService {
         throw new AppException('GRN_ITEM_NOT_IN_PO');
       }
 
+      // Chặn ngay lúc tạo (không đợi tới confirm) nếu dòng PO này đã nhận đủ hoặc
+      // actualQty client gửi vượt phần còn thiếu — tránh tạo GRN DRAFT "vô nghĩa"
+      // chắc chắn sẽ bị GRN_QTY_EXCEEDS_PO chặn lại lúc confirm, đỡ tốn công RECEIVER
+      // nhập lô/hạn dùng/ảnh minh chứng cho một phiếu không thể xác nhận được.
+      const remainingQty = poItem.expectedQty - poItem.receivedQty;
+      if (remainingQty <= 0 || item.actualQty > remainingQty) {
+        throw new AppException('GRN_QTY_EXCEEDS_PO');
+      }
+
       const warehouseItem = await this.stockRepo.findItemById(item.itemId);
       if (
         warehouseItem?.isPerishable &&
