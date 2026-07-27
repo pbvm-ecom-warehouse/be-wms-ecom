@@ -12,6 +12,7 @@ import { Gate, GateSchema } from './schemas/gate.schema';
 import { LocationRepository } from './location.repository';
 import { LocationService } from './location.service';
 import { LocationController } from './location.controller';
+import { StockModule } from '../stock/stock.module';
 
 @Module({
   imports: [
@@ -23,6 +24,10 @@ import { LocationController } from './location.controller';
       { name: Aisle.name, schema: AisleSchema },
       { name: Gate.name, schema: GateSchema },
     ]),
+    // LocationService.getShelfContents cần StockRepository để join tồn kho
+    // thật vào shelf — chiều phụ thuộc mới Location → Stock, KHÔNG ngược lại
+    // (StockModule không import LocationModule) nên không tạo vòng lặp.
+    StockModule,
   ],
   providers: [LocationRepository, LocationService],
   controllers: [LocationController],

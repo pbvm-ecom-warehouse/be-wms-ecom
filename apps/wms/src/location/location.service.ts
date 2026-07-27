@@ -1,6 +1,8 @@
 import { Injectable } from '@nestjs/common';
+import { Types } from 'mongoose';
 import { AppException } from '@app/common';
 import { LocationRepository } from './location.repository';
+import { StockRepository } from '../stock/stock.repository';
 import type { ZoneDocument } from './schemas/zone.schema';
 import type { RackDocument } from './schemas/rack.schema';
 import type { ShelfDocument } from './schemas/shelf.schema';
@@ -16,7 +18,10 @@ import type { CreateGateDto, UpdateGateDto } from './dto/gate.dto';
 
 @Injectable()
 export class LocationService {
-  constructor(private readonly repo: LocationRepository) {}
+  constructor(
+    private readonly repo: LocationRepository,
+    private readonly stockRepo: StockRepository,
+  ) {}
 
   // ─── Zone ─────────────────────────────────────────────────────────────────
 
@@ -259,5 +264,14 @@ export class LocationService {
       this.repo.getRackTemplate(),
     ]);
     return { zones, racks, aisles, gates, rackTemplate };
+  }
+
+  // ─── Shelf contents (rack elevation) ─────────────────────────────────────
+
+  /** Tồn kho thật trong 1 shelf — validate shelf tồn tại trước, dùng cho FE
+   * vẽ rack elevation (không suy diễn, đọc thẳng InventoryStock). */
+  async getShelfContents(shelfId: string) {
+    await this.getShelf(shelfId); // throw SHELF_NOT_FOUND nếu không tồn tại
+    return this.stockRepo.findInventoryByShelfId(new Types.ObjectId(shelfId));
   }
 }

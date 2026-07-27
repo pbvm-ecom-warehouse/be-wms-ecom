@@ -52,6 +52,7 @@ import {
   GateResponseDto,
 } from './dto/gate.dto';
 import { LayoutResponseDto } from './dto/layout.dto';
+import { ShelfContentResponseDto } from './dto/shelf-content.dto';
 
 const TO_INSTANCE_OPTS = { excludeExtraneousValues: true } as const;
 
@@ -348,6 +349,20 @@ export class LocationController {
   async getShelf(@Param('id') id: string): Promise<ShelfResponseDto> {
     const doc = await this.svc.getShelf(id);
     return plainToInstance(ShelfResponseDto, doc.toObject(), TO_INSTANCE_OPTS);
+  }
+
+  @Get('shelves/:id/contents')
+  @Roles(WmsRole.MANAGER, WmsRole.ADMIN, WmsRole.RECEIVER, WmsRole.PICKER)
+  @ApiOperation({
+    summary:
+      'Tồn kho thật tại 1 shelf (cho rack elevation view) — [MANAGER, ADMIN, RECEIVER, PICKER]',
+  })
+  @ApiOkResponse({ type: [ShelfContentResponseDto] })
+  async getShelfContents(
+    @Param('id') id: string,
+  ): Promise<ShelfContentResponseDto[]> {
+    const rows = await this.svc.getShelfContents(id);
+    return plainToInstance(ShelfContentResponseDto, rows, TO_INSTANCE_OPTS);
   }
 
   @Patch('shelves/:id')

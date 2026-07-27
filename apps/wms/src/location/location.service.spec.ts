@@ -1,8 +1,14 @@
 // apps/wms/src/location/location.service.spec.ts
 import { LocationService } from './location.service';
+import type { StockRepository } from '../stock/stock.repository';
+
+const makeStockRepo = () => ({
+  findInventoryByShelfId: jest.fn(),
+});
 
 const makeRepo = () => ({
   findStagingShelf: jest.fn(),
+  findShelfById: jest.fn(),
   findRackById: jest.fn(),
   findZoneById: jest.fn(),
   findZoneByCode: jest.fn(),
@@ -23,10 +29,15 @@ const makeRepo = () => ({
 describe('LocationService', () => {
   let svc: LocationService;
   let repo: ReturnType<typeof makeRepo>;
+  let stockRepo: ReturnType<typeof makeStockRepo>;
 
   beforeEach(() => {
     repo = makeRepo();
-    svc = new LocationService(repo as never);
+    stockRepo = makeStockRepo();
+    svc = new LocationService(
+      repo as never,
+      stockRepo as unknown as StockRepository,
+    );
   });
 
   describe('findStagingShelf', () => {
@@ -185,6 +196,39 @@ describe('LocationService', () => {
         gates: mockGates,
         rackTemplate: mockRackTemplate,
       });
+    });
+  });
+
+  describe('getShelfContents', () => {
+    it('throw SHELF_NOT_FOUND khi shelf không tồn tại — không gọi stockRepo', async () => {
+      repo.findShelfById.mockResolvedValue(null);
+
+      await expect(svc.getShelfContents('shelf-1')).rejects.toMatchObject({
+        code: 'SHELF_NOT_FOUND',
+      });
+      expect(stockRepo.findInventoryByShelfId).not.toHaveBeenCalled();
+    });
+
+    it('shelf tồn tại → trả về danh sách tồn kho thật từ stockRepo', async () => {
+      repo.findShelfById.mockResolvedValue({ id: 'shelf-1' });
+      const rows = [
+        {
+          id: 'row-1',
+          sku: 'SKU-001',
+          itemName: 'Áo thun',
+          unit: 'cái',
+          quantity: 10,
+          lotNumber: null,
+          expiryDate: null,
+        },
+      ];
+      stockRepo.findInventoryByShelfId.mockResolvedValue(rows);
+
+      const result = await svc.getShelfContents('shelf-1');
+
+      expect(repo.findShelfById).toHaveBeenCalledWith('shelf-1');
+      expect(stockRepo.findInventoryByShelfId).toHaveBeenCalledTimes(1);
+      expect(result).toEqual(rows);
     });
   });
 });

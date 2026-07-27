@@ -670,4 +670,83 @@ describe('StockRepository', () => {
       ]);
     });
   });
+
+  describe('findInventoryByShelfId', () => {
+    it('trả về danh sách item + lot tại 1 shelf, quantity > 0', async () => {
+      const rowId1 = new Types.ObjectId();
+      const rowId2 = new Types.ObjectId();
+
+      inventoryModel.aggregate = jest.fn().mockResolvedValue([
+        {
+          _id: rowId1,
+          sku: 'SKU-001',
+          itemName: 'Áo thun',
+          unit: 'cái',
+          quantity: 10,
+          lotNumber: null,
+          expiryDate: null,
+        },
+        {
+          _id: rowId2,
+          sku: 'SKU-002',
+          itemName: 'Sữa tươi',
+          unit: 'hộp',
+          quantity: 5,
+          lotNumber: 'LOT-A',
+          expiryDate: new Date('2026-08-01'),
+        },
+      ]);
+
+      const rows = await repo.findInventoryByShelfId(shelfId);
+
+      expect(inventoryModel.aggregate).toHaveBeenCalledTimes(1);
+      const pipeline = (inventoryModel.aggregate as jest.Mock).mock
+        .calls[0][0] as Record<string, unknown>[];
+      expect(pipeline[0]).toMatchObject({
+        $match: { shelfId, quantity: { $gt: 0 } },
+      });
+      expect(
+        pipeline.some(
+          (stage) =>
+            '$lookup' in stage &&
+            (stage['$lookup'] as Record<string, unknown>)['from'] ===
+              'warehouse_items',
+        ),
+      ).toBe(true);
+      expect(
+        pipeline.some(
+          (stage) =>
+            '$lookup' in stage &&
+            (stage['$lookup'] as Record<string, unknown>)['from'] === 'lots',
+        ),
+      ).toBe(true);
+
+      expect(rows.length).toBeGreaterThan(0);
+      expect(rows[0]).toMatchObject({
+        sku: expect.any(String) as string,
+        itemName: expect.any(String) as string,
+        quantity: expect.any(Number) as number,
+      });
+      expect(rows).toEqual([
+        {
+          id: rowId1.toString(),
+          sku: 'SKU-001',
+          itemName: 'Áo thun',
+          unit: 'cái',
+          quantity: 10,
+          lotNumber: null,
+          expiryDate: null,
+        },
+        {
+          id: rowId2.toString(),
+          sku: 'SKU-002',
+          itemName: 'Sữa tươi',
+          unit: 'hộp',
+          quantity: 5,
+          lotNumber: 'LOT-A',
+          expiryDate: new Date('2026-08-01'),
+        },
+      ]);
+    });
+  });
 });
