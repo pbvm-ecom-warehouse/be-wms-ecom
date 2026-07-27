@@ -138,6 +138,22 @@ export class LocationRepository {
     return updated;
   }
 
+  async softDeleteAllZones(
+    actorId: string,
+    session?: ClientSession,
+  ): Promise<number> {
+    const query = this.zoneModel.updateMany(
+      SOFT_DELETE_FILTER,
+      {
+        deletedAt: new Date(),
+        updatedBy: new Types.ObjectId(actorId),
+      },
+      session ? { session } : undefined,
+    );
+    const result = await query.exec();
+    return result.modifiedCount;
+  }
+
   // ─── Zone ─────────────────────────────────────────────────────────────────
 
   async createZone(
@@ -326,6 +342,22 @@ export class LocationRepository {
       : this.rackModel.updateOne(filter, update);
     const res = await query.exec();
     return res.modifiedCount > 0;
+  }
+
+  async softDeleteAllRacks(
+    actorId: string,
+    session?: ClientSession,
+  ): Promise<number> {
+    const query = this.rackModel.updateMany(
+      SOFT_DELETE_FILTER,
+      {
+        deletedAt: new Date(),
+        updatedBy: new Types.ObjectId(actorId),
+      },
+      session ? { session } : undefined,
+    );
+    const result = await query.exec();
+    return result.modifiedCount;
   }
 
   // ─── Shelf ────────────────────────────────────────────────────────────────
@@ -526,6 +558,22 @@ export class LocationRepository {
     return res.modifiedCount > 0;
   }
 
+  async softDeleteAllShelves(
+    actorId: string,
+    session?: ClientSession,
+  ): Promise<number> {
+    const query = this.shelfModel.updateMany(
+      SOFT_DELETE_FILTER,
+      {
+        deletedAt: new Date(),
+        updatedBy: new Types.ObjectId(actorId),
+      },
+      session ? { session } : undefined,
+    );
+    const result = await query.exec();
+    return result.modifiedCount;
+  }
+
   // ─── RackTemplate (singleton) ────────────────────────────────────────────
 
   /** Lazy init: tạo bản ghi mặc định nếu collection rỗng — tránh cần seed script riêng. */
@@ -628,6 +676,22 @@ export class LocationRepository {
     return res.modifiedCount > 0;
   }
 
+  async softDeleteAllAisles(
+    actorId: string,
+    session?: ClientSession,
+  ): Promise<number> {
+    const query = this.aisleModel.updateMany(
+      SOFT_DELETE_FILTER,
+      {
+        deletedAt: new Date(),
+        updatedBy: new Types.ObjectId(actorId),
+      },
+      session ? { session } : undefined,
+    );
+    const result = await query.exec();
+    return result.modifiedCount;
+  }
+
   // ─── Gate ─────────────────────────────────────────────────────────────────
 
   async createGate(
@@ -702,5 +766,21 @@ export class LocationRepository {
       : this.gateModel.updateOne(filter, update);
     const res = await query.exec();
     return res.modifiedCount > 0;
+  }
+
+  async softDeleteAllGates(
+    actorId: string,
+    session?: ClientSession,
+  ): Promise<number> {
+    const query = this.gateModel.updateMany(
+      SOFT_DELETE_FILTER,
+      {
+        deletedAt: new Date(),
+        updatedBy: new Types.ObjectId(actorId),
+      },
+      session ? { session } : undefined,
+    );
+    const result = await query.exec();
+    return result.modifiedCount;
   }
 }

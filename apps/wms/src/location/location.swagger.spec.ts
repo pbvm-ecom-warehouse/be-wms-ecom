@@ -29,6 +29,7 @@ describe('LocationController Swagger layout contract', () => {
       );
       const operation = document.paths['/location/layout']?.patch;
       const getOperation = document.paths['/location/layout']?.get;
+      const resetOperation = document.paths['/location/layout/reset']?.post;
 
       expect(getOperation?.responses['200']).toEqual(
         expect.objectContaining({
@@ -73,6 +74,18 @@ describe('LocationController Swagger layout contract', () => {
         }),
       );
       expect(operation?.responses['422']).toBeDefined();
+      expect(resetOperation?.responses['200']).toEqual(
+        expect.objectContaining({
+          content: expect.objectContaining({
+            'application/json': expect.objectContaining({
+              schema: {
+                $ref: '#/components/schemas/LayoutResponseEnvelopeDto',
+              },
+            }),
+          }),
+        }),
+      );
+      expect(resetOperation?.responses['409']).toBeDefined();
       expect(
         document.components?.schemas?.SaveWarehouseLayoutDto,
       ).toBeDefined();

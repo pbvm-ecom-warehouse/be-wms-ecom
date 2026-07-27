@@ -8,6 +8,7 @@ const transactionSession = {} as never;
 const makeStockRepo = () => ({
   findInventoryByShelfId: jest.fn(),
   hasPositiveInventoryOnShelf: jest.fn(),
+  hasPositiveInventoryOnAnyShelf: jest.fn(),
 });
 
 const makeRepo = () => ({
@@ -32,6 +33,11 @@ const makeRepo = () => ({
   createRack: jest.fn(),
   createShelf: jest.fn(),
   createAisle: jest.fn(),
+  softDeleteAllZones: jest.fn(),
+  softDeleteAllRacks: jest.fn(),
+  softDeleteAllShelves: jest.fn(),
+  softDeleteAllAisles: jest.fn(),
+  softDeleteAllGates: jest.fn(),
   findAllZones: jest.fn(),
   findAllRacks: jest.fn(),
   findAllShelves: jest.fn(),
@@ -412,6 +418,88 @@ describe('LocationService', () => {
       expect(observedSessions).toEqual(Array(7).fill(transactionSession));
     });
   });
+  describe('resetLayout', () => {
+    it('chặn reset khi còn tồn kho trên shelf đang hoạt động', async () => {
+      const shelfId = new Types.ObjectId();
+      repo.findAllShelves.mockResolvedValue([{ _id: shelfId }]);
+      stockRepo.hasPositiveInventoryOnAnyShelf.mockResolvedValue(true);
+
+      await expect(svc.resetLayout('actor1')).rejects.toMatchObject({
+        code: 'LAYOUT_RESET_REQUIRES_EMPTY_STOCK',
+      });
+
+      expect(repo.softDeleteAllShelves).not.toHaveBeenCalled();
+      expect(repo.incrementLayoutRevision).not.toHaveBeenCalled();
+    });
+
+    it('soft-delete toàn bộ layout entity rồi trả snapshot rỗng mới nhất', async () => {
+      const updatedAt = new Date('2026-07-27T12:00:00.000Z');
+      repo.findAllShelves
+        .mockResolvedValueOnce([{ _id: new Types.ObjectId() }])
+        .mockResolvedValueOnce([]);
+      stockRepo.hasPositiveInventoryOnAnyShelf.mockResolvedValue(false);
+      repo.getLayoutConfig
+        .mockResolvedValueOnce({
+          widthM: 40,
+          heightM: 24,
+          gridM: 0.5,
+          revision: 1,
+          updatedAt: new Date('2026-07-27T11:59:00.000Z'),
+        })
+        .mockResolvedValueOnce({
+          widthM: 40,
+          heightM: 24,
+          gridM: 0.5,
+          revision: 2,
+          updatedAt,
+        });
+
+      const result = await svc.resetLayout('actor1');
+
+      expect(repo.softDeleteAllShelves).toHaveBeenCalledWith(
+        'actor1',
+        transactionSession,
+      );
+      expect(repo.softDeleteAllRacks).toHaveBeenCalledWith(
+        'actor1',
+        transactionSession,
+      );
+      expect(repo.softDeleteAllZones).toHaveBeenCalledWith(
+        'actor1',
+        transactionSession,
+      );
+      expect(repo.softDeleteAllAisles).toHaveBeenCalledWith(
+        'actor1',
+        transactionSession,
+      );
+      expect(repo.softDeleteAllGates).toHaveBeenCalledWith(
+        'actor1',
+        transactionSession,
+      );
+      expect(repo.incrementLayoutRevision).toHaveBeenCalledWith(
+        'actor1',
+        transactionSession,
+      );
+      expect(result).toEqual({
+        id: 'single-warehouse-layout',
+        revision: 2,
+        updatedAt,
+        canvas: { widthM: 40, heightM: 24, gridM: 0.5 },
+        zones: [],
+        racks: [],
+        shelves: [],
+        aisles: [],
+        gates: [],
+        rackTemplate: {
+          widthM: 10,
+          depthM: 1.5,
+          levelCount: 1,
+          bayCount: 1,
+        },
+      });
+    });
+  });
+
   describe('individual mutation geometry', () => {
     it('đọc geometry tuần tự khi dùng chung transaction session', async () => {
       const created = { _id: new Types.ObjectId(), code: 'A' };

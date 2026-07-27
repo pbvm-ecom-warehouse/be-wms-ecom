@@ -106,4 +106,33 @@ describe('LocationController layout endpoints', () => {
     expect(result).toMatchObject({ revision: 5, idMap: {} });
     expect(result.layout.canvas.widthM).toBe(50);
   });
+
+  it('POST layout/reset chuyển actor sang location service và trả snapshot mới', async () => {
+    locationService.resetLayout = jest.fn().mockResolvedValue({
+      id: 'single-warehouse-layout',
+      revision: 2,
+      updatedAt: new Date('2026-07-27T11:00:00Z'),
+      canvas: { widthM: 40, heightM: 24, gridM: 0.5 },
+      zones: [],
+      racks: [],
+      shelves: [],
+      aisles: [],
+      gates: [],
+      rackTemplate: doc({
+        widthM: 10,
+        depthM: 1.5,
+        levelCount: 1,
+        bayCount: 1,
+      }),
+    });
+
+    const result = await controller.resetLayout(actorId);
+
+    expect(locationService.resetLayout).toHaveBeenCalledWith(actorId);
+    expect(result).toMatchObject({
+      revision: 2,
+      canvas: { widthM: 40, heightM: 24, gridM: 0.5 },
+      shelves: [],
+    });
+  });
 });

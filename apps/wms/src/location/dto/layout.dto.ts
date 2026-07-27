@@ -165,6 +165,7 @@ export class LayoutConflictErrorBodyDto {
       'RACK_HAS_SHELVES',
       'STAGING_SHELF_CANNOT_DELETE',
       'SHELF_HAS_STOCK',
+      'LAYOUT_RESET_REQUIRES_EMPTY_STOCK',
     ],
     example: 'RACK_HAS_SHELVES',
   })

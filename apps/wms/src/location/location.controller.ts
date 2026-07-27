@@ -143,6 +143,24 @@ export class LocationController {
     );
   }
 
+  @Post('layout/reset')
+  @Roles(WmsRole.MANAGER)
+  @ApiOperation({
+    summary:
+      'Xoá sạch zone/rack/shelf/aisle/gate hiện có để dựng lại sơ đồ kho — [MANAGER]',
+  })
+  @ApiOkResponse({ type: LayoutResponseEnvelopeDto })
+  @ApiConflictResponse({
+    description: 'Không thể reset khi vẫn còn tồn kho trên các shelf hiện tại',
+    type: LayoutConflictErrorDto,
+  })
+  async resetLayout(
+    @CurrentUser('sub') actorId: string,
+  ): Promise<LayoutResponseDto> {
+    const layout = await this.svc.resetLayout(actorId);
+    return this.toLayoutResponse(layout);
+  }
+
   private toLayoutResponse(layout: {
     id: 'single-warehouse-layout';
     revision: number;
