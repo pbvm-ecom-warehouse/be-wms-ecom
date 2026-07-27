@@ -165,7 +165,7 @@ export class CatalogRepository {
   }
 
   async listProducts(query: ProductQueryDto) {
-    const filter: Record<string, unknown> = { status: ProductStatus.ACTIVE };
+    const filter: Record<string, unknown> = {};
     if (query.categoryId) {
       const catIds = [query.categoryId];
       if (Types.ObjectId.isValid(query.categoryId)) {
