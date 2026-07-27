@@ -1,6 +1,13 @@
-import { ApiProperty, PartialType } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional, PartialType } from '@nestjs/swagger';
 import { Expose, Transform } from 'class-transformer';
-import { IsMongoId, IsString, MinLength } from 'class-validator';
+import {
+  IsIn,
+  IsMongoId,
+  IsNumber,
+  IsOptional,
+  IsString,
+  MinLength,
+} from 'class-validator';
 import { Types } from 'mongoose';
 
 export class CreateRackDto {
@@ -17,6 +24,31 @@ export class CreateRackDto {
   @IsString()
   @MinLength(1)
   code!: string;
+
+  @ApiPropertyOptional({ example: 3 })
+  @IsOptional()
+  @IsNumber()
+  xM?: number;
+
+  @ApiPropertyOptional({ example: 3 })
+  @IsOptional()
+  @IsNumber()
+  yM?: number;
+
+  @ApiPropertyOptional({ example: 0, enum: [0, 90] })
+  @IsOptional()
+  @IsIn([0, 90])
+  rotation?: number;
+
+  @ApiPropertyOptional({ example: 8 })
+  @IsOptional()
+  @IsNumber()
+  accessPointXM?: number;
+
+  @ApiPropertyOptional({ example: 6 })
+  @IsOptional()
+  @IsNumber()
+  accessPointYM?: number;
 }
 
 export class UpdateRackDto extends PartialType(CreateRackDto) {}
@@ -43,6 +75,26 @@ export class RackResponseDto {
   @Expose()
   @ApiProperty()
   code!: string;
+
+  @Expose()
+  @ApiProperty()
+  xM!: number;
+
+  @Expose()
+  @ApiProperty()
+  yM!: number;
+
+  @Expose()
+  @ApiProperty({ enum: [0, 90] })
+  rotation!: number;
+
+  @Expose()
+  @ApiProperty()
+  accessPointXM!: number;
+
+  @Expose()
+  @ApiProperty()
+  accessPointYM!: number;
 
   @Expose()
   @ApiProperty()
