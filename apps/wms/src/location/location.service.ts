@@ -372,6 +372,26 @@ export class LocationService {
     });
   }
 
+  async resetLayout(actorId: string) {
+    await this.mutateWithRevision(actorId, async (session) => {
+      const shelves = await this.repo.findAllShelves(session);
+      const shelfIds = shelves.map((shelf) => shelf._id);
+      if (
+        await this.stockRepo.hasPositiveInventoryOnAnyShelf(shelfIds, session)
+      ) {
+        throw new AppException('LAYOUT_RESET_REQUIRES_EMPTY_STOCK');
+      }
+      await this.repo.softDeleteAllShelves(actorId, session);
+      await this.repo.softDeleteAllRacks(actorId, session);
+      await this.repo.softDeleteAllZones(actorId, session);
+      await this.repo.softDeleteAllAisles(actorId, session);
+      await this.repo.softDeleteAllGates(actorId, session);
+      return true;
+    });
+
+    return this.getLayout();
+  }
+
   // ─── Layout tổng hợp ──────────────────────────────────────────────────────
 
   /** Snapshot đầy đủ của sơ đồ kho singleton cho editor 2D. */
