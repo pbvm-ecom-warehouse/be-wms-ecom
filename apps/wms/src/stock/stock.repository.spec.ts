@@ -18,6 +18,7 @@ const makeModel = (overrides: Record<string, jest.Mock> = {}) => ({
   create: jest.fn(),
   select: jest.fn().mockReturnThis(),
   lean: jest.fn().mockReturnThis(),
+  session: jest.fn().mockReturnThis(),
   exec: jest.fn(),
   ...overrides,
 });
@@ -749,6 +750,36 @@ describe('StockRepository', () => {
           expiryDate: new Date('2026-08-01'),
         },
       ]);
+    });
+  });
+  describe('hasPositiveInventoryOnShelf', () => {
+    it('trả true khi shelf còn ít nhất một dòng tồn kho dương', async () => {
+      inventoryModel.exec.mockResolvedValue({ _id: new Types.ObjectId() });
+
+      await expect(repo.hasPositiveInventoryOnShelf(shelfId)).resolves.toBe(
+        true,
+      );
+      expect(inventoryModel.findOne).toHaveBeenCalledWith({
+        shelfId,
+        quantity: { $gt: 0 },
+      });
+      expect(inventoryModel.select).toHaveBeenCalledWith('_id');
+    });
+
+    it('gắn Mongo session để delete guard nằm trong cùng transaction', async () => {
+      const session = {} as never;
+      inventoryModel.exec.mockResolvedValue(null);
+
+      await repo.hasPositiveInventoryOnShelf(shelfId, session);
+
+      expect(inventoryModel.session).toHaveBeenCalledWith(session);
+    });
+    it('trả false khi shelf không còn tồn kho dương', async () => {
+      inventoryModel.exec.mockResolvedValue(null);
+
+      await expect(repo.hasPositiveInventoryOnShelf(shelfId)).resolves.toBe(
+        false,
+      );
     });
   });
 });

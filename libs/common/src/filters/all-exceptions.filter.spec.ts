@@ -44,6 +44,28 @@ describe('AllExceptionsFilter', () => {
     });
   });
 
+  it('layout revision conflict → giữ details trong error envelope chuẩn', () => {
+    const { host, json, status } = mockHost();
+    filter.catch(
+      new AppException('LAYOUT_REVISION_CONFLICT', undefined, undefined, {
+        expectedRevision: 7,
+        currentRevision: 8,
+      }),
+      host,
+    );
+
+    expect(status).toHaveBeenCalledWith(409);
+    expect(json).toHaveBeenCalledWith(
+      expect.objectContaining({
+        error: {
+          code: 'LAYOUT_REVISION_CONFLICT',
+          message: 'Sơ đồ kho đã được cập nhật bởi phiên khác',
+          details: { expectedRevision: 7, currentRevision: 8 },
+        },
+        meta: expect.any(Object),
+      }),
+    );
+  });
   it('ValidationPipe (message mảng) → VALIDATION_FAILED + details', () => {
     const { host, json } = mockHost();
     filter.catch(new BadRequestException(['name không được trống']), host);

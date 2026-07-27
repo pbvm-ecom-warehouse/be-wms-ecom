@@ -251,7 +251,14 @@ async function seedZoneAndItems(
   }
 
   const zone = await locationService.createZone(
-    { name: 'Khu A (seed)', code: SEED_ZONE_CODE },
+    {
+      name: 'Khu A (seed)',
+      code: SEED_ZONE_CODE,
+      xM: 0,
+      yM: 0,
+      widthM: 20,
+      heightM: 10,
+    },
     adminId,
   );
   const zoneId = zone._id.toString();

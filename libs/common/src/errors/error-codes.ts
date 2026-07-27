@@ -127,6 +127,42 @@ export const ERROR_CATALOG = {
     status: HttpStatus.CONFLICT,
     message: 'Mã cổng đã tồn tại',
   },
+  ZONE_HAS_RACKS: {
+    status: HttpStatus.CONFLICT,
+    message: 'Không thể xoá khu vực đang còn kệ',
+  },
+  RACK_HAS_SHELVES: {
+    status: HttpStatus.CONFLICT,
+    message: 'Không thể xoá kệ đang còn tầng kệ',
+  },
+  STAGING_SHELF_CANNOT_DELETE: {
+    status: HttpStatus.CONFLICT,
+    message: 'Không thể xoá tầng kệ staging',
+  },
+  SHELF_HAS_STOCK: {
+    status: HttpStatus.CONFLICT,
+    message: 'Không thể xoá tầng kệ đang còn tồn kho',
+  },
+  LAYOUT_REVISION_CONFLICT: {
+    status: HttpStatus.CONFLICT,
+    message: 'Sơ đồ kho đã được cập nhật bởi phiên khác',
+  },
+  LAYOUT_VALIDATION_FAILED: {
+    status: HttpStatus.UNPROCESSABLE_ENTITY,
+    message: 'Sơ đồ kho không hợp lệ',
+  },
+  LAYOUT_DUPLICATE_CLIENT_ID: {
+    status: HttpStatus.BAD_REQUEST,
+    message: 'clientId tạm bị trùng trong change-set',
+  },
+  LAYOUT_INVALID_REFERENCE: {
+    status: HttpStatus.BAD_REQUEST,
+    message: 'Tham chiếu ID tạm không hợp lệ hoặc chưa được tạo',
+  },
+  LAYOUT_OPERATION_NOT_ALLOWED: {
+    status: HttpStatus.BAD_REQUEST,
+    message: 'Operation không được phép cho loại entity này',
+  },
 
   // ── WMS — Supplier ─────────────────────────────────────────────────────────
   SUPPLIER_NOT_FOUND: {

@@ -13,13 +13,18 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import {
+  ApiBadRequestResponse,
   ApiBearerAuth,
+  ApiConflictResponse,
   ApiCreatedResponse,
+  ApiExtraModels,
   ApiNoContentResponse,
   ApiOkResponse,
   ApiOperation,
   ApiQuery,
   ApiTags,
+  ApiUnprocessableEntityResponse,
+  getSchemaPath,
 } from '@nestjs/swagger';
 import {
   CurrentUser,
@@ -46,44 +51,143 @@ import {
   UpdateAisleDto,
   AisleResponseDto,
 } from './dto/aisle.dto';
+import { CreateGateDto, UpdateGateDto, GateResponseDto } from './dto/gate.dto';
 import {
-  CreateGateDto,
-  UpdateGateDto,
-  GateResponseDto,
-} from './dto/gate.dto';
-import { LayoutResponseDto } from './dto/layout.dto';
+  LayoutConflictErrorDto,
+  LayoutOperationErrorDto,
+  LayoutResponseDto,
+  LayoutResponseEnvelopeDto,
+  LayoutRevisionConflictErrorDto,
+  LayoutValidationErrorDto,
+  SaveWarehouseLayoutResponseDto,
+  SaveWarehouseLayoutResponseEnvelopeDto,
+} from './dto/layout.dto';
+import { SaveWarehouseLayoutDto } from './dto/layout-change.dto';
+import { WarehouseLayoutEditorService } from './warehouse-layout-editor.service';
 import { ShelfContentResponseDto } from './dto/shelf-content.dto';
 
 const TO_INSTANCE_OPTS = { excludeExtraneousValues: true } as const;
 
+function isMongooseDocument(
+  value: unknown,
+): value is { toObject(): Record<string, unknown> } {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    'toObject' in value &&
+    typeof (value as { toObject?: unknown }).toObject === 'function'
+  );
+}
+
 @ApiTags('location')
+@ApiExtraModels(LayoutRevisionConflictErrorDto, LayoutConflictErrorDto)
 @ApiBearerAuth()
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Controller('location')
 export class LocationController {
-  constructor(private readonly svc: LocationService) {}
+  constructor(
+    private readonly svc: LocationService,
+    private readonly editorService: WarehouseLayoutEditorService,
+  ) {}
 
   // ─── Layout tổng hợp (đặt đầu tiên, route cố định không xung đột) ────────
 
   @Get('layout')
   @Roles(WmsRole.MANAGER, WmsRole.ADMIN)
   @ApiOperation({
-    summary: 'Sơ đồ kho 2D tổng hợp (zone+rack+aisle+gate) — [MANAGER, ADMIN]',
+    summary:
+      'Snapshot sơ đồ kho 2D (canvas+zone+rack+shelf+aisle+gate) — [MANAGER, ADMIN]',
   })
-  @ApiOkResponse({ type: LayoutResponseDto })
+  @ApiOkResponse({ type: LayoutResponseEnvelopeDto })
   async getLayout(): Promise<LayoutResponseDto> {
     const layout = await this.svc.getLayout();
+    return this.toLayoutResponse(layout);
+  }
+
+  @Patch('layout')
+  @Roles(WmsRole.MANAGER)
+  @ApiOperation({
+    summary: 'Lưu change-set sơ đồ kho bằng Mongo transaction — [MANAGER]',
+  })
+  @ApiOkResponse({ type: SaveWarehouseLayoutResponseEnvelopeDto })
+  @ApiBadRequestResponse({
+    description: 'DTO hoặc operation không hợp lệ',
+    type: LayoutOperationErrorDto,
+  })
+  @ApiConflictResponse({
+    description: 'Revision conflict, code bị trùng hoặc vi phạm delete guard',
+    schema: {
+      oneOf: [
+        { $ref: getSchemaPath(LayoutRevisionConflictErrorDto) },
+        { $ref: getSchemaPath(LayoutConflictErrorDto) },
+      ],
+    },
+  })
+  @ApiUnprocessableEntityResponse({
+    description: 'LAYOUT_VALIDATION_FAILED — hình học layout không hợp lệ',
+    type: LayoutValidationErrorDto,
+  })
+  async saveLayout(
+    @Body() dto: SaveWarehouseLayoutDto,
+    @CurrentUser('sub') actorId: string,
+  ): Promise<SaveWarehouseLayoutResponseDto> {
+    const result = await this.editorService.saveLayout(dto, actorId);
     return plainToInstance(
-      LayoutResponseDto,
+      SaveWarehouseLayoutResponseDto,
       {
-        zones: layout.zones.map((z) => z.toObject()),
-        racks: layout.racks.map((r) => r.toObject()),
-        aisles: layout.aisles.map((a) => a.toObject()),
-        gates: layout.gates.map((g) => g.toObject()),
-        rackTemplate: layout.rackTemplate.toObject(),
+        revision: result.revision,
+        idMap: result.idMap,
+        layout: this.toLayoutSource(result.layout),
       },
       TO_INSTANCE_OPTS,
     );
+  }
+
+  private toLayoutResponse(layout: {
+    id: 'single-warehouse-layout';
+    revision: number;
+    updatedAt: Date;
+    canvas: { widthM: number; heightM: number; gridM: number };
+    zones: unknown[];
+    racks: unknown[];
+    shelves: unknown[];
+    aisles: unknown[];
+    gates: unknown[];
+    rackTemplate: unknown;
+  }): LayoutResponseDto {
+    return plainToInstance(
+      LayoutResponseDto,
+      this.toLayoutSource(layout),
+      TO_INSTANCE_OPTS,
+    );
+  }
+
+  private toLayoutSource(layout: {
+    id: 'single-warehouse-layout';
+    revision: number;
+    updatedAt: Date;
+    canvas: { widthM: number; heightM: number; gridM: number };
+    zones: unknown[];
+    racks: unknown[];
+    shelves: unknown[];
+    aisles: unknown[];
+    gates: unknown[];
+    rackTemplate: unknown;
+  }) {
+    const toPlain = (value: unknown): unknown =>
+      isMongooseDocument(value) ? value.toObject() : value;
+    return {
+      id: layout.id,
+      revision: layout.revision,
+      updatedAt: layout.updatedAt,
+      canvas: layout.canvas,
+      zones: layout.zones.map(toPlain),
+      racks: layout.racks.map(toPlain),
+      shelves: layout.shelves.map(toPlain),
+      aisles: layout.aisles.map(toPlain),
+      gates: layout.gates.map(toPlain),
+      rackTemplate: toPlain(layout.rackTemplate),
+    };
   }
 
   // ─── RackTemplate (singleton — route cố định) ────────────────────────────

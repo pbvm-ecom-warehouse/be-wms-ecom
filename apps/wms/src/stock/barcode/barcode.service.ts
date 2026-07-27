@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { AppException } from '@app/common';
+import { AppException } from '@app/common/errors/app.exception';
 import { ClientSession, Types } from 'mongoose';
 import { BarcodeRepository } from './barcode.repository';
 import { buildEan13 } from './ean13';
