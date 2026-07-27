@@ -1,11 +1,13 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { Expose, Transform } from 'class-transformer';
+import { Expose, Transform, Type } from 'class-transformer';
 import {
   IsBoolean,
+  IsInt,
   IsMongoId,
   IsNumber,
   IsOptional,
   IsString,
+  Max,
   Min,
 } from 'class-validator';
 import { Types } from 'mongoose';
@@ -85,6 +87,33 @@ export class UpdateSupplierItemDto {
   isActive?: boolean;
 }
 
+export class QuerySupplierItemDto {
+  @ApiPropertyOptional({ description: 'Lọc theo NCC (Supplier._id)' })
+  @IsOptional()
+  @IsMongoId()
+  supplierId?: string;
+
+  @ApiPropertyOptional({ description: 'Lọc theo SKU (WarehouseItem._id)' })
+  @IsOptional()
+  @IsMongoId()
+  itemId?: string;
+
+  @ApiPropertyOptional({ default: 1, minimum: 1 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  page?: number;
+
+  @ApiPropertyOptional({ default: 20, minimum: 1, maximum: 100 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(100)
+  limit?: number;
+}
+
 export class SupplierItemResponseDto {
   @Expose()
   @Transform(({ obj }: { obj: { _id?: Types.ObjectId } }) =>
@@ -99,6 +128,15 @@ export class SupplierItemResponseDto {
   )
   @ApiProperty()
   itemId!: string;
+
+  /** Denormalize từ WarehouseItem tại thời điểm build response — không lưu trong SupplierItem schema. */
+  @Expose()
+  @ApiPropertyOptional()
+  sku?: string;
+
+  @Expose()
+  @ApiPropertyOptional()
+  itemName?: string;
 
   @Expose()
   @Transform(({ obj }: { obj: { supplierId?: Types.ObjectId } }) =>

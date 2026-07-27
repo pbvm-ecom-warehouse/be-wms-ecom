@@ -1,5 +1,6 @@
 // apps/wms/src/supplier/supplier.service.ts
 import { Injectable } from '@nestjs/common';
+import { Types } from 'mongoose';
 import { WmsRole } from '@app/auth';
 import { AppException } from '@app/common/errors/app.exception';
 import { SupplierRepository } from './supplier.repository';
@@ -14,12 +15,17 @@ import type {
 } from './dto/supplier.dto';
 import type {
   CreateSupplierItemDto,
+  QuerySupplierItemDto,
   UpdateSupplierItemDto,
 } from './dto/supplier-item.dto';
+import { StockRepository } from '../stock/stock.repository';
 
 @Injectable()
 export class SupplierService {
-  constructor(private readonly repo: SupplierRepository) {}
+  constructor(
+    private readonly repo: SupplierRepository,
+    private readonly stockRepo: StockRepository,
+  ) {}
 
   // ─── Supplier ─────────────────────────────────────────────────────────────
 
@@ -130,17 +136,30 @@ export class SupplierService {
     return doc;
   }
 
-  async listSupplierItemsBySupplierId(
-    supplierId: string,
-  ): Promise<SupplierItemDocument[]> {
-    return this.repo.findSupplierItemsBySupplierId(supplierId);
-  }
+  /** Danh mục giá — lọc theo supplierId/itemId (optional), gắn kèm sku/itemName từ WarehouseItem. */
+  async listSupplierItems(
+    query: QuerySupplierItemDto,
+  ): Promise<{ data: Record<string, unknown>[]; total: number }> {
+    const { data, total } = await this.repo.findSupplierItems(query);
 
-  /** Mọi báo giá (mọi NCC) của 1 SKU — mảng rỗng nếu chưa ai báo giá (trạng thái hợp lệ). */
-  async listSupplierItemsByItemId(
-    itemId: string,
-  ): Promise<SupplierItemDocument[]> {
-    return this.repo.findSupplierItemsByItemId(itemId);
+    const itemIds = [...new Set(data.map((d) => d.itemId.toString()))];
+    const items = await this.stockRepo.findItemsByIds(
+      itemIds.map((id) => new Types.ObjectId(id)),
+    );
+    const itemById = new Map(items.map((i) => [i._id.toString(), i]));
+
+    return {
+      data: data.map((doc) => {
+        const plain = doc.toObject() as unknown as Record<string, unknown>;
+        const warehouseItem = itemById.get(doc.itemId.toString());
+        return {
+          ...plain,
+          sku: warehouseItem?.sku,
+          itemName: warehouseItem?.name,
+        };
+      }),
+      total,
+    };
   }
 
   /** Tra đúng báo giá theo cặp (SKU, NCC) — dùng bởi PurchaseOrderService khi auto-fill giá. */
