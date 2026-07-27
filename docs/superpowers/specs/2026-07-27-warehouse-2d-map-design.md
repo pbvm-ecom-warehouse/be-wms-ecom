@@ -1,6 +1,6 @@
 # Warehouse 2D Map & Put-away Suggestion — Phân tích & Phương án
 
-Status: DRAFT — đang phân tích, chưa chốt phương án
+Status: DRAFT — đang phân tích, 1 quyết định đã chốt (mục 4a), còn lại chờ xác nhận
 Phạm vi: `be/apps/wms` (location, put-away-suggestion) + `fe-pbvm-warehouse` (warehouse-layout, warehouse-navigation, warehouse-structure)
 
 ## 1. Bối cảnh — tại sao viết doc này
@@ -63,15 +63,34 @@ Model phân cấp `Zone → Rack → Shelf`, mỗi tầng là 1 collection Mongo
 | Gợi ý vị trí đặt hàng | ✅ Thuật toán theo thể tích (bin-packing đơn giản) | Không biết khoảng cách/vị trí không gian → không thể ưu tiên "gần nhất", "cùng khu ưu tiên" |
 | Aisle (lối đi), Gate (cổng) | ✅ Type + UI vẽ | Chưa có entity BE tương ứng |
 
-## 4. Câu hỏi thiết kế cần quyết định trước khi chọn phương án
+## 4a. Thuật toán gợi ý vị trí — AI hay thuật toán cổ điển? (ĐÃ CHỐT)
 
-Đây là những điểm chưa rõ, cần chốt trước khi viết implementation plan (sẽ hỏi user):
+**Quyết định: KHÔNG dùng AI/ML. Dùng weighted multi-criteria scoring (thuật toán cổ điển, xác định).**
 
-1. **Phạm vi "map"**: chỉ cần sơ đồ 2D layout tĩnh (zone/rack đặt ở đâu trong kho) để nhìn trực quan, hay cần mô hình hoá cả lối đi (aisle)/cổng (gate) để sau này tính khoảng cách di chuyển thực sự (ví dụ Dijkstra/A* trên đồ thị aisle)?
+Lý do loại AI/ML:
+- **Cold-start**: kho mới, chưa có đủ dữ liệu lịch sử để train.
+- **Bài toán không mơ hồ**: đầu vào (kích thước item, thể tích trống, toạ độ, tần suất xuất) đều đo được trực tiếp — không cần "học" quan hệ ẩn.
+- **Cần giải thích được**: MANAGER/RECEIVER phải hiểu *tại sao* hệ thống gợi ý shelf này — AI dạng hộp đen vi phạm nguyên tắc minh bạch vận hành kho.
+- **Chi phí không tương xứng**: train/retrain/theo dõi drift là overhead không cần thiết ở quy mô 1 kho.
+
+Thuật toán chọn: **weighted scoring**, mở rộng trực tiếp từ `PutAwaySuggestionService` hiện có — không thay thế, chỉ cộng thêm tiêu chí khoảng cách vào bước ranking:
+
+```
+score = same_sku_bonus + distance_score + best_fit_score
+```
+
+- `same_sku_bonus`: giữ nguyên logic hiện tại (ưu tiên tuyệt đối nếu có shelf cùng SKU đủ chứa).
+- `distance_score`: khoảng cách Euclid từ tâm rack (tính từ toạ độ `xM/yM` + `widthM/depthM` sắp thêm ở Zone/Rack) tới điểm nhập hàng tham chiếu (staging shelf — đã có `isStaging` unique toàn hệ thống, dùng làm điểm gốc "0" tự nhiên, không cần thêm khái niệm "gate" cho v1 thuật toán).
+- `best_fit_score`: giữ nguyên logic hiện tại (free space nhỏ nhất trong các shelf đủ chứa).
+
+Đây là cách các WMS thương mại (SAP EWM, Manhattan Associates) làm slotting — không phải giản lược, mà là đúng chuẩn ngành cho bài toán này. Đường nâng cấp tương lai nếu cần (không phải v1): ABC slotting theo tần suất xuất kho (`StockMovement` đã có sẵn dữ liệu để aggregate), hoặc Dijkstra/A* trên đồ thị aisle nếu Euclid không đủ chính xác do layout kho phức tạp (nhiều vật cản/đường vòng).
+
+## 4b. Câu hỏi thiết kế còn lại — cần quyết định trước khi viết implementation plan
+
+1. **Phạm vi "map"**: chỉ cần sơ đồ 2D layout tĩnh (zone/rack đặt ở đâu trong kho) để nhìn trực quan, hay cần mô hình hoá cả lối đi (aisle)/cổng (gate) để sau này tính khoảng cách di chuyển thực sự (ví dụ Dijkstra/A* trên đồ thị aisle)? *(Lưu ý: thuật toán v1 ở mục 4a dùng staging shelf làm điểm gốc, không bắt buộc phải có gate/aisle ngay — có thể hoãn nếu chỉ cần floor plan trực quan trước.)*
 2. **1 kho hay nhiều kho**: `data-and-mongoose.md` và `ShelfSchema` ghi chú "App = 1 kho duy nhất" (ràng buộc unique `isStaging` toàn hệ thống, không scope theo `warehouseId`). Vậy `WarehouseLayout` chỉ cần là **1 bản duy nhất** (singleton), không cần multi-warehouse, multi-canvas.
 3. **Ai chỉnh sơ đồ**: MANAGER/ADMIN vẽ/kéo-thả zone/rack 1 lần khi setup kho (ít thay đổi), hay cần workflow DRAFT→PUBLISH như FE đã thiết kế sẵn (`WarehouseLayoutStatus`)?
-4. **Gợi ý vị trí có cần xét khoảng cách không**: nếu có, cần điểm gốc tham chiếu (cổng nhập hàng / staging shelf) và cách tính khoảng cách (Euclid đơn giản theo toạ độ tâm rack, hay đường đi theo aisle). Euclid đơn giản là đủ cho v1 và tận dụng được toạ độ x/y sắp thêm.
-5. **Rack elevation (mặt cắt đứng từng kệ) có nằm trong scope đợt này không**, hay chỉ làm floor plan 2D (map tổng thể) trước, rack elevation để sau?
+4. **Rack elevation (mặt cắt đứng từng kệ) có nằm trong scope đợt này không**, hay chỉ làm floor plan 2D (map tổng thể) trước, rack elevation để sau?
 
 ## 5. Phương án
 
@@ -83,7 +102,7 @@ Tận dụng toàn bộ UI floor-plan/inspector/rack-elevation đã viết (ch�
 - Thêm field toạ độ/kích thước vào `Zone` (`xM,yM,widthM,heightM,rotation`) và `Rack` (`xM,yM,widthM,depthM,rotation,levelCount,bayCount,accessPoint`) — mở rộng schema hiện có, không phá cấu trúc Zone→Rack→Shelf.
 - Thêm 2 collection mới nhỏ: `Aisle` (lối đi) và `Gate` (cổng) — hoặc gộp làm 1 document `WarehouseLayoutMeta` singleton chứa `canvas` + `aisles[]` + `gates[]` (đơn giản hơn vì đây là "khung nền" ít thay đổi, không cần CRUD riêng lẻ theo phân trang).
 - Endpoint mới: `GET /location/layout` (ráp Zone+Rack+aisles+gates thành `WarehouseLayout`), `PUT /location/layout` (lưu toạ độ hàng loạt — MANAGER only). Không cần DRAFT/PUBLISH ở v1 nếu user xác nhận câu hỏi #3 là "chỉnh trực tiếp".
-- Mở rộng `PutAwaySuggestionService`: khi có toạ độ, thêm bước ranking phụ theo khoảng cách Euclid từ tâm rack tới staging shelf (điểm nhập hàng), cộng vào tiêu chí ưu tiên hiện có (same-SKU → gần nhất → best-fit).
+- Mở rộng `PutAwaySuggestionService` sang **weighted scoring** (đã chốt ở mục 4a): thay lọc-rồi-sort tuần tự bằng công thức điểm `score = same_sku_bonus + distance_score + best_fit_score`, dùng staging shelf làm điểm gốc tính khoảng cách Euclid. Không cần AI/ML — thuật toán xác định, giải thích được, tận dụng toạ độ x/y sắp thêm.
 
 **FE:**
 - Thêm `warehouse-layout.service.ts` gọi 2 endpoint trên (hiện chưa tồn tại).
@@ -106,7 +125,8 @@ Bỏ qua `warehouse-layout`/`warehouse-navigation` hiện có, thiết kế sche
 
 ## 6. Việc CHƯA quyết định (cần user trả lời trước khi viết implementation plan)
 
-- Trả lời 5 câu hỏi ở mục 4.
-- Xác nhận chọn Phương án A hay B.
+- ~~Thuật toán gợi ý vị trí~~ → **ĐÃ CHỐT** (mục 4a): weighted scoring, không AI/ML.
+- Trả lời 4 câu hỏi còn lại ở mục 4b.
+- Xác nhận chọn Phương án A hay B (đã có khuyến nghị A).
 - Xác nhận có cần workflow DRAFT/PUBLISH layout hay chỉnh trực tiếp (ảnh hưởng thiết kế API + schema).
 - Xác nhận rack elevation (mặt cắt đứng, box placement từng lô hàng) có trong scope đợt 1 hay để đợt sau (chỉ làm floor plan 2D tổng thể trước).
