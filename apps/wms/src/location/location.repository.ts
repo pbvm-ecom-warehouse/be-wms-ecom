@@ -602,11 +602,42 @@ export class LocationRepository {
 
   // ─── Aisle ────────────────────────────────────────────────────────────────
 
+  private deletedCode(code: string, id: Types.ObjectId | string): string {
+    return `${code}__deleted_${id.toString()}`;
+  }
+
+  async releaseDeletedAisleCode(
+    code: string,
+    actorId: string,
+    session?: ClientSession,
+  ): Promise<void> {
+    const deleted = await this.withSession(
+      this.aisleModel
+        .findOne({ code, deletedAt: { $ne: null } })
+        .select('_id code'),
+      session,
+    ).exec();
+    if (!deleted) return;
+    await this.aisleModel
+      .updateOne(
+        { _id: deleted._id },
+        {
+          $set: {
+            code: this.deletedCode(code, deleted._id),
+            updatedBy: new Types.ObjectId(actorId),
+          },
+        },
+        session ? { session } : undefined,
+      )
+      .exec();
+  }
+
   async createAisle(
     dto: CreateAisleDto,
     actorId: string,
     session?: ClientSession,
   ): Promise<AisleDocument> {
+    await this.releaseDeletedAisleCode(dto.code, actorId, session);
     const data = {
       ...dto,
       createdBy: new Types.ObjectId(actorId),
@@ -616,7 +647,6 @@ export class LocationRepository {
     const [doc] = await this.aisleModel.create([data], { session });
     return doc;
   }
-
   async findAllAisles(session?: ClientSession): Promise<AisleDocument[]> {
     return this.withSession(
       this.aisleModel.find(SOFT_DELETE_FILTER).sort({ code: 1 }),
@@ -650,6 +680,9 @@ export class LocationRepository {
     actorId: string,
     session?: ClientSession,
   ): Promise<AisleDocument | null> {
+    if (dto.code) {
+      await this.releaseDeletedAisleCode(dto.code, actorId, session);
+    }
     return this.aisleModel
       .findOneAndUpdate(
         { _id: id, ...SOFT_DELETE_FILTER },
@@ -658,7 +691,6 @@ export class LocationRepository {
       )
       .exec();
   }
-
   async softDeleteAisle(
     id: string,
     actorId: string,
