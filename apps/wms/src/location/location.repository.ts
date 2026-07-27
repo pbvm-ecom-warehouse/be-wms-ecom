@@ -4,9 +4,14 @@ import { Model, Types } from 'mongoose';
 import { Zone, ZoneDocument } from './schemas/zone.schema';
 import { Rack, RackDocument } from './schemas/rack.schema';
 import { Shelf, ShelfDocument } from './schemas/shelf.schema';
+import {
+  RackTemplate,
+  RackTemplateDocument,
+} from './schemas/rack-template.schema';
 import { CreateZoneDto, UpdateZoneDto } from './dto/zone.dto';
 import { CreateRackDto, UpdateRackDto } from './dto/rack.dto';
 import { CreateShelfDto, UpdateShelfDto } from './dto/shelf.dto';
+import { UpdateRackTemplateDto } from './dto/rack-template.dto';
 
 const SOFT_DELETE_FILTER = { deletedAt: null } as const;
 
@@ -16,6 +21,8 @@ export class LocationRepository {
     @InjectModel(Zone.name) private readonly zoneModel: Model<ZoneDocument>,
     @InjectModel(Rack.name) private readonly rackModel: Model<RackDocument>,
     @InjectModel(Shelf.name) private readonly shelfModel: Model<ShelfDocument>,
+    @InjectModel(RackTemplate.name)
+    private readonly rackTemplateModel: Model<RackTemplateDocument>,
   ) {}
 
   // ─── Zone ─────────────────────────────────────────────────────────────────
@@ -213,5 +220,24 @@ export class LocationRepository {
       )
       .exec();
     return res.modifiedCount > 0;
+  }
+
+  // ─── RackTemplate (singleton) ────────────────────────────────────────────
+
+  /** Lazy init: tạo bản ghi mặc định nếu collection rỗng — tránh cần seed script riêng. */
+  async getRackTemplate(): Promise<RackTemplateDocument> {
+    const existing = await this.rackTemplateModel.findOne().exec();
+    if (existing) return existing;
+    return this.rackTemplateModel.create({});
+  }
+
+  async updateRackTemplate(
+    dto: UpdateRackTemplateDto,
+    actorId: string,
+  ): Promise<RackTemplateDocument> {
+    const current = await this.getRackTemplate();
+    current.set({ ...dto, updatedBy: new Types.ObjectId(actorId) });
+    await current.save();
+    return current;
   }
 }

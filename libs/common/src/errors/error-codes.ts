@@ -103,6 +103,14 @@ export const ERROR_CATALOG = {
     status: HttpStatus.CONFLICT,
     message: 'Mã barcode tầng đã tồn tại',
   },
+  RACK_TEMPLATE_NOT_FOUND: {
+    status: HttpStatus.NOT_FOUND,
+    message: 'Chưa cấu hình kích thước kệ chuẩn',
+  },
+  RACK_TEMPLATE_INVALID: {
+    status: HttpStatus.BAD_REQUEST,
+    message: 'Kích thước kệ chuẩn không hợp lệ',
+  },
 
   // ── WMS — Supplier ─────────────────────────────────────────────────────────
   SUPPLIER_NOT_FOUND: {

@@ -8,6 +8,7 @@ import {
   Param,
   Patch,
   Post,
+  Put,
   Query,
   UseGuards,
 } from '@nestjs/common';
@@ -36,6 +37,10 @@ import {
   UpdateShelfDto,
   ShelfResponseDto,
 } from './dto/shelf.dto';
+import {
+  UpdateRackTemplateDto,
+  RackTemplateResponseDto,
+} from './dto/rack-template.dto';
 
 const TO_INSTANCE_OPTS = { excludeExtraneousValues: true } as const;
 
@@ -45,6 +50,42 @@ const TO_INSTANCE_OPTS = { excludeExtraneousValues: true } as const;
 @Controller('location')
 export class LocationController {
   constructor(private readonly svc: LocationService) {}
+
+  // ─── RackTemplate (singleton — route cố định) ────────────────────────────
+
+  @Get('rack-template')
+  @Roles(WmsRole.MANAGER, WmsRole.ADMIN)
+  @ApiOperation({
+    summary: 'Kích thước rack chuẩn dùng chung toàn app — [MANAGER, ADMIN]',
+  })
+  @ApiOkResponse({ type: RackTemplateResponseDto })
+  async getRackTemplate(): Promise<RackTemplateResponseDto> {
+    const doc = await this.svc.getRackTemplate();
+    return plainToInstance(
+      RackTemplateResponseDto,
+      doc.toObject(),
+      TO_INSTANCE_OPTS,
+    );
+  }
+
+  @Put('rack-template')
+  @Roles(WmsRole.MANAGER)
+  @ApiOperation({
+    summary:
+      'Cập nhật kích thước rack chuẩn — áp dụng cho MỌI rack ngay lập tức — [MANAGER]',
+  })
+  @ApiOkResponse({ type: RackTemplateResponseDto })
+  async updateRackTemplate(
+    @Body() dto: UpdateRackTemplateDto,
+    @CurrentUser('sub') actorId: string,
+  ): Promise<RackTemplateResponseDto> {
+    const doc = await this.svc.updateRackTemplate(dto, actorId);
+    return plainToInstance(
+      RackTemplateResponseDto,
+      doc.toObject(),
+      TO_INSTANCE_OPTS,
+    );
+  }
 
   // ─── Zone (static sub-routes phải đặt TRƯỚC `:id` để tránh NestJS shadow) ──
 

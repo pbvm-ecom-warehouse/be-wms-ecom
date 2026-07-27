@@ -7,6 +7,8 @@ import type { ShelfDocument } from './schemas/shelf.schema';
 import type { CreateZoneDto, UpdateZoneDto } from './dto/zone.dto';
 import type { CreateRackDto, UpdateRackDto } from './dto/rack.dto';
 import type { CreateShelfDto, UpdateShelfDto } from './dto/shelf.dto';
+import type { RackTemplateDocument } from './schemas/rack-template.schema';
+import type { UpdateRackTemplateDto } from './dto/rack-template.dto';
 
 @Injectable()
 export class LocationService {
@@ -141,5 +143,18 @@ export class LocationService {
     const shelf = await this.repo.findStagingShelf();
     if (!shelf) throw new AppException('GRN_STAGING_SHELF_NOT_FOUND');
     return shelf;
+  }
+
+  // ─── RackTemplate ─────────────────────────────────────────────────────────
+
+  async getRackTemplate(): Promise<RackTemplateDocument> {
+    return this.repo.getRackTemplate();
+  }
+
+  async updateRackTemplate(
+    dto: UpdateRackTemplateDto,
+    actorId: string,
+  ): Promise<RackTemplateDocument> {
+    return this.repo.updateRackTemplate(dto, actorId);
   }
 }

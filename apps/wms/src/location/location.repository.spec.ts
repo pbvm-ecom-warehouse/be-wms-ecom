@@ -6,6 +6,7 @@ import { LocationRepository } from './location.repository';
 import { Zone } from './schemas/zone.schema';
 import { Rack } from './schemas/rack.schema';
 import { Shelf } from './schemas/shelf.schema';
+import { RackTemplate } from './schemas/rack-template.schema';
 
 const makeModel = (overrides: Record<string, jest.Mock> = {}) => ({
   findOne: jest.fn().mockReturnThis(),
@@ -23,6 +24,7 @@ describe('LocationRepository', () => {
   let zoneModel: ReturnType<typeof makeModel>;
   let rackModel: ReturnType<typeof makeModel>;
   let shelfModel: ReturnType<typeof makeModel>;
+  let rackTemplateModel: ReturnType<typeof makeModel>;
   const zoneId = new Types.ObjectId();
   const actorId = new Types.ObjectId().toString();
 
@@ -30,12 +32,17 @@ describe('LocationRepository', () => {
     zoneModel = makeModel();
     rackModel = makeModel();
     shelfModel = makeModel();
+    rackTemplateModel = makeModel();
     const module = await Test.createTestingModule({
       providers: [
         LocationRepository,
         { provide: getModelToken(Zone.name), useValue: zoneModel },
         { provide: getModelToken(Rack.name), useValue: rackModel },
         { provide: getModelToken(Shelf.name), useValue: shelfModel },
+        {
+          provide: getModelToken(RackTemplate.name),
+          useValue: rackTemplateModel,
+        },
       ],
     }).compile();
     repo = module.get(LocationRepository);
