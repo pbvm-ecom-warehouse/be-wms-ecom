@@ -87,6 +87,17 @@ export class CreateGoodsReceiptNoteDto {
   items?: CreateGoodsReceiptNoteItemDto[];
 }
 
+/** Sửa items của GRN còn DRAFT — thay thế toàn bộ, không merge. Bắt buộc gửi đủ
+ * (khác lúc tạo, "để trống = nhận đủ theo PO" không áp dụng khi sửa). */
+export class UpdateGoodsReceiptNoteItemsDto {
+  @ApiProperty({ type: [CreateGoodsReceiptNoteItemDto] })
+  @IsArray()
+  @ArrayMinSize(1)
+  @ValidateNested({ each: true })
+  @Type(() => CreateGoodsReceiptNoteItemDto)
+  items!: CreateGoodsReceiptNoteItemDto[];
+}
+
 export class QueryGoodsReceiptNoteDto {
   @ApiPropertyOptional({ enum: GoodsReceiptNoteStatus })
   @IsOptional()

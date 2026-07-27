@@ -2,8 +2,12 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
+  HttpCode,
+  HttpStatus,
   Param,
+  Patch,
   Post,
   Query,
   UploadedFile,
@@ -16,6 +20,7 @@ import {
   ApiBody,
   ApiConsumes,
   ApiCreatedResponse,
+  ApiNoContentResponse,
   ApiOkResponse,
   ApiOperation,
   ApiTags,
@@ -33,6 +38,7 @@ import {
   CreateGoodsReceiptNoteDto,
   GoodsReceiptNoteResponseDto,
   QueryGoodsReceiptNoteDto,
+  UpdateGoodsReceiptNoteItemsDto,
 } from './dto/goods-receipt-note.dto';
 
 const TO_OPTS = { excludeExtraneousValues: true } as const;
@@ -57,6 +63,33 @@ export class GoodsReceiptNoteController {
     const doc = await this.svc.createGoodsReceiptNote(dto, actorId);
     const [plain] = await this.svc.attachDisplayInfo([doc]);
     return plainToInstance(GoodsReceiptNoteResponseDto, plain, TO_OPTS);
+  }
+
+  @Patch(':id/items')
+  @Roles(WmsRole.RECEIVER, WmsRole.ADMIN)
+  @ApiOperation({
+    summary:
+      'Sửa toàn bộ dòng hàng của phiếu nhập còn DRAFT (thay thế, không cộng dồn) — [RECEIVER, ADMIN]',
+  })
+  @ApiOkResponse({ type: GoodsReceiptNoteResponseDto })
+  async updateGoodsReceiptNoteItems(
+    @Param('id') id: string,
+    @Body() dto: UpdateGoodsReceiptNoteItemsDto,
+  ): Promise<GoodsReceiptNoteResponseDto> {
+    const doc = await this.svc.updateGoodsReceiptNoteItems(id, dto.items);
+    const [plain] = await this.svc.attachDisplayInfo([doc]);
+    return plainToInstance(GoodsReceiptNoteResponseDto, plain, TO_OPTS);
+  }
+
+  @Delete(':id')
+  @Roles(WmsRole.RECEIVER, WmsRole.ADMIN)
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({
+    summary: 'Xoá phiếu nhập còn DRAFT (xoá vật lý) — [RECEIVER, ADMIN]',
+  })
+  @ApiNoContentResponse()
+  async deleteGoodsReceiptNote(@Param('id') id: string): Promise<void> {
+    await this.svc.deleteGoodsReceiptNote(id);
   }
 
   @Post(':id/confirm')

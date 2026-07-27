@@ -68,7 +68,6 @@ export class GoodsReceiptNoteService {
       throw new AppException('PO_NOT_RECEIVABLE');
     }
 
-    const poItemIds = new Set(po.items.map((i) => i.itemId.toString()));
     // items để trống → RECEIVER xác nhận "nhận đủ theo PO": tự lấy các dòng còn thiếu
     // (expectedQty - receivedQty), actualQty mặc định = phần còn thiếu. Dòng perishable
     // vẫn thiếu lotNumber/expiryDate (không thể tự đoán) nên GRN_LOT_INFO_MISSING sẽ chặn
@@ -86,6 +85,35 @@ export class GoodsReceiptNoteService {
       throw new AppException('PO_NOT_RECEIVABLE');
     }
 
+    const resolvedItems = await this.resolveAndValidateItems(po, items);
+
+    const grnNumber = await this.generateGrnNumber();
+    return this.repo.createGoodsReceiptNote(
+      dto.purchaseOrderId,
+      grnNumber,
+      resolvedItems,
+      actorId,
+    );
+  }
+
+  /**
+   * Resolve + validate danh sách item client gửi (create hoặc update DRAFT) đối
+   * chiếu với PO — dùng chung để 2 luồng không lệch quy tắc nhau. Ném đúng các
+   * AppException hiện có: GRN_ITEM_NOT_IN_PO, GRN_QTY_EXCEEDS_PO, GRN_LOT_INFO_MISSING.
+   */
+  private async resolveAndValidateItems(
+    po: {
+      items: {
+        itemId: Types.ObjectId;
+        sku: string;
+        unit: string;
+        expectedQty: number;
+        receivedQty: number;
+      }[];
+    },
+    items: CreateGoodsReceiptNoteItemDto[],
+  ): Promise<ResolvedGoodsReceiptNoteItem[]> {
+    const poItemIds = new Set(po.items.map((i) => i.itemId.toString()));
     const resolvedItems: ResolvedGoodsReceiptNoteItem[] = [];
     for (const item of items) {
       const poItem = po.items.find((i) => i.itemId.toString() === item.itemId);
@@ -93,8 +121,8 @@ export class GoodsReceiptNoteService {
         throw new AppException('GRN_ITEM_NOT_IN_PO');
       }
 
-      // Chặn ngay lúc tạo (không đợi tới confirm) nếu dòng PO này đã nhận đủ hoặc
-      // actualQty client gửi vượt phần còn thiếu — tránh tạo GRN DRAFT "vô nghĩa"
+      // Chặn ngay lúc tạo/sửa (không đợi tới confirm) nếu dòng PO này đã nhận đủ hoặc
+      // actualQty client gửi vượt phần còn thiếu — tránh tạo/sửa GRN DRAFT "vô nghĩa"
       // chắc chắn sẽ bị GRN_QTY_EXCEEDS_PO chặn lại lúc confirm, đỡ tốn công RECEIVER
       // nhập lô/hạn dùng/ảnh minh chứng cho một phiếu không thể xác nhận được.
       const remainingQty = poItem.expectedQty - poItem.receivedQty;
@@ -124,14 +152,45 @@ export class GoodsReceiptNoteService {
         note: item.note,
       });
     }
+    return resolvedItems;
+  }
 
-    const grnNumber = await this.generateGrnNumber();
-    return this.repo.createGoodsReceiptNote(
-      dto.purchaseOrderId,
-      grnNumber,
-      resolvedItems,
-      actorId,
+  /**
+   * Sửa toàn bộ items của 1 GRN còn DRAFT — thay thế hoàn toàn (không merge),
+   * chạy lại đúng validate như lúc tạo. Chỉ cho phép khi DRAFT vì sau CONFIRMED
+   * đã cộng tồn kho thật, sửa items sẽ làm lệch số liệu đã ghi sổ.
+   */
+  async updateGoodsReceiptNoteItems(
+    id: string,
+    items: CreateGoodsReceiptNoteItemDto[],
+  ): Promise<GoodsReceiptNoteDocument> {
+    const grn = await this.repo.findGoodsReceiptNoteById(id);
+    if (!grn) throw new AppException('GRN_NOT_FOUND');
+    if (grn.status !== GoodsReceiptNoteStatus.DRAFT) {
+      throw new AppException('GRN_INVALID_STATUS_TRANSITION');
+    }
+
+    const po = await this.purchaseOrderService.getPurchaseOrder(
+      grn.purchaseOrderId.toString(),
     );
+    const resolvedItems = await this.resolveAndValidateItems(po, items);
+
+    const updated = await this.repo.replaceItems(id, resolvedItems);
+    if (!updated) throw new AppException('GRN_NOT_FOUND');
+    return updated;
+  }
+
+  /**
+   * Xóa vật lý 1 GRN còn DRAFT — chưa cộng tồn kho/PO nên xóa cứng an toàn,
+   * khác với chứng từ đã CONFIRMED/APPROVED (hủy bằng status, không soft-delete).
+   */
+  async deleteGoodsReceiptNote(id: string): Promise<void> {
+    const grn = await this.repo.findGoodsReceiptNoteById(id);
+    if (!grn) throw new AppException('GRN_NOT_FOUND');
+    if (grn.status !== GoodsReceiptNoteStatus.DRAFT) {
+      throw new AppException('GRN_INVALID_STATUS_TRANSITION');
+    }
+    await this.repo.deleteGoodsReceiptNote(id);
   }
 
   async confirmGoodsReceiptNote(
