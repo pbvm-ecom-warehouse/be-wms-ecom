@@ -1,16 +1,27 @@
 import { Injectable } from '@nestjs/common';
+import { Types } from 'mongoose';
 import { AppException } from '@app/common';
 import { LocationRepository } from './location.repository';
+import { StockRepository } from '../stock/stock.repository';
 import type { ZoneDocument } from './schemas/zone.schema';
 import type { RackDocument } from './schemas/rack.schema';
 import type { ShelfDocument } from './schemas/shelf.schema';
 import type { CreateZoneDto, UpdateZoneDto } from './dto/zone.dto';
 import type { CreateRackDto, UpdateRackDto } from './dto/rack.dto';
 import type { CreateShelfDto, UpdateShelfDto } from './dto/shelf.dto';
+import type { RackTemplateDocument } from './schemas/rack-template.schema';
+import type { UpdateRackTemplateDto } from './dto/rack-template.dto';
+import type { AisleDocument } from './schemas/aisle.schema';
+import type { CreateAisleDto, UpdateAisleDto } from './dto/aisle.dto';
+import type { GateDocument } from './schemas/gate.schema';
+import type { CreateGateDto, UpdateGateDto } from './dto/gate.dto';
 
 @Injectable()
 export class LocationService {
-  constructor(private readonly repo: LocationRepository) {}
+  constructor(
+    private readonly repo: LocationRepository,
+    private readonly stockRepo: StockRepository,
+  ) {}
 
   // ─── Zone ─────────────────────────────────────────────────────────────────
 
@@ -141,5 +152,126 @@ export class LocationService {
     const shelf = await this.repo.findStagingShelf();
     if (!shelf) throw new AppException('GRN_STAGING_SHELF_NOT_FOUND');
     return shelf;
+  }
+
+  // ─── RackTemplate ─────────────────────────────────────────────────────────
+
+  async getRackTemplate(): Promise<RackTemplateDocument> {
+    return this.repo.getRackTemplate();
+  }
+
+  async updateRackTemplate(
+    dto: UpdateRackTemplateDto,
+    actorId: string,
+  ): Promise<RackTemplateDocument> {
+    return this.repo.updateRackTemplate(dto, actorId);
+  }
+
+  // ─── Aisle ────────────────────────────────────────────────────────────────
+
+  async createAisle(
+    dto: CreateAisleDto,
+    actorId: string,
+  ): Promise<AisleDocument> {
+    const existing = await this.repo.findAisleByCode(dto.code);
+    if (existing) throw new AppException('AISLE_CODE_EXISTS');
+    return this.repo.createAisle(dto, actorId);
+  }
+
+  async listAisles(): Promise<AisleDocument[]> {
+    return this.repo.findAllAisles();
+  }
+
+  async getAisle(id: string): Promise<AisleDocument> {
+    const doc = await this.repo.findAisleById(id);
+    if (!doc) throw new AppException('AISLE_NOT_FOUND');
+    return doc;
+  }
+
+  async updateAisle(
+    id: string,
+    dto: UpdateAisleDto,
+    actorId: string,
+  ): Promise<AisleDocument> {
+    if (dto.code) {
+      const existing = await this.repo.findAisleByCode(dto.code);
+      if (existing && existing._id.toString() !== id)
+        throw new AppException('AISLE_CODE_EXISTS');
+    }
+    const doc = await this.repo.updateAisle(id, dto, actorId);
+    if (!doc) throw new AppException('AISLE_NOT_FOUND');
+    return doc;
+  }
+
+  async deleteAisle(id: string, actorId: string): Promise<void> {
+    const deleted = await this.repo.softDeleteAisle(id, actorId);
+    if (!deleted) throw new AppException('AISLE_NOT_FOUND');
+  }
+
+  // ─── Gate ─────────────────────────────────────────────────────────────────
+
+  async createGate(dto: CreateGateDto, actorId: string): Promise<GateDocument> {
+    const existing = await this.repo.findGateByCode(dto.code);
+    if (existing) throw new AppException('GATE_CODE_EXISTS');
+    return this.repo.createGate(dto, actorId);
+  }
+
+  async listGates(): Promise<GateDocument[]> {
+    return this.repo.findAllGates();
+  }
+
+  async getGate(id: string): Promise<GateDocument> {
+    const doc = await this.repo.findGateById(id);
+    if (!doc) throw new AppException('GATE_NOT_FOUND');
+    return doc;
+  }
+
+  async updateGate(
+    id: string,
+    dto: UpdateGateDto,
+    actorId: string,
+  ): Promise<GateDocument> {
+    if (dto.code) {
+      const existing = await this.repo.findGateByCode(dto.code);
+      if (existing && existing._id.toString() !== id)
+        throw new AppException('GATE_CODE_EXISTS');
+    }
+    const doc = await this.repo.updateGate(id, dto, actorId);
+    if (!doc) throw new AppException('GATE_NOT_FOUND');
+    return doc;
+  }
+
+  async deleteGate(id: string, actorId: string): Promise<void> {
+    const deleted = await this.repo.softDeleteGate(id, actorId);
+    if (!deleted) throw new AppException('GATE_NOT_FOUND');
+  }
+
+  // ─── Layout tổng hợp ──────────────────────────────────────────────────────
+
+  /** Ráp toàn bộ zone/rack/aisle/gate/rackTemplate thành 1 object cho FE vẽ sơ đồ 2D. Singleton — không phân trang, không lọc theo warehouseId (app = 1 kho). */
+  async getLayout(): Promise<{
+    zones: ZoneDocument[];
+    racks: RackDocument[];
+    aisles: AisleDocument[];
+    gates: GateDocument[];
+    rackTemplate: RackTemplateDocument;
+  }> {
+    const [zones, racks, aisles, gates, rackTemplate] = await Promise.all([
+      this.repo.findAllZones(),
+      this.repo.findAllRacks(),
+      this.repo.findAllAisles(),
+      this.repo.findAllGates(),
+      this.repo.getRackTemplate(),
+    ]);
+    return { zones, racks, aisles, gates, rackTemplate };
+  }
+
+  // ─── Shelf contents (rack elevation) ─────────────────────────────────────
+
+  /** Tồn kho thật trong 1 shelf — validate shelf tồn tại trước, dùng cho FE
+   * vẽ rack elevation (không suy diễn, đọc thẳng InventoryStock). */
+  async getShelfContents(shelfId: string) {
+    await this.getShelf(shelfId); // throw SHELF_NOT_FOUND nếu không tồn tại
+    return this.stockRepo.findInventoryByShelfId(new Types.ObjectId(shelfId));
   }
 }

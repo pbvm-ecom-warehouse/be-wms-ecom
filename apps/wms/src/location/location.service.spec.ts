@@ -1,25 +1,43 @@
 // apps/wms/src/location/location.service.spec.ts
 import { LocationService } from './location.service';
+import type { StockRepository } from '../stock/stock.repository';
+
+const makeStockRepo = () => ({
+  findInventoryByShelfId: jest.fn(),
+});
 
 const makeRepo = () => ({
   findStagingShelf: jest.fn(),
+  findShelfById: jest.fn(),
   findRackById: jest.fn(),
   findZoneById: jest.fn(),
   findZoneByCode: jest.fn(),
   findRackByCode: jest.fn(),
   findShelfByCode: jest.fn(),
+  findAisleByCode: jest.fn(),
   createZone: jest.fn(),
   createRack: jest.fn(),
   createShelf: jest.fn(),
+  createAisle: jest.fn(),
+  findAllZones: jest.fn(),
+  findAllRacks: jest.fn(),
+  findAllAisles: jest.fn(),
+  findAllGates: jest.fn(),
+  getRackTemplate: jest.fn(),
 });
 
 describe('LocationService', () => {
   let svc: LocationService;
   let repo: ReturnType<typeof makeRepo>;
+  let stockRepo: ReturnType<typeof makeStockRepo>;
 
   beforeEach(() => {
     repo = makeRepo();
-    svc = new LocationService(repo as never);
+    stockRepo = makeStockRepo();
+    svc = new LocationService(
+      repo as never,
+      stockRepo as unknown as StockRepository,
+    );
   });
 
   describe('findStagingShelf', () => {
@@ -130,6 +148,87 @@ describe('LocationService', () => {
 
       expect(repo.createShelf).toHaveBeenCalledWith(baseDto, 'actor1');
       expect(result).toEqual(created);
+    });
+  });
+
+  describe('createAisle', () => {
+    const baseDto = { code: 'MAIN-01', type: 'MAIN' as const };
+
+    it('throw AISLE_CODE_EXISTS khi code đã tồn tại', async () => {
+      repo.findAisleByCode.mockResolvedValue({ _id: 'aisle-existing' });
+      await expect(svc.createAisle(baseDto, 'actor1')).rejects.toMatchObject({
+        code: 'AISLE_CODE_EXISTS',
+      });
+      expect(repo.createAisle).not.toHaveBeenCalled();
+    });
+
+    it('tạo aisle thành công khi code chưa tồn tại', async () => {
+      repo.findAisleByCode.mockResolvedValue(null);
+      const created = { _id: 'aisle1', code: 'MAIN-01' };
+      repo.createAisle.mockResolvedValue(created);
+
+      const result = await svc.createAisle(baseDto, 'actor1');
+
+      expect(repo.createAisle).toHaveBeenCalledWith(baseDto, 'actor1');
+      expect(result).toEqual(created);
+    });
+  });
+
+  describe('getLayout', () => {
+    it('ráp zones, racks, aisles, gates, rackTemplate thành 1 object layout', async () => {
+      const mockZones = [{ id: 'z1' }];
+      const mockRacks = [{ id: 'r1' }];
+      const mockAisles = [{ id: 'a1' }];
+      const mockGates = [{ id: 'g1' }];
+      const mockRackTemplate = { widthM: 10, depthM: 1.5, levelCount: 3, bayCount: 3 };
+      repo.findAllZones.mockResolvedValue(mockZones);
+      repo.findAllRacks.mockResolvedValue(mockRacks);
+      repo.findAllAisles.mockResolvedValue(mockAisles);
+      repo.findAllGates.mockResolvedValue(mockGates);
+      repo.getRackTemplate.mockResolvedValue(mockRackTemplate);
+
+      const result = await svc.getLayout();
+
+      expect(result).toEqual({
+        zones: mockZones,
+        racks: mockRacks,
+        aisles: mockAisles,
+        gates: mockGates,
+        rackTemplate: mockRackTemplate,
+      });
+    });
+  });
+
+  describe('getShelfContents', () => {
+    it('throw SHELF_NOT_FOUND khi shelf không tồn tại — không gọi stockRepo', async () => {
+      repo.findShelfById.mockResolvedValue(null);
+
+      await expect(svc.getShelfContents('shelf-1')).rejects.toMatchObject({
+        code: 'SHELF_NOT_FOUND',
+      });
+      expect(stockRepo.findInventoryByShelfId).not.toHaveBeenCalled();
+    });
+
+    it('shelf tồn tại → trả về danh sách tồn kho thật từ stockRepo', async () => {
+      repo.findShelfById.mockResolvedValue({ id: 'shelf-1' });
+      const rows = [
+        {
+          id: 'row-1',
+          sku: 'SKU-001',
+          itemName: 'Áo thun',
+          unit: 'cái',
+          quantity: 10,
+          lotNumber: null,
+          expiryDate: null,
+        },
+      ];
+      stockRepo.findInventoryByShelfId.mockResolvedValue(rows);
+
+      const result = await svc.getShelfContents('shelf-1');
+
+      expect(repo.findShelfById).toHaveBeenCalledWith('shelf-1');
+      expect(stockRepo.findInventoryByShelfId).toHaveBeenCalledTimes(1);
+      expect(result).toEqual(rows);
     });
   });
 });

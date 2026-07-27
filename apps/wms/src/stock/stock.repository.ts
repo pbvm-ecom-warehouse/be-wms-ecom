@@ -569,6 +569,74 @@ export class StockRepository {
   }
 
   /**
+   * Tồn kho thật tại 1 shelf — join InventoryStock → WarehouseItem (tên/unit)
+   * → Lot (số lô/hạn dùng, optional). Dùng cho rack elevation view (FE) hiển
+   * thị đúng SKU/số lượng/lô đang nằm trong từng shelf, KHÔNG suy diễn.
+   */
+  async findInventoryByShelfId(shelfId: Types.ObjectId): Promise<
+    Array<{
+      id: string;
+      sku: string;
+      itemName: string;
+      unit: string;
+      quantity: number;
+      lotNumber: string | null;
+      expiryDate: Date | null;
+    }>
+  > {
+    const rows = await this.inventoryModel.aggregate<{
+      _id: Types.ObjectId;
+      sku: string;
+      itemName: string;
+      unit: string;
+      quantity: number;
+      lotNumber: string | null;
+      expiryDate: Date | null;
+    }>([
+      { $match: { shelfId, quantity: { $gt: 0 } } },
+      {
+        $lookup: {
+          from: 'warehouse_items',
+          localField: 'itemId',
+          foreignField: '_id',
+          as: 'item',
+        },
+      },
+      { $unwind: '$item' },
+      {
+        $lookup: {
+          from: 'lots',
+          localField: 'lotId',
+          foreignField: '_id',
+          as: 'lot',
+        },
+      },
+      { $unwind: { path: '$lot', preserveNullAndEmptyArrays: true } },
+      {
+        $project: {
+          _id: 1,
+          sku: '$item.sku',
+          itemName: '$item.name',
+          unit: '$item.unit',
+          quantity: 1,
+          lotNumber: { $ifNull: ['$lot.lotNumber', null] },
+          expiryDate: { $ifNull: ['$lot.expiryDate', null] },
+        },
+      },
+    ]);
+
+    return rows.map((r) => ({
+      id: r._id.toString(),
+      sku: r.sku,
+      itemName: r.itemName,
+      unit: r.unit,
+      quantity: r.quantity,
+      lotNumber: r.lotNumber,
+      expiryDate: r.expiryDate,
+    }));
+  }
+
+  /**
    * Tổng InventoryStock.quantity của 1 lô, group theo itemId — dùng bởi
    * ExpiredLotScanService để cộng dồn StockBalance.expired đúng
    * (1 lô có thể nằm rải rác nhiều shelf).
