@@ -133,11 +133,6 @@ export class ProductQueryDto {
   @ApiPropertyOptional({ example: true })
   @IsOptional()
   inStock?: boolean | string;
-
-  @ApiPropertyOptional({ example: true })
-  @IsBoolean()
-  @IsOptional()
-  isActive?: boolean;
 }
 export class ProductVariantResponseDto {
   @Expose()
