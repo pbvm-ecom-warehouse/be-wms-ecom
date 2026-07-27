@@ -8,6 +8,7 @@ import { Rack } from './schemas/rack.schema';
 import { Shelf } from './schemas/shelf.schema';
 import { RackTemplate } from './schemas/rack-template.schema';
 import { Aisle } from './schemas/aisle.schema';
+import { Gate } from './schemas/gate.schema';
 
 const makeModel = (overrides: Record<string, jest.Mock> = {}) => ({
   findOne: jest.fn().mockReturnThis(),
@@ -27,6 +28,7 @@ describe('LocationRepository', () => {
   let shelfModel: ReturnType<typeof makeModel>;
   let rackTemplateModel: ReturnType<typeof makeModel>;
   let aisleModel: ReturnType<typeof makeModel>;
+  let gateModel: ReturnType<typeof makeModel>;
   const zoneId = new Types.ObjectId();
   const actorId = new Types.ObjectId().toString();
 
@@ -36,6 +38,7 @@ describe('LocationRepository', () => {
     shelfModel = makeModel();
     rackTemplateModel = makeModel();
     aisleModel = makeModel();
+    gateModel = makeModel();
     const module = await Test.createTestingModule({
       providers: [
         LocationRepository,
@@ -47,6 +50,7 @@ describe('LocationRepository', () => {
           useValue: rackTemplateModel,
         },
         { provide: getModelToken(Aisle.name), useValue: aisleModel },
+        { provide: getModelToken(Gate.name), useValue: gateModel },
       ],
     }).compile();
     repo = module.get(LocationRepository);

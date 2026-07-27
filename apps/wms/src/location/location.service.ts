@@ -4,10 +4,14 @@ import { LocationRepository } from './location.repository';
 import type { ZoneDocument } from './schemas/zone.schema';
 import type { RackDocument } from './schemas/rack.schema';
 import type { ShelfDocument } from './schemas/shelf.schema';
-import type { GateDocument } from './schemas/gate.schema';
 import type { CreateZoneDto, UpdateZoneDto } from './dto/zone.dto';
 import type { CreateRackDto, UpdateRackDto } from './dto/rack.dto';
 import type { CreateShelfDto, UpdateShelfDto } from './dto/shelf.dto';
+import type { RackTemplateDocument } from './schemas/rack-template.schema';
+import type { UpdateRackTemplateDto } from './dto/rack-template.dto';
+import type { AisleDocument } from './schemas/aisle.schema';
+import type { CreateAisleDto, UpdateAisleDto } from './dto/aisle.dto';
+import type { GateDocument } from './schemas/gate.schema';
 import type { CreateGateDto, UpdateGateDto } from './dto/gate.dto';
 
 @Injectable()
@@ -143,6 +147,60 @@ export class LocationService {
     const shelf = await this.repo.findStagingShelf();
     if (!shelf) throw new AppException('GRN_STAGING_SHELF_NOT_FOUND');
     return shelf;
+  }
+
+  // ─── RackTemplate ─────────────────────────────────────────────────────────
+
+  async getRackTemplate(): Promise<RackTemplateDocument> {
+    return this.repo.getRackTemplate();
+  }
+
+  async updateRackTemplate(
+    dto: UpdateRackTemplateDto,
+    actorId: string,
+  ): Promise<RackTemplateDocument> {
+    return this.repo.updateRackTemplate(dto, actorId);
+  }
+
+  // ─── Aisle ────────────────────────────────────────────────────────────────
+
+  async createAisle(
+    dto: CreateAisleDto,
+    actorId: string,
+  ): Promise<AisleDocument> {
+    const existing = await this.repo.findAisleByCode(dto.code);
+    if (existing) throw new AppException('AISLE_CODE_EXISTS');
+    return this.repo.createAisle(dto, actorId);
+  }
+
+  async listAisles(): Promise<AisleDocument[]> {
+    return this.repo.findAllAisles();
+  }
+
+  async getAisle(id: string): Promise<AisleDocument> {
+    const doc = await this.repo.findAisleById(id);
+    if (!doc) throw new AppException('AISLE_NOT_FOUND');
+    return doc;
+  }
+
+  async updateAisle(
+    id: string,
+    dto: UpdateAisleDto,
+    actorId: string,
+  ): Promise<AisleDocument> {
+    if (dto.code) {
+      const existing = await this.repo.findAisleByCode(dto.code);
+      if (existing && existing._id.toString() !== id)
+        throw new AppException('AISLE_CODE_EXISTS');
+    }
+    const doc = await this.repo.updateAisle(id, dto, actorId);
+    if (!doc) throw new AppException('AISLE_NOT_FOUND');
+    return doc;
+  }
+
+  async deleteAisle(id: string, actorId: string): Promise<void> {
+    const deleted = await this.repo.softDeleteAisle(id, actorId);
+    if (!deleted) throw new AppException('AISLE_NOT_FOUND');
   }
 
   // ─── Gate ─────────────────────────────────────────────────────────────────
