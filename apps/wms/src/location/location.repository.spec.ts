@@ -393,6 +393,29 @@ describe('LocationRepository', () => {
       });
       expect(result).toBe(mockDoc);
     });
+
+    it('giải phóng code của aisle đã soft-delete trước khi tạo lại', async () => {
+      const deletedId = new Types.ObjectId();
+      const dto = { code: 'AISLE-03', type: 'RACK' as const };
+      const mockDoc = { _id: new Types.ObjectId(), ...dto };
+      aisleModel.exec
+        .mockResolvedValueOnce({ _id: deletedId, code: dto.code })
+        .mockResolvedValueOnce({ modifiedCount: 1 });
+      aisleModel.create.mockResolvedValue(mockDoc);
+
+      await repo.createAisle(dto, actorId);
+
+      expect(aisleModel.updateOne).toHaveBeenCalledWith(
+        { _id: deletedId },
+        {
+          $set: {
+            code: `${dto.code}__deleted_${deletedId.toString()}`,
+            updatedBy: new Types.ObjectId(actorId),
+          },
+        },
+        undefined,
+      );
+    });
   });
 
   describe('findAllAisles', () => {
