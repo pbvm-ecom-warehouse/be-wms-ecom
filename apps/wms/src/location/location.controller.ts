@@ -8,7 +8,6 @@ import {
   Param,
   Patch,
   Post,
-  Put,
   Query,
   UseGuards,
 } from '@nestjs/common';
@@ -38,14 +37,10 @@ import {
   ShelfResponseDto,
 } from './dto/shelf.dto';
 import {
-  UpdateRackTemplateDto,
-  RackTemplateResponseDto,
-} from './dto/rack-template.dto';
-import {
-  CreateAisleDto,
-  UpdateAisleDto,
-  AisleResponseDto,
-} from './dto/aisle.dto';
+  CreateGateDto,
+  UpdateGateDto,
+  GateResponseDto,
+} from './dto/gate.dto';
 
 const TO_INSTANCE_OPTS = { excludeExtraneousValues: true } as const;
 
@@ -55,42 +50,6 @@ const TO_INSTANCE_OPTS = { excludeExtraneousValues: true } as const;
 @Controller('location')
 export class LocationController {
   constructor(private readonly svc: LocationService) {}
-
-  // ─── RackTemplate (singleton — route cố định) ────────────────────────────
-
-  @Get('rack-template')
-  @Roles(WmsRole.MANAGER, WmsRole.ADMIN)
-  @ApiOperation({
-    summary: 'Kích thước rack chuẩn dùng chung toàn app — [MANAGER, ADMIN]',
-  })
-  @ApiOkResponse({ type: RackTemplateResponseDto })
-  async getRackTemplate(): Promise<RackTemplateResponseDto> {
-    const doc = await this.svc.getRackTemplate();
-    return plainToInstance(
-      RackTemplateResponseDto,
-      doc.toObject(),
-      TO_INSTANCE_OPTS,
-    );
-  }
-
-  @Put('rack-template')
-  @Roles(WmsRole.MANAGER)
-  @ApiOperation({
-    summary:
-      'Cập nhật kích thước rack chuẩn — áp dụng cho MỌI rack ngay lập tức — [MANAGER]',
-  })
-  @ApiOkResponse({ type: RackTemplateResponseDto })
-  async updateRackTemplate(
-    @Body() dto: UpdateRackTemplateDto,
-    @CurrentUser('sub') actorId: string,
-  ): Promise<RackTemplateResponseDto> {
-    const doc = await this.svc.updateRackTemplate(dto, actorId);
-    return plainToInstance(
-      RackTemplateResponseDto,
-      doc.toObject(),
-      TO_INSTANCE_OPTS,
-    );
-  }
 
   // ─── Zone (static sub-routes phải đặt TRƯỚC `:id` để tránh NestJS shadow) ──
 
@@ -175,67 +134,6 @@ export class LocationController {
       docs.map((d) => d.toObject()),
       TO_INSTANCE_OPTS,
     );
-  }
-
-  // ─── Aisle (static sub-routes phải đặt TRƯỚC `:id`) ──────────────────────
-
-  @Post('aisles')
-  @Roles(WmsRole.MANAGER)
-  @ApiOperation({ summary: 'Tạo lối đi (aisle) — [MANAGER]' })
-  @ApiCreatedResponse({ type: AisleResponseDto })
-  async createAisle(
-    @Body() dto: CreateAisleDto,
-    @CurrentUser('sub') actorId: string,
-  ): Promise<AisleResponseDto> {
-    const doc = await this.svc.createAisle(dto, actorId);
-    return plainToInstance(AisleResponseDto, doc.toObject(), TO_INSTANCE_OPTS);
-  }
-
-  @Get('aisles')
-  @Roles(WmsRole.MANAGER)
-  @ApiOperation({ summary: 'Danh sách lối đi — [MANAGER]' })
-  @ApiOkResponse({ type: [AisleResponseDto] })
-  async listAisles(): Promise<AisleResponseDto[]> {
-    const docs = await this.svc.listAisles();
-    return plainToInstance(
-      AisleResponseDto,
-      docs.map((d) => d.toObject()),
-      TO_INSTANCE_OPTS,
-    );
-  }
-
-  @Get('aisles/:id')
-  @Roles(WmsRole.MANAGER)
-  @ApiOperation({ summary: 'Chi tiết lối đi — [MANAGER]' })
-  @ApiOkResponse({ type: AisleResponseDto })
-  async getAisle(@Param('id') id: string): Promise<AisleResponseDto> {
-    const doc = await this.svc.getAisle(id);
-    return plainToInstance(AisleResponseDto, doc.toObject(), TO_INSTANCE_OPTS);
-  }
-
-  @Patch('aisles/:id')
-  @Roles(WmsRole.MANAGER)
-  @ApiOperation({ summary: 'Cập nhật lối đi — [MANAGER]' })
-  @ApiOkResponse({ type: AisleResponseDto })
-  async updateAisle(
-    @Param('id') id: string,
-    @Body() dto: UpdateAisleDto,
-    @CurrentUser('sub') actorId: string,
-  ): Promise<AisleResponseDto> {
-    const doc = await this.svc.updateAisle(id, dto, actorId);
-    return plainToInstance(AisleResponseDto, doc.toObject(), TO_INSTANCE_OPTS);
-  }
-
-  @Delete('aisles/:id')
-  @Roles(WmsRole.MANAGER)
-  @HttpCode(HttpStatus.NO_CONTENT)
-  @ApiOperation({ summary: 'Xoá lối đi (soft-delete) — [MANAGER]' })
-  @ApiNoContentResponse()
-  async deleteAisle(
-    @Param('id') id: string,
-    @CurrentUser('sub') actorId: string,
-  ): Promise<void> {
-    await this.svc.deleteAisle(id, actorId);
   }
 
   // ─── Zone param routes ────────────────────────────────────────────────────
@@ -344,5 +242,66 @@ export class LocationController {
     @CurrentUser('sub') actorId: string,
   ): Promise<void> {
     await this.svc.deleteShelf(id, actorId);
+  }
+
+  // ─── Gate (static sub-routes phải đặt TRƯỚC `:id`) ───────────────────────
+
+  @Post('gates')
+  @Roles(WmsRole.MANAGER)
+  @ApiOperation({ summary: 'Tạo cổng (gate) — [MANAGER]' })
+  @ApiCreatedResponse({ type: GateResponseDto })
+  async createGate(
+    @Body() dto: CreateGateDto,
+    @CurrentUser('sub') actorId: string,
+  ): Promise<GateResponseDto> {
+    const doc = await this.svc.createGate(dto, actorId);
+    return plainToInstance(GateResponseDto, doc.toObject(), TO_INSTANCE_OPTS);
+  }
+
+  @Get('gates')
+  @Roles(WmsRole.MANAGER)
+  @ApiOperation({ summary: 'Danh sách cổng — [MANAGER]' })
+  @ApiOkResponse({ type: [GateResponseDto] })
+  async listGates(): Promise<GateResponseDto[]> {
+    const docs = await this.svc.listGates();
+    return plainToInstance(
+      GateResponseDto,
+      docs.map((d) => d.toObject()),
+      TO_INSTANCE_OPTS,
+    );
+  }
+
+  @Get('gates/:id')
+  @Roles(WmsRole.MANAGER)
+  @ApiOperation({ summary: 'Chi tiết cổng — [MANAGER]' })
+  @ApiOkResponse({ type: GateResponseDto })
+  async getGate(@Param('id') id: string): Promise<GateResponseDto> {
+    const doc = await this.svc.getGate(id);
+    return plainToInstance(GateResponseDto, doc.toObject(), TO_INSTANCE_OPTS);
+  }
+
+  @Patch('gates/:id')
+  @Roles(WmsRole.MANAGER)
+  @ApiOperation({ summary: 'Cập nhật cổng — [MANAGER]' })
+  @ApiOkResponse({ type: GateResponseDto })
+  async updateGate(
+    @Param('id') id: string,
+    @Body() dto: UpdateGateDto,
+    @CurrentUser('sub') actorId: string,
+  ): Promise<GateResponseDto> {
+    const doc = await this.svc.updateGate(id, dto, actorId);
+    return plainToInstance(GateResponseDto, doc.toObject(), TO_INSTANCE_OPTS);
+  }
+
+  @Delete('gates/:id')
+  @Roles(WmsRole.MANAGER)
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({ summary: 'Xoá cổng (soft-delete) — [MANAGER]' })
+  @ApiNoContentResponse()
+  async deleteGate(
+    @Param('id') id: string,
+    @CurrentUser('sub') actorId: string,
+  ): Promise<void> {
+    await this.svc.deleteGate(id, actorId);
   }
 }

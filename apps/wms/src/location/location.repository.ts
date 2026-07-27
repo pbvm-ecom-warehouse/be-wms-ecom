@@ -4,16 +4,11 @@ import { Model, Types } from 'mongoose';
 import { Zone, ZoneDocument } from './schemas/zone.schema';
 import { Rack, RackDocument } from './schemas/rack.schema';
 import { Shelf, ShelfDocument } from './schemas/shelf.schema';
-import {
-  RackTemplate,
-  RackTemplateDocument,
-} from './schemas/rack-template.schema';
+import { Gate, GateDocument } from './schemas/gate.schema';
 import { CreateZoneDto, UpdateZoneDto } from './dto/zone.dto';
 import { CreateRackDto, UpdateRackDto } from './dto/rack.dto';
 import { CreateShelfDto, UpdateShelfDto } from './dto/shelf.dto';
-import { UpdateRackTemplateDto } from './dto/rack-template.dto';
-import { Aisle, AisleDocument } from './schemas/aisle.schema';
-import { CreateAisleDto, UpdateAisleDto } from './dto/aisle.dto';
+import { CreateGateDto, UpdateGateDto } from './dto/gate.dto';
 
 const SOFT_DELETE_FILTER = { deletedAt: null } as const;
 
@@ -23,9 +18,7 @@ export class LocationRepository {
     @InjectModel(Zone.name) private readonly zoneModel: Model<ZoneDocument>,
     @InjectModel(Rack.name) private readonly rackModel: Model<RackDocument>,
     @InjectModel(Shelf.name) private readonly shelfModel: Model<ShelfDocument>,
-    @InjectModel(RackTemplate.name)
-    private readonly rackTemplateModel: Model<RackTemplateDocument>,
-    @InjectModel(Aisle.name) private readonly aisleModel: Model<AisleDocument>,
+    @InjectModel(Gate.name) private readonly gateModel: Model<GateDocument>,
   ) {}
 
   // ─── Zone ─────────────────────────────────────────────────────────────────
@@ -225,56 +218,34 @@ export class LocationRepository {
     return res.modifiedCount > 0;
   }
 
-  // ─── RackTemplate (singleton) ────────────────────────────────────────────
+  // ─── Gate ─────────────────────────────────────────────────────────────────
 
-  /** Lazy init: tạo bản ghi mặc định nếu collection rỗng — tránh cần seed script riêng. */
-  async getRackTemplate(): Promise<RackTemplateDocument> {
-    const existing = await this.rackTemplateModel.findOne().exec();
-    if (existing) return existing;
-    return this.rackTemplateModel.create({});
-  }
-
-  async updateRackTemplate(
-    dto: UpdateRackTemplateDto,
-    actorId: string,
-  ): Promise<RackTemplateDocument> {
-    const current = await this.getRackTemplate();
-    current.set({ ...dto, updatedBy: new Types.ObjectId(actorId) });
-    await current.save();
-    return current;
-  }
-
-  // ─── Aisle ────────────────────────────────────────────────────────────────
-
-  async createAisle(
-    dto: CreateAisleDto,
-    actorId: string,
-  ): Promise<AisleDocument> {
-    return this.aisleModel.create({
+  async createGate(dto: CreateGateDto, actorId: string): Promise<GateDocument> {
+    return this.gateModel.create({
       ...dto,
       createdBy: new Types.ObjectId(actorId),
       updatedBy: new Types.ObjectId(actorId),
     });
   }
 
-  async findAllAisles(): Promise<AisleDocument[]> {
-    return this.aisleModel.find(SOFT_DELETE_FILTER).sort({ code: 1 }).exec();
+  async findAllGates(): Promise<GateDocument[]> {
+    return this.gateModel.find(SOFT_DELETE_FILTER).sort({ code: 1 }).exec();
   }
 
-  async findAisleById(id: string): Promise<AisleDocument | null> {
-    return this.aisleModel.findOne({ _id: id, ...SOFT_DELETE_FILTER }).exec();
+  async findGateById(id: string): Promise<GateDocument | null> {
+    return this.gateModel.findOne({ _id: id, ...SOFT_DELETE_FILTER }).exec();
   }
 
-  async findAisleByCode(code: string): Promise<AisleDocument | null> {
-    return this.aisleModel.findOne({ code, ...SOFT_DELETE_FILTER }).exec();
+  async findGateByCode(code: string): Promise<GateDocument | null> {
+    return this.gateModel.findOne({ code, ...SOFT_DELETE_FILTER }).exec();
   }
 
-  async updateAisle(
+  async updateGate(
     id: string,
-    dto: UpdateAisleDto,
+    dto: UpdateGateDto,
     actorId: string,
-  ): Promise<AisleDocument | null> {
-    return this.aisleModel
+  ): Promise<GateDocument | null> {
+    return this.gateModel
       .findOneAndUpdate(
         { _id: id, ...SOFT_DELETE_FILTER },
         { ...dto, updatedBy: new Types.ObjectId(actorId) },
@@ -283,8 +254,8 @@ export class LocationRepository {
       .exec();
   }
 
-  async softDeleteAisle(id: string, actorId: string): Promise<boolean> {
-    const res = await this.aisleModel
+  async softDeleteGate(id: string, actorId: string): Promise<boolean> {
+    const res = await this.gateModel
       .updateOne(
         { _id: id, ...SOFT_DELETE_FILTER },
         { deletedAt: new Date(), updatedBy: new Types.ObjectId(actorId) },

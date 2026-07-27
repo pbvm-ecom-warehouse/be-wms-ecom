@@ -78,7 +78,7 @@ export const ERROR_CATALOG = {
     message: 'Đã có nhân viên trong hệ thống',
   },
 
-  // ── WMS — Location Structure (Zone/Rack/Shelf/Aisle/Gate) ───────────────────
+  // ── WMS — Location Structure (Zone/Rack/Shelf) ──────────────────────────────
   ZONE_NOT_FOUND: {
     status: HttpStatus.NOT_FOUND,
     message: 'Không tìm thấy khu vực',
@@ -111,6 +111,10 @@ export const ERROR_CATALOG = {
     status: HttpStatus.CONFLICT,
     message: 'Mã lối đi đã tồn tại',
   },
+  RACK_TEMPLATE_NOT_FOUND: {
+    status: HttpStatus.NOT_FOUND,
+    message: 'Không tìm thấy template kệ',
+  },
   GATE_NOT_FOUND: {
     status: HttpStatus.NOT_FOUND,
     message: 'Không tìm thấy cổng',
@@ -118,14 +122,6 @@ export const ERROR_CATALOG = {
   GATE_CODE_EXISTS: {
     status: HttpStatus.CONFLICT,
     message: 'Mã cổng đã tồn tại',
-  },
-  RACK_TEMPLATE_NOT_FOUND: {
-    status: HttpStatus.NOT_FOUND,
-    message: 'Chưa cấu hình kích thước kệ chuẩn',
-  },
-  RACK_TEMPLATE_INVALID: {
-    status: HttpStatus.BAD_REQUEST,
-    message: 'Kích thước kệ chuẩn không hợp lệ',
   },
 
   // ── WMS — Supplier ─────────────────────────────────────────────────────────
