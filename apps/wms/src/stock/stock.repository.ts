@@ -126,15 +126,23 @@ export class StockRepository {
   }
 
   /**
-   * Lấy sku/name của nhiều mặt hàng theo id (batch) — dùng khi tạo StockCount
-   * (tránh N+1 query) và khi gắn itemName vào PO response.
+   * Lấy thông tin hiển thị của nhiều mặt hàng theo id (batch) — dùng khi tạo StockCount
+   * (tránh N+1 query) và khi gắn itemName/barcode/category/type/images vào PO response.
    */
-  findItemsByIds(
-    itemIds: Types.ObjectId[],
-  ): Promise<{ _id: Types.ObjectId; sku: string; name: string }[]> {
+  findItemsByIds(itemIds: Types.ObjectId[]): Promise<
+    {
+      _id: Types.ObjectId;
+      sku: string;
+      name: string;
+      barcode?: string;
+      category?: string;
+      type: ItemType;
+      images: string[];
+    }[]
+  > {
     return this.itemModel
       .find({ _id: { $in: itemIds } })
-      .select('sku name')
+      .select('sku name barcode category type images')
       .lean()
       .exec();
   }

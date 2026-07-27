@@ -292,10 +292,12 @@ export class PurchaseOrderService {
       ),
     ]);
     const supplierById = new Map(suppliers.map((s) => [s._id.toString(), s]));
-    const itemNameById = new Map(items.map((i) => [i._id.toString(), i.name]));
+    const itemById = new Map(items.map((i) => [i._id.toString(), i]));
 
     return docs.map((doc) => {
-      const plain = doc.toObject() as unknown as Record<string, unknown>;
+      const plain = doc.toObject() as unknown as Record<string, unknown> & {
+        items: Record<string, unknown>[];
+      };
       const supplier = supplierById.get(doc.supplierId.toString());
       return {
         ...plain,
@@ -307,10 +309,17 @@ export class PurchaseOrderService {
               status: supplier.status,
             }
           : undefined,
-        items: doc.items.map((item) => ({
-          ...(item as unknown as Record<string, unknown>),
-          itemName: itemNameById.get(item.itemId.toString()),
-        })),
+        items: plain.items.map((item, idx) => {
+          const warehouseItem = itemById.get(doc.items[idx].itemId.toString());
+          return {
+            ...item,
+            itemName: warehouseItem?.name,
+            barcode: warehouseItem?.barcode,
+            category: warehouseItem?.category,
+            type: warehouseItem?.type,
+            images: warehouseItem?.images,
+          };
+        }),
       };
     });
   }

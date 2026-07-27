@@ -16,6 +16,7 @@ import {
 } from 'class-validator';
 import { Types } from 'mongoose';
 import { PurchaseOrderStatus } from '../schemas/purchase-order.schema';
+import { ItemType } from '../../stock/schemas/warehouse-item.schema';
 
 export class CreatePurchaseOrderItemDto {
   @ApiProperty({
@@ -132,10 +133,26 @@ export class PurchaseOrderItemResponseDto {
   @ApiProperty()
   sku!: string;
 
-  /** Denormalize từ WarehouseItem.name tại thời điểm build response — không lưu trong PurchaseOrderItem schema. */
+  /** Denormalize từ WarehouseItem tại thời điểm build response — không lưu trong PurchaseOrderItem schema. */
   @Expose()
   @ApiPropertyOptional()
   itemName?: string;
+
+  @Expose()
+  @ApiPropertyOptional()
+  barcode?: string;
+
+  @Expose()
+  @ApiPropertyOptional()
+  category?: string;
+
+  @Expose()
+  @ApiPropertyOptional({ enum: ItemType })
+  type?: ItemType;
+
+  @Expose()
+  @ApiPropertyOptional({ type: [String] })
+  images?: string[];
 
   @Expose()
   @ApiProperty()
