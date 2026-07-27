@@ -1,7 +1,7 @@
 // apps/wms/src/purchase-order/purchase-order.service.ts
 import { Injectable, Logger } from '@nestjs/common';
 import { AppException } from '@app/common';
-import type { ClientSession } from 'mongoose';
+import { Types, type ClientSession } from 'mongoose';
 import {
   PurchaseOrderRepository,
   ResolvedPurchaseOrderItem,
@@ -15,6 +15,7 @@ import {
 import type {
   CreatePurchaseOrderDto,
   QueryPurchaseOrderDto,
+  QueryReceivingPurchaseOrderDto,
 } from './dto/purchase-order.dto';
 
 /** Ngưỡng lệch giá (%) để cảnh báo — không chặn PO, chỉ log nghi vấn nhập nhầm/gian lận (issue #31). */
@@ -96,14 +97,19 @@ export class PurchaseOrderService {
           }
         }
         if (supplierItem) {
-          this.warnIfPriceDeviates(item, unitPrice, supplierItem.purchasePrice);
+          this.warnIfPriceDeviates(
+            warehouseItem.sku,
+            unitPrice,
+            supplierItem.purchasePrice,
+          );
           this.assertMoqSatisfied(item, supplierItem);
           maxLeadTimeDays = maxOf(maxLeadTimeDays, supplierItem.leadTimeDays);
         }
       }
       resolvedItems.push({
         itemId: item.itemId,
-        sku: item.sku,
+        // sku luôn denormalize từ WarehouseItem đã tra ở trên — không tin sku client tự gửi.
+        sku: warehouseItem.sku,
         expectedQty: item.expectedQty,
         unit: item.unit,
         unitPrice,
@@ -183,10 +189,139 @@ export class PurchaseOrderService {
     return this.repo.findPurchaseOrders(query);
   }
 
+  /**
+   * PO còn receivable (chưa CANCELLED/COMPLETED) cho màn hình RECEIVER chọn đơn tạo GRN.
+   * Chỉ trả các dòng còn remainingQty > 0 — khớp logic auto-fill items của
+   * GoodsReceiptNoteService.createGoodsReceiptNote (bỏ dòng đã nhận đủ).
+   */
+  async listReceivingPurchaseOrders(
+    query: QueryReceivingPurchaseOrderDto,
+  ): Promise<{
+    data: Array<{
+      id: string;
+      poNumber: string;
+      supplierName: string;
+      expectedDate?: Date;
+      items: Array<{
+        itemId: string;
+        itemName: string;
+        sku: string;
+        unit: string;
+        expectedQty: number;
+        receivedQty: number;
+        remainingQty: number;
+      }>;
+    }>;
+    total: number;
+  }> {
+    const page = query.page ?? 1;
+    const limit = query.limit ?? 20;
+    const { data, total } = await this.repo.findReceivablePurchaseOrders(
+      page,
+      limit,
+    );
+
+    const supplierIds = [...new Set(data.map((d) => d.supplierId.toString()))];
+    const itemIds = [
+      ...new Set(data.flatMap((d) => d.items.map((i) => i.itemId.toString()))),
+    ];
+    const [suppliers, items] = await Promise.all([
+      this.supplierService.listSuppliersByIds(supplierIds),
+      this.stockRepo.findItemsByIds(
+        itemIds.map((id) => new Types.ObjectId(id)),
+      ),
+    ]);
+    const supplierNameById = new Map(
+      suppliers.map((s) => [s._id.toString(), s.name]),
+    );
+    const itemNameById = new Map(items.map((i) => [i._id.toString(), i.name]));
+
+    return {
+      data: data.map((doc) => ({
+        id: doc._id.toString(),
+        poNumber: doc.poNumber,
+        supplierName:
+          supplierNameById.get(doc.supplierId.toString()) ?? 'Không xác định',
+        expectedDate: doc.expectedDate,
+        items: doc.items
+          .filter((item) => item.receivedQty < item.expectedQty)
+          .map((item) => ({
+            itemId: item.itemId.toString(),
+            itemName: itemNameById.get(item.itemId.toString()) ?? item.sku,
+            sku: item.sku,
+            unit: item.unit,
+            expectedQty: item.expectedQty,
+            receivedQty: item.receivedQty,
+            remainingQty: item.expectedQty - item.receivedQty,
+          })),
+      })),
+      total,
+    };
+  }
+
   async getPurchaseOrder(id: string): Promise<PurchaseOrderDocument> {
     const doc = await this.repo.findPurchaseOrderById(id);
     if (!doc) throw new AppException('PO_NOT_FOUND');
     return doc;
+  }
+
+  /** Tra nhiều PO theo id — dùng bởi GoodsReceiptNoteService để gắn purchaseOrderNumber/supplierName vào GRN response. */
+  async listPurchaseOrdersByIds(
+    ids: string[],
+  ): Promise<PurchaseOrderDocument[]> {
+    if (ids.length === 0) return [];
+    return this.repo.findPurchaseOrdersByIds(ids);
+  }
+
+  /**
+   * Gắn supplier (rút gọn) + itemName vào 1 hoặc nhiều PO để trả về GET — controller không tự
+   * populate xuyên collection (rule data-and-mongoose.md: hạn chế populate, tra rồi gắn thủ công).
+   * Dedupe supplierId/itemId qua Set trước khi query để tránh N+1 khi trả list nhiều PO.
+   */
+  async attachDisplayInfo(
+    docs: PurchaseOrderDocument[],
+  ): Promise<Record<string, unknown>[]> {
+    const supplierIds = [...new Set(docs.map((d) => d.supplierId.toString()))];
+    const itemIds = [
+      ...new Set(docs.flatMap((d) => d.items.map((i) => i.itemId.toString()))),
+    ];
+    const [suppliers, items] = await Promise.all([
+      this.supplierService.listSuppliersByIds(supplierIds),
+      this.stockRepo.findItemsByIds(
+        itemIds.map((id) => new Types.ObjectId(id)),
+      ),
+    ]);
+    const supplierById = new Map(suppliers.map((s) => [s._id.toString(), s]));
+    const itemById = new Map(items.map((i) => [i._id.toString(), i]));
+
+    return docs.map((doc) => {
+      const plain = doc.toObject() as unknown as Record<string, unknown> & {
+        items: Record<string, unknown>[];
+      };
+      const supplier = supplierById.get(doc.supplierId.toString());
+      return {
+        ...plain,
+        supplier: supplier
+          ? {
+              id: supplier._id.toString(),
+              code: supplier.code,
+              name: supplier.name,
+              status: supplier.status,
+            }
+          : undefined,
+        items: plain.items.map((item, idx) => {
+          const warehouseItem = itemById.get(doc.items[idx].itemId.toString());
+          return {
+            ...item,
+            itemName: warehouseItem?.name,
+            barcode: warehouseItem?.barcode,
+            category: warehouseItem?.category,
+            type: warehouseItem?.type,
+            images: warehouseItem?.images,
+          };
+        }),
+      };
+    });
   }
 
   /**
@@ -228,7 +363,7 @@ export class PurchaseOrderService {
    * Chỉ log cảnh báo, không throw — giá nhập tay vẫn được chấp nhận (issue #31).
    */
   private warnIfPriceDeviates(
-    item: { sku: string },
+    sku: string,
     unitPrice: number,
     referencePrice: number,
   ): void {
@@ -237,7 +372,7 @@ export class PurchaseOrderService {
     const deviation = Math.abs(unitPrice - referencePrice) / referencePrice;
     if (deviation > PRICE_DEVIATION_WARN_THRESHOLD) {
       this.logger.warn(
-        `SKU ${item.sku}: unitPrice nhập tay (${unitPrice}) lệch ${(deviation * 100).toFixed(1)}% so với SupplierItem.purchasePrice (${referencePrice}) — kiểm tra lại giá NCC hoặc nhập nhầm`,
+        `SKU ${sku}: unitPrice nhập tay (${unitPrice}) lệch ${(deviation * 100).toFixed(1)}% so với SupplierItem.purchasePrice (${referencePrice}) — kiểm tra lại giá NCC hoặc nhập nhầm`,
       );
     }
   }

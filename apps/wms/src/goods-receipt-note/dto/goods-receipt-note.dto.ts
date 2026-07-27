@@ -26,20 +26,21 @@ export class CreateGoodsReceiptNoteItemDto {
   @IsMongoId()
   itemId!: string;
 
-  @ApiProperty({ example: 'SKU-001' })
-  @IsString()
-  @MinLength(1)
-  sku!: string;
-
   @ApiProperty({ example: 100, description: 'Số lượng thực nhận' })
   @IsNumber()
   @Min(0)
   actualQty!: number;
 
-  @ApiProperty({ example: 'cái' })
+  @ApiPropertyOptional({
+    example: 'cái',
+    description:
+      'Đơn vị thực nhận — có thể khác unit đặt trong PO (vd PO đặt "thùng" nhưng đếm ra "cái"). ' +
+      'Bỏ trống thì lấy theo unit của dòng PO tương ứng.',
+  })
+  @IsOptional()
   @IsString()
   @MinLength(1)
-  unit!: string;
+  unit?: string;
 
   @ApiPropertyOptional({
     example: 'L240601',
@@ -71,12 +72,18 @@ export class CreateGoodsReceiptNoteDto {
   @IsMongoId()
   purchaseOrderId!: string;
 
-  @ApiProperty({ type: [CreateGoodsReceiptNoteItemDto] })
+  @ApiPropertyOptional({
+    type: [CreateGoodsReceiptNoteItemDto],
+    description:
+      'Bỏ trống để server tự lấy các dòng PO còn thiếu (expectedQty - receivedQty) làm actualQty mặc định. ' +
+      'Dòng hàng perishable vẫn cần gửi tay kèm lotNumber/expiryDate vì server không tự đoán được.',
+  })
+  @IsOptional()
   @IsArray()
   @ArrayMinSize(1)
   @ValidateNested({ each: true })
   @Type(() => CreateGoodsReceiptNoteItemDto)
-  items!: CreateGoodsReceiptNoteItemDto[];
+  items?: CreateGoodsReceiptNoteItemDto[];
 }
 
 export class QueryGoodsReceiptNoteDto {
@@ -117,6 +124,11 @@ export class GoodsReceiptNoteItemResponseDto {
   @Expose()
   @ApiProperty()
   sku!: string;
+
+  /** Denormalize từ WarehouseItem.name tại thời điểm build response — không lưu trong GRN item. */
+  @Expose()
+  @ApiPropertyOptional()
+  itemName?: string;
 
   @Expose()
   @ApiProperty()
@@ -161,6 +173,16 @@ export class GoodsReceiptNoteResponseDto {
   )
   @ApiProperty()
   purchaseOrderId!: string;
+
+  /** Gắn ở service (tra PurchaseOrder theo purchaseOrderId) — tránh FE phải tự join. */
+  @Expose()
+  @ApiPropertyOptional()
+  purchaseOrderNumber?: string;
+
+  /** Gắn ở service (tra Supplier qua PurchaseOrder.supplierId) — không populate xuyên collection. */
+  @Expose()
+  @ApiPropertyOptional()
+  supplierName?: string;
 
   @Expose()
   @ApiProperty({ enum: GoodsReceiptNoteStatus })

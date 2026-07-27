@@ -9,6 +9,7 @@ import {
 import { SupplierRepository } from './supplier.repository';
 import { SupplierService } from './supplier.service';
 import { SupplierController } from './supplier.controller';
+import { StockModule } from '../stock/stock.module';
 
 @Module({
   imports: [
@@ -16,6 +17,7 @@ import { SupplierController } from './supplier.controller';
       { name: Supplier.name, schema: SupplierSchema },
       { name: SupplierItem.name, schema: SupplierItemSchema },
     ]),
+    StockModule, // findItemsByIds — gắn sku/itemName vào SupplierItem response
   ],
   providers: [SupplierRepository, SupplierService],
   controllers: [SupplierController],

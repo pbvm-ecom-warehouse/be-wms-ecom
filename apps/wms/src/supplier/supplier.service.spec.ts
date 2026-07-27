@@ -13,22 +13,27 @@ const makeRepo = () => ({
   softDeleteSupplier: jest.fn(),
   createSupplierItem: jest.fn(),
   findSupplierItemById: jest.fn(),
-  findSupplierItemsByItemId: jest.fn(),
+  findSupplierItems: jest.fn(),
   findSupplierItemByItemAndSupplier: jest.fn(),
-  findSupplierItemsBySupplierId: jest.fn(),
   updateSupplierItem: jest.fn(),
+});
+
+const makeStockRepo = () => ({
+  findItemsByIds: jest.fn().mockResolvedValue([]),
 });
 
 describe('SupplierService', () => {
   let svc: SupplierService;
   let repo: ReturnType<typeof makeRepo>;
+  let stockRepo: ReturnType<typeof makeStockRepo>;
   const actorId = 'actor123';
   const supplierId = 'sup001';
   const itemId = 'item001';
 
   beforeEach(() => {
     repo = makeRepo();
-    svc = new SupplierService(repo as never);
+    stockRepo = makeStockRepo();
+    svc = new SupplierService(repo as never, stockRepo as never);
   });
 
   // ─── createSupplier ───────────────────────────────────────────────────────
@@ -194,21 +199,30 @@ describe('SupplierService', () => {
     });
   });
 
-  describe('listSupplierItemsByItemId', () => {
+  describe('listSupplierItems', () => {
     it('trả về mảng rỗng khi SKU chưa có báo giá nào (không throw)', async () => {
-      repo.findSupplierItemsByItemId.mockResolvedValue([]);
-      await expect(svc.listSupplierItemsByItemId(itemId)).resolves.toEqual([]);
+      repo.findSupplierItems.mockResolvedValue({ data: [], total: 0 });
+      await expect(svc.listSupplierItems({ itemId })).resolves.toEqual({
+        data: [],
+        total: 0,
+      });
     });
 
-    it('trả về mọi báo giá của SKU', async () => {
+    it('trả về mọi báo giá của SKU, gắn kèm sku/itemName từ WarehouseItem', async () => {
       const docs = [
-        { itemId, supplierId: 'sup1' },
-        { itemId, supplierId: 'sup2' },
+        { itemId, supplierId: 'sup1', toObject: () => ({ itemId }) },
+        { itemId, supplierId: 'sup2', toObject: () => ({ itemId }) },
       ];
-      repo.findSupplierItemsByItemId.mockResolvedValue(docs);
-      await expect(svc.listSupplierItemsByItemId(itemId)).resolves.toEqual(
-        docs,
-      );
+      repo.findSupplierItems.mockResolvedValue({ data: docs, total: 2 });
+      stockRepo.findItemsByIds.mockResolvedValue([
+        { _id: { toString: () => itemId }, sku: 'SKU-1', name: 'Item 1' },
+      ]);
+      const result = await svc.listSupplierItems({ itemId });
+      expect(result.total).toBe(2);
+      expect(result.data[0]).toMatchObject({
+        sku: 'SKU-1',
+        itemName: 'Item 1',
+      });
     });
   });
 

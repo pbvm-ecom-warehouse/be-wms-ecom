@@ -19,6 +19,7 @@ import type {
 } from './dto/supplier.dto';
 import type {
   CreateSupplierItemDto,
+  QuerySupplierItemDto,
   UpdateSupplierItemDto,
 } from './dto/supplier-item.dto';
 
@@ -50,6 +51,13 @@ export class SupplierRepository {
   async findSupplierById(id: string): Promise<SupplierDocument | null> {
     return this.supplierModel
       .findOne({ _id: id, ...SOFT_DELETE_FILTER })
+      .exec();
+  }
+
+  /** Tra nhiều NCC theo danh sách id cùng lúc — dùng gắn supplier summary vào PO list, tránh N+1. */
+  async findSuppliersByIds(ids: string[]): Promise<SupplierDocument[]> {
+    return this.supplierModel
+      .find({ _id: { $in: ids.map((id) => new Types.ObjectId(id)) } })
       .exec();
   }
 
@@ -142,15 +150,6 @@ export class SupplierRepository {
     return this.supplierItemModel.findOne({ _id: id }).exec();
   }
 
-  /** Mọi báo giá (mọi NCC) đã đăng ký cho 1 SKU — dùng để so sánh giá trước khi đặt PO. */
-  async findSupplierItemsByItemId(
-    itemId: string,
-  ): Promise<SupplierItemDocument[]> {
-    return this.supplierItemModel
-      .find({ itemId: new Types.ObjectId(itemId) })
-      .exec();
-  }
-
   /** Tra đúng 1 báo giá theo cặp (SKU, NCC) — dùng khi upsert và khi PO auto-fill giá. */
   async findSupplierItemByItemAndSupplier(
     itemId: string,
@@ -164,13 +163,27 @@ export class SupplierRepository {
       .exec();
   }
 
-  async findSupplierItemsBySupplierId(
-    supplierId: string,
-  ): Promise<SupplierItemDocument[]> {
-    return this.supplierItemModel
-      .find({ supplierId: new Types.ObjectId(supplierId) })
-      .sort({ updatedAt: -1 })
-      .exec();
+  /** Danh mục giá — lọc theo supplierId/itemId (optional), có phân trang. */
+  async findSupplierItems(
+    query: QuerySupplierItemDto,
+  ): Promise<{ data: SupplierItemDocument[]; total: number }> {
+    const page = query.page ?? 1;
+    const limit = query.limit ?? 20;
+    const filter: Record<string, unknown> = {};
+    if (query.supplierId)
+      filter['supplierId'] = new Types.ObjectId(query.supplierId);
+    if (query.itemId) filter['itemId'] = new Types.ObjectId(query.itemId);
+
+    const [data, total] = await Promise.all([
+      this.supplierItemModel
+        .find(filter)
+        .sort({ updatedAt: -1 })
+        .skip((page - 1) * limit)
+        .limit(limit)
+        .exec(),
+      this.supplierItemModel.countDocuments(filter).exec(),
+    ]);
+    return { data, total };
   }
 
   async updateSupplierItem(

@@ -79,15 +79,25 @@ describe('SupplierRepository', () => {
     });
   });
 
-  describe('findSupplierItemsByItemId', () => {
-    it('gọi find với itemId ObjectId, trả về mảng mọi NCC báo giá SKU đó', async () => {
+  describe('findSupplierItems', () => {
+    it('lọc theo itemId khi có, trả về data + total', async () => {
       const fakeDocs = [{ itemId }, { itemId }];
-      supplierItemModel.exec.mockResolvedValue(fakeDocs);
-      const result = await repo.findSupplierItemsByItemId(itemId);
+      supplierItemModel.exec
+        .mockResolvedValueOnce(fakeDocs)
+        .mockResolvedValueOnce(fakeDocs.length);
+      const result = await repo.findSupplierItems({ itemId });
       expect(supplierItemModel.find).toHaveBeenCalledWith({
         itemId: expect.any(Types.ObjectId),
       });
-      expect(result).toEqual(fakeDocs);
+      expect(result).toEqual({ data: fakeDocs, total: fakeDocs.length });
+    });
+
+    it('lọc theo supplierId khi có', async () => {
+      supplierItemModel.exec.mockResolvedValueOnce([]).mockResolvedValueOnce(0);
+      await repo.findSupplierItems({ supplierId });
+      expect(supplierItemModel.find).toHaveBeenCalledWith({
+        supplierId: expect.any(Types.ObjectId),
+      });
     });
   });
 

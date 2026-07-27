@@ -38,6 +38,7 @@ import {
 } from './dto/supplier.dto';
 import {
   CreateSupplierItemDto,
+  QuerySupplierItemDto,
   SupplierItemResponseDto,
   UpdateSupplierItemDto,
 } from './dto/supplier-item.dto';
@@ -68,39 +69,26 @@ export class SupplierController {
     return plainToInstance(SupplierItemResponseDto, doc.toObject(), TO_OPTS);
   }
 
-  @Get('items/by-item/:itemId')
+  @Get('items')
   @Roles(WmsRole.MANAGER, WmsRole.ADMIN)
   @ApiOperation({
     summary:
-      'Danh sách báo giá của mọi NCC cho 1 SKU — so sánh giá trước khi đặt PO — [MANAGER, ADMIN]',
+      'Danh sách danh mục giá — lọc theo supplierId/itemId (optional) — [MANAGER, ADMIN]',
   })
   @ApiOkResponse({ type: [SupplierItemResponseDto] })
-  async listSupplierItemsByItemId(
-    @Param('itemId') itemId: string,
-  ): Promise<SupplierItemResponseDto[]> {
-    const docs = await this.svc.listSupplierItemsByItemId(itemId);
-    return plainToInstance(
-      SupplierItemResponseDto,
-      docs.map((d) => d.toObject()),
-      TO_OPTS,
-    );
-  }
-
-  @Get('items/by-supplier/:supplierId')
-  @Roles(WmsRole.MANAGER, WmsRole.ADMIN)
-  @ApiOperation({
-    summary: 'Danh sách danh mục giá theo NCC — [MANAGER, ADMIN]',
-  })
-  @ApiOkResponse({ type: [SupplierItemResponseDto] })
-  async listSupplierItemsBySupplierId(
-    @Param('supplierId') supplierId: string,
-  ): Promise<SupplierItemResponseDto[]> {
-    const docs = await this.svc.listSupplierItemsBySupplierId(supplierId);
-    return plainToInstance(
-      SupplierItemResponseDto,
-      docs.map((d) => d.toObject()),
-      TO_OPTS,
-    );
+  async listSupplierItems(@Query() query: QuerySupplierItemDto): Promise<{
+    data: SupplierItemResponseDto[];
+    total: number;
+    page: number;
+    limit: number;
+  }> {
+    const { data, total } = await this.svc.listSupplierItems(query);
+    return {
+      data: plainToInstance(SupplierItemResponseDto, data, TO_OPTS),
+      total,
+      page: query.page ?? 1,
+      limit: query.limit ?? 20,
+    };
   }
 
   @Get('items/:id')

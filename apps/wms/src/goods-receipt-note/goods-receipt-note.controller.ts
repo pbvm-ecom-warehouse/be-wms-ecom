@@ -55,11 +55,8 @@ export class GoodsReceiptNoteController {
     @CurrentUser('sub') actorId: string,
   ): Promise<GoodsReceiptNoteResponseDto> {
     const doc = await this.svc.createGoodsReceiptNote(dto, actorId);
-    return plainToInstance(
-      GoodsReceiptNoteResponseDto,
-      doc.toObject(),
-      TO_OPTS,
-    );
+    const [plain] = await this.svc.attachDisplayInfo([doc]);
+    return plainToInstance(GoodsReceiptNoteResponseDto, plain, TO_OPTS);
   }
 
   @Post(':id/confirm')
@@ -74,11 +71,8 @@ export class GoodsReceiptNoteController {
     @CurrentUser('sub') actorId: string,
   ): Promise<GoodsReceiptNoteResponseDto> {
     const doc = await this.svc.confirmGoodsReceiptNote(id, actorId);
-    return plainToInstance(
-      GoodsReceiptNoteResponseDto,
-      doc.toObject(),
-      TO_OPTS,
-    );
+    const [plain] = await this.svc.attachDisplayInfo([doc]);
+    return plainToInstance(GoodsReceiptNoteResponseDto, plain, TO_OPTS);
   }
 
   @Post(':id/approve')
@@ -90,11 +84,8 @@ export class GoodsReceiptNoteController {
     @CurrentUser('sub') actorId: string,
   ): Promise<GoodsReceiptNoteResponseDto> {
     const doc = await this.svc.approveGoodsReceiptNote(id, actorId);
-    return plainToInstance(
-      GoodsReceiptNoteResponseDto,
-      doc.toObject(),
-      TO_OPTS,
-    );
+    const [plain] = await this.svc.attachDisplayInfo([doc]);
+    return plainToInstance(GoodsReceiptNoteResponseDto, plain, TO_OPTS);
   }
 
   @Post(':id/images')
@@ -117,11 +108,8 @@ export class GoodsReceiptNoteController {
     @UploadedFile() file: Express.Multer.File,
   ): Promise<GoodsReceiptNoteResponseDto> {
     const doc = await this.svc.uploadGrnImage(id, file);
-    return plainToInstance(
-      GoodsReceiptNoteResponseDto,
-      doc.toObject(),
-      TO_OPTS,
-    );
+    const [plain] = await this.svc.attachDisplayInfo([doc]);
+    return plainToInstance(GoodsReceiptNoteResponseDto, plain, TO_OPTS);
   }
 
   @Get()
@@ -139,12 +127,9 @@ export class GoodsReceiptNoteController {
     limit: number;
   }> {
     const { data, total } = await this.svc.listGoodsReceiptNotes(query);
+    const plainList = await this.svc.attachDisplayInfo(data);
     return {
-      data: plainToInstance(
-        GoodsReceiptNoteResponseDto,
-        data.map((d) => d.toObject()),
-        TO_OPTS,
-      ),
+      data: plainToInstance(GoodsReceiptNoteResponseDto, plainList, TO_OPTS),
       total,
       page: query.page ?? 1,
       limit: query.limit ?? 20,
@@ -161,10 +146,7 @@ export class GoodsReceiptNoteController {
     @Param('id') id: string,
   ): Promise<GoodsReceiptNoteResponseDto> {
     const doc = await this.svc.getGoodsReceiptNote(id);
-    return plainToInstance(
-      GoodsReceiptNoteResponseDto,
-      doc.toObject(),
-      TO_OPTS,
-    );
+    const [plain] = await this.svc.attachDisplayInfo([doc]);
+    return plainToInstance(GoodsReceiptNoteResponseDto, plain, TO_OPTS);
   }
 }

@@ -28,6 +28,8 @@ import {
   CreatePurchaseOrderDto,
   PurchaseOrderResponseDto,
   QueryPurchaseOrderDto,
+  QueryReceivingPurchaseOrderDto,
+  ReceivingPurchaseOrderResponseDto,
 } from './dto/purchase-order.dto';
 
 const TO_OPTS = { excludeExtraneousValues: true } as const;
@@ -48,7 +50,8 @@ export class PurchaseOrderController {
     @CurrentUser('sub') actorId: string,
   ): Promise<PurchaseOrderResponseDto> {
     const doc = await this.svc.createPurchaseOrder(dto, actorId);
-    return plainToInstance(PurchaseOrderResponseDto, doc.toObject(), TO_OPTS);
+    const [plain] = await this.svc.attachDisplayInfo([doc]);
+    return plainToInstance(PurchaseOrderResponseDto, plain, TO_OPTS);
   }
 
   @Get()
@@ -62,12 +65,33 @@ export class PurchaseOrderController {
     limit: number;
   }> {
     const { data, total } = await this.svc.listPurchaseOrders(query);
+    const plainList = await this.svc.attachDisplayInfo(data);
     return {
-      data: plainToInstance(
-        PurchaseOrderResponseDto,
-        data.map((d) => d.toObject()),
-        TO_OPTS,
-      ),
+      data: plainToInstance(PurchaseOrderResponseDto, plainList, TO_OPTS),
+      total,
+      page: query.page ?? 1,
+      limit: query.limit ?? 20,
+    };
+  }
+
+  @Get('receiving')
+  @Roles(WmsRole.RECEIVER, WmsRole.ADMIN)
+  @ApiOperation({
+    summary:
+      'Danh sách PO còn có thể nhận hàng (chưa hủy/chưa nhận đủ) — [RECEIVER, ADMIN]',
+  })
+  @ApiOkResponse({ type: [ReceivingPurchaseOrderResponseDto] })
+  async listReceivingPurchaseOrders(
+    @Query() query: QueryReceivingPurchaseOrderDto,
+  ): Promise<{
+    data: ReceivingPurchaseOrderResponseDto[];
+    total: number;
+    page: number;
+    limit: number;
+  }> {
+    const { data, total } = await this.svc.listReceivingPurchaseOrders(query);
+    return {
+      data: plainToInstance(ReceivingPurchaseOrderResponseDto, data, TO_OPTS),
       total,
       page: query.page ?? 1,
       limit: query.limit ?? 20,
@@ -82,6 +106,7 @@ export class PurchaseOrderController {
     @Param('id') id: string,
   ): Promise<PurchaseOrderResponseDto> {
     const doc = await this.svc.getPurchaseOrder(id);
-    return plainToInstance(PurchaseOrderResponseDto, doc.toObject(), TO_OPTS);
+    const [plain] = await this.svc.attachDisplayInfo([doc]);
+    return plainToInstance(PurchaseOrderResponseDto, plain, TO_OPTS);
   }
 }

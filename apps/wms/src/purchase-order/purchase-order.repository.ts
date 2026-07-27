@@ -52,6 +52,15 @@ export class PurchaseOrderRepository {
     return this.model.findOne({ _id: id }).exec();
   }
 
+  /** Tra nhiều PO theo danh sách id cùng lúc — dùng gắn purchaseOrderNumber/supplierName vào GRN list, tránh N+1. */
+  async findPurchaseOrdersByIds(
+    ids: string[],
+  ): Promise<PurchaseOrderDocument[]> {
+    return this.model
+      .find({ _id: { $in: ids.map((id) => new Types.ObjectId(id)) } })
+      .exec();
+  }
+
   /** Đọc PO trong transaction GRN — cần session để thấy đúng bản ghi đang lock. */
   async findPurchaseOrderByIdWithSession(
     id: string,
@@ -110,5 +119,31 @@ export class PurchaseOrderRepository {
     return this.model
       .countDocuments({ poNumber: { $regex: `^${prefix}` } })
       .exec();
+  }
+
+  /**
+   * PO còn có thể tạo GRN (chưa CANCELLED/COMPLETED) — dùng cho màn hình RECEIVER
+   * chọn đơn để nhận hàng. Không lọc theo dòng item còn thiếu ở query Mongo (tính
+   * remainingQty ở service, đơn giản hơn và nhất quán với logic auto-fill GRN).
+   */
+  async findReceivablePurchaseOrders(
+    page: number,
+    limit: number,
+  ): Promise<{ data: PurchaseOrderDocument[]; total: number }> {
+    const filter = {
+      status: {
+        $nin: [PurchaseOrderStatus.CANCELLED, PurchaseOrderStatus.COMPLETED],
+      },
+    };
+    const [data, total] = await Promise.all([
+      this.model
+        .find(filter)
+        .sort({ createdAt: -1 })
+        .skip((page - 1) * limit)
+        .limit(limit)
+        .exec(),
+      this.model.countDocuments(filter).exec(),
+    ]);
+    return { data, total };
   }
 }
