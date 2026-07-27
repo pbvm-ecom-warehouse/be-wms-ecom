@@ -99,6 +99,10 @@ export class CreateVariantDto {
   @IsEnum(FulfillmentType)
   @IsOptional()
   fulfillmentType?: FulfillmentType;
+  @ApiPropertyOptional({ example: true })
+  @IsBoolean()
+  @IsOptional()
+  isActive?: boolean = false;
 }
 
 export class UpdateVariantDto extends PartialType(CreateVariantDto) {}
