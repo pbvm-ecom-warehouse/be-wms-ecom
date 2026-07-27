@@ -26,9 +26,12 @@ interface Candidate {
   capacity: number;
   free: number;
   hasSameSku: boolean;
+  distanceMeters: number | null;
 }
 
 const DEFAULT_FILL_FACTOR = 0.75;
+const SAME_SKU_BONUS = 1000;
+const DISTANCE_SCORE_CAP_METERS = 100;
 
 @Injectable()
 export class PutAwaySuggestionService {
@@ -56,10 +59,12 @@ export class PutAwaySuggestionService {
       return { suggestions: [], warning: 'NO_SHELF_FITS' };
     }
 
-    const [occupiedByShelf, shelfIdsWithSameSku] = await Promise.all([
-      this.stockRepo.findOccupiedVolume(),
-      this.stockRepo.findShelfIdsWithItem(item._id),
-    ]);
+    const [occupiedByShelf, shelfIdsWithSameSku, distanceByShelfId] =
+      await Promise.all([
+        this.stockRepo.findOccupiedVolume(),
+        this.stockRepo.findShelfIdsWithItem(item._id),
+        this.computeDistancesToStaging(fittingShelves),
+      ]);
     const defaultFillFactor =
       this.configService.get<number>('PUTAWAY_DEFAULT_FILL_FACTOR') ??
       DEFAULT_FILL_FACTOR;
@@ -80,6 +85,7 @@ export class PutAwaySuggestionService {
         capacity,
         free,
         hasSameSku: shelfIdsWithSameSku.has(shelf._id.toString()),
+        distanceMeters: distanceByShelfId.get(shelf._id.toString()) ?? null,
       });
     }
 
@@ -93,6 +99,57 @@ export class PutAwaySuggestionService {
     }
 
     return this.combineShelves(candidates, qty);
+  }
+
+  /**
+   * Khoảng cách Euclid (mét) từ tâm rack của mỗi shelf tới tâm rack chứa
+   * staging shelf — dùng làm 1 trong 3 tiêu chí weighted scoring (ưu tiên
+   * shelf gần khu nhận hàng tạm để giảm quãng đường di chuyển put-away).
+   * Trả Map rỗng nếu không có staging shelf hoặc staging shelf thiếu toạ độ
+   * rack — không chặn suggestion, các candidate chỉ đơn giản không có
+   * distance_score (coi như 0 điểm khoảng cách).
+   */
+  private async computeDistancesToStaging(
+    shelves: ShelfDocument[],
+  ): Promise<Map<string, number>> {
+    const staging = await this.locationRepo.findStagingShelf();
+    if (!staging) return new Map();
+
+    const allShelfIds = [...shelves.map((s) => s._id), staging._id];
+    const centers =
+      await this.locationRepo.findRackCentersByShelfId(allShelfIds);
+    const stagingCenter = centers.get(staging._id.toString());
+    if (!stagingCenter) return new Map();
+
+    const result = new Map<string, number>();
+    for (const shelf of shelves) {
+      const center = centers.get(shelf._id.toString());
+      if (!center) continue;
+      const dx = center.xM - stagingCenter.xM;
+      const dy = center.yM - stagingCenter.yM;
+      result.set(shelf._id.toString(), Math.sqrt(dx * dx + dy * dy));
+    }
+    return result;
+  }
+
+  /**
+   * Điểm tổng hợp weighted scoring: same-SKU (ưu tiên tuyệt đối, +1000) +
+   * khoảng cách tới staging (càng gần càng cao, cap 100m) + best-fit thể
+   * tích (free càng nhỏ càng khít, chia /1000 để chỉ phân định khi 2 tiêu
+   * chí trên đã ngang nhau — free tính bằng cm³ nên đơn vị chênh lệch quá
+   * lớn nếu không chuẩn hoá).
+   */
+  private score(candidate: Candidate): number {
+    const sameSkuBonus = candidate.hasSameSku ? SAME_SKU_BONUS : 0;
+    const distanceScore =
+      candidate.distanceMeters === null
+        ? 0
+        : Math.max(
+            0,
+            DISTANCE_SCORE_CAP_METERS -
+              Math.min(DISTANCE_SCORE_CAP_METERS, candidate.distanceMeters),
+          );
+    return sameSkuBonus + distanceScore - candidate.free / 1000;
   }
 
   private fits(itemDimsDesc: number[], shelf: ShelfDocument): boolean {
@@ -111,25 +168,19 @@ export class PutAwaySuggestionService {
     const sufficient = candidates.filter((c) => c.capacity >= qty);
     if (sufficient.length === 0) return null;
 
-    const sameSku = sufficient
-      .filter((c) => c.hasSameSku)
-      .sort((a, b) => b.capacity - a.capacity);
-    if (sameSku.length > 0) {
-      return {
-        shelfCode: sameSku[0].shelf.code,
-        capacity: sameSku[0].capacity,
-      };
-    }
-
-    const bestFit = [...sufficient].sort((a, b) => a.free - b.free);
-    return { shelfCode: bestFit[0].shelf.code, capacity: bestFit[0].capacity };
+    const best = [...sufficient].sort(
+      (a, b) => this.score(b) - this.score(a),
+    )[0];
+    return { shelfCode: best.shelf.code, capacity: best.capacity };
   }
 
   private combineShelves(
     candidates: Candidate[],
     qty: number,
   ): PutAwaySuggestionResult {
-    const sorted = [...candidates].sort((a, b) => b.capacity - a.capacity);
+    const sorted = [...candidates].sort(
+      (a, b) => this.score(b) - this.score(a),
+    );
     const chosen: PutAwaySuggestionItem[] = [];
     let covered = 0;
     for (const c of sorted) {

@@ -179,6 +179,47 @@ export class LocationRepository {
       .exec();
   }
 
+  /**
+   * Map shelfId → toạ độ tâm rack chứa nó (mét) — dùng tính khoảng cách
+   * trong weighted put-away suggestion. Kích thước rack lấy từ RackTemplate
+   * dùng chung (mọi rack cùng kích thước) — không đọc trên từng Rack nữa.
+   * Rack chưa từng set toạ độ (xM/yM=0 mặc định) vẫn trả về entry hợp lệ —
+   * caller không cần phân biệt, chấp nhận được vì MANAGER sẽ set toạ độ
+   * thật qua UI map trước khi dùng suggestion.
+   */
+  async findRackCentersByShelfId(
+    shelfIds: Types.ObjectId[],
+  ): Promise<Map<string, { xM: number; yM: number }>> {
+    const shelves = await this.shelfModel
+      .find({ _id: { $in: shelfIds } })
+      .select('_id rackId')
+      .lean()
+      .exec();
+    const rackIds = [...new Set(shelves.map((s) => s.rackId.toString()))].map(
+      (id) => new Types.ObjectId(id),
+    );
+    const [racks, template] = await Promise.all([
+      this.rackModel
+        .find({ _id: { $in: rackIds } })
+        .select('_id xM yM')
+        .lean()
+        .exec(),
+      this.getRackTemplate(),
+    ]);
+    const rackCenterById = new Map(
+      racks.map((r) => [
+        r._id.toString(),
+        { xM: r.xM + template.widthM / 2, yM: r.yM + template.depthM / 2 },
+      ]),
+    );
+    const result = new Map<string, { xM: number; yM: number }>();
+    for (const shelf of shelves) {
+      const center = rackCenterById.get(shelf.rackId.toString());
+      if (center) result.set(shelf._id.toString(), center);
+    }
+    return result;
+  }
+
   async findShelfById(id: string): Promise<ShelfDocument | null> {
     return this.shelfModel.findOne({ _id: id, ...SOFT_DELETE_FILTER }).exec();
   }
