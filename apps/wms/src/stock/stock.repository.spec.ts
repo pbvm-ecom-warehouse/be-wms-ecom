@@ -111,7 +111,9 @@ describe('StockRepository', () => {
       expect(warehouseItemModel.find).toHaveBeenCalledWith({
         _id: { $in: itemIds },
       });
-      expect(warehouseItemModel.select).toHaveBeenCalledWith('sku name');
+      expect(warehouseItemModel.select).toHaveBeenCalledWith(
+        'sku name barcode category type images',
+      );
       expect(warehouseItemModel.lean).toHaveBeenCalled();
       expect(result).toEqual([
         { _id: itemIds[0], sku: 'SKU-1', name: 'Item 1' },
