@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Cho phép MANAGER bố trí sơ đồ kho 2D (zone/rack/aisle/gate với toạ độ thật, mỗi rack kích thước riêng), xem chi tiết từng tầng kệ (rack elevation) với tồn kho thật, và nhận gợi ý vị trí đặt hàng (put-away) theo weighted scoring (same-SKU + khoảng cách tới staging + best-fit thể tích) thay vì chỉ thuần thể tích như hiện tại.
+**Goal:** Cho phép MANAGER bố trí sơ đồ kho 2D (zone/rack/aisle/gate với toạ độ thật, kích thước rack dùng chung 1 template chuẩn toàn app), xem chi tiết từng tầng kệ (rack elevation) với tồn kho thật, và nhận gợi ý vị trí đặt hàng (put-away) theo weighted scoring (same-SKU + khoảng cách tới staging + best-fit thể tích) thay vì chỉ thuần thể tích như hiện tại.
 
-**Architecture:** Mở rộng 2 schema Mongoose hiện có (`Zone`, `Rack`) thêm field toạ độ/kích thước; thêm 2 collection mới nhỏ (`Aisle`, `Gate`) trong cùng module `location`; thêm 1 endpoint ráp `WarehouseLayout` tổng hợp; nâng cấp `PutAwaySuggestionService` sang weighted scoring dùng toạ độ mới; thêm 1 endpoint mới liệt kê tồn kho theo shelf (đọc `InventoryStock`+`Lot`+`WarehouseItem`, không thêm schema). Phía FE: nối các component UI đã có sẵn (`WarehouseFloorPlan`, `WarehouseLayoutInspector`, `RackConfigurationDialog`, `WarehouseArchitectureScene`) vào 1 page mới bằng service gọi API thật, thay thế toàn bộ fallback/mock hiện có.
+**Architecture:** Mở rộng `Zone` schema thêm field toạ độ; `Rack` schema chỉ thêm **vị trí** (không thêm kích thước — kích thước đọc từ 1 collection singleton mới `RackTemplate` dùng chung toàn app); thêm 2 collection mới nhỏ (`Aisle`, `Gate`) trong cùng module `location`; thêm endpoint ráp `WarehouseLayout` tổng hợp (kèm kích thước rack từ template); nâng cấp `PutAwaySuggestionService` sang weighted scoring dùng toạ độ mới; thêm 1 endpoint mới liệt kê tồn kho theo shelf (đọc `InventoryStock`+`Lot`+`WarehouseItem`, không thêm schema). Phía FE: nối các component UI đã có sẵn (`WarehouseFloorPlan`, `WarehouseLayoutInspector`, `WarehouseArchitectureScene`) vào 1 page mới bằng service gọi API thật, thay thế toàn bộ fallback/mock hiện có; `RackConfigurationDialog` bị loại khỏi luồng chính (không còn ý nghĩa khi mọi rack đã luôn đồng bộ theo template) và thay bằng 1 form sửa `RackTemplate` chung.
 
 **Tech Stack:** NestJS + Mongoose (BE, `be/apps/wms`), Next.js App Router + TanStack Query + Axios (FE, `fe-pbvm-warehouse`), TypeScript strict (không `any`).
 
@@ -236,7 +236,7 @@ git commit -m "feat(wms): thêm toạ độ/kích thước 2D vào Zone schema"
 
 ---
 
-### Task 2: Thêm field toạ độ/kích thước vào `Rack` schema (mỗi rack kích thước riêng)
+### Task 2: Thêm field vị trí vào `Rack` schema (KHÔNG thêm kích thước — xem Task 2b)
 
 **Files:**
 - Modify: `be/apps/wms/src/location/schemas/rack.schema.ts`
@@ -245,8 +245,8 @@ git commit -m "feat(wms): thêm toạ độ/kích thước 2D vào Zone schema"
 
 **Interfaces:**
 - Consumes: không phụ thuộc Task 1 trực tiếp (schema độc lập), nhưng cùng nhóm field convention.
-- Produces: `Rack.xM/yM/widthM/depthM/rotation/levelCount/bayCount/accessPointXM/accessPointYM` — **mỗi rack tự khai báo riêng** (đã chốt trong spec, không dùng template chung). `accessPoint` lưu phẳng thành 2 field số (không sub-document) để đơn giản hoá — điểm mà nhân viên đứng để lấy/đặt hàng ở rack này, dùng làm 1 trong các điểm neo khi tính route sau này.
-- Produces: `RackResponseDto` expose đủ các field trên.
+- Produces: `Rack.xM/yM/rotation/accessPointXM/accessPointYM` — **chỉ vị trí, KHÔNG có `widthM/depthM/levelCount/bayCount`** trên document Rack. Kích thước dùng chung toàn app, đọc từ `RackTemplate` singleton (Task 2b) — quyết định của user: "kích thước kệ đồng bộ toàn app", không phải mỗi rack tự khai báo. `accessPoint` lưu phẳng thành 2 field số (không sub-document) — điểm nhân viên đứng để lấy/đặt hàng ở rack này, dùng làm điểm neo khi tính route sau này.
+- Produces: `RackResponseDto` expose `xM/yM/rotation/accessPointXM/accessPointYM` — KHÔNG expose kích thước (client tự ráp với `RackTemplate` lấy riêng, xem Task 5).
 
 - [ ] **Step 1: Viết test cho field mới**
 
@@ -256,22 +256,17 @@ Tạo `be/apps/wms/src/location/schemas/rack.schema.spec.ts`:
 import { RackSchema } from './rack.schema';
 
 describe('Rack schema', () => {
-  it('có field toạ độ/kích thước/cấu trúc riêng cho từng rack', () => {
+  it('có field vị trí (không có kích thước — kích thước dùng chung từ RackTemplate)', () => {
     const paths = RackSchema.paths;
     expect(paths['xM']).toBeDefined();
     expect(paths['yM']).toBeDefined();
-    expect(paths['widthM']).toBeDefined();
-    expect(paths['depthM']).toBeDefined();
     expect(paths['rotation']).toBeDefined();
-    expect(paths['levelCount']).toBeDefined();
-    expect(paths['bayCount']).toBeDefined();
     expect(paths['accessPointXM']).toBeDefined();
     expect(paths['accessPointYM']).toBeDefined();
-  });
-
-  it('levelCount và bayCount mặc định 1', () => {
-    expect(RackSchema.path('levelCount').getDefault()).toBe(1);
-    expect(RackSchema.path('bayCount').getDefault()).toBe(1);
+    expect(paths['widthM']).toBeUndefined();
+    expect(paths['depthM']).toBeUndefined();
+    expect(paths['levelCount']).toBeUndefined();
+    expect(paths['bayCount']).toBeUndefined();
   });
 });
 ```
@@ -300,27 +295,18 @@ export class Rack {
   @Prop({ required: true })
   code!: string;
 
-  /** Toạ độ + kích thước riêng của rack này — không dùng chung 1 template, mỗi rack khai báo độc lập (đồng bộ giữa các rack là hành động tuỳ chọn qua UI, không phải ràng buộc dữ liệu). */
+  /** Vị trí rack trên sơ đồ — KHÔNG có kích thước ở đây. Kích thước
+   * (widthM/depthM/levelCount/bayCount) dùng chung toàn app, đọc từ
+   * RackTemplate singleton (xem rack-template.schema.ts) để sửa 1 chỗ là
+   * đổi kích thước mọi rack cùng lúc — đúng yêu cầu "kệ đồng bộ toàn app". */
   @Prop({ type: Number, default: 0 })
   xM!: number;
 
   @Prop({ type: Number, default: 0 })
   yM!: number;
 
-  @Prop({ type: Number, default: 0 })
-  widthM!: number;
-
-  @Prop({ type: Number, default: 0 })
-  depthM!: number;
-
   @Prop({ type: Number, enum: [0, 90], default: 0 })
   rotation!: number;
-
-  @Prop({ type: Number, default: 1, min: 1 })
-  levelCount!: number;
-
-  @Prop({ type: Number, default: 1, min: 1 })
-  bayCount!: number;
 
   /** Điểm nhân viên đứng để thao tác với rack — dùng làm điểm neo khi tính route. */
   @Prop({ type: Number, default: 0 })
@@ -362,12 +348,10 @@ import { ApiProperty, ApiPropertyOptional, PartialType } from '@nestjs/swagger';
 import { Expose, Transform } from 'class-transformer';
 import {
   IsIn,
-  IsInt,
   IsMongoId,
   IsNumber,
   IsOptional,
   IsString,
-  Min,
   MinLength,
 } from 'class-validator';
 import { Types } from 'mongoose';
@@ -397,32 +381,10 @@ export class CreateRackDto {
   @IsNumber()
   yM?: number;
 
-  @ApiPropertyOptional({ example: 10 })
-  @IsOptional()
-  @IsNumber()
-  widthM?: number;
-
-  @ApiPropertyOptional({ example: 1.5 })
-  @IsOptional()
-  @IsNumber()
-  depthM?: number;
-
   @ApiPropertyOptional({ example: 0, enum: [0, 90] })
   @IsOptional()
   @IsIn([0, 90])
   rotation?: number;
-
-  @ApiPropertyOptional({ example: 3, description: 'Số tầng của rack này' })
-  @IsOptional()
-  @IsInt()
-  @Min(1)
-  levelCount?: number;
-
-  @ApiPropertyOptional({ example: 3, description: 'Số khoang của rack này' })
-  @IsOptional()
-  @IsInt()
-  @Min(1)
-  bayCount?: number;
 
   @ApiPropertyOptional({ example: 8 })
   @IsOptional()
@@ -469,24 +431,8 @@ export class RackResponseDto {
   yM!: number;
 
   @Expose()
-  @ApiProperty()
-  widthM!: number;
-
-  @Expose()
-  @ApiProperty()
-  depthM!: number;
-
-  @Expose()
   @ApiProperty({ enum: [0, 90] })
   rotation!: number;
-
-  @Expose()
-  @ApiProperty()
-  levelCount!: number;
-
-  @Expose()
-  @ApiProperty()
-  bayCount!: number;
 
   @Expose()
   @ApiProperty()
@@ -515,7 +461,314 @@ Expected: không lỗi liên quan `rack.dto.ts`/`rack.schema.ts`.
 
 ```bash
 cd be && git add apps/wms/src/location/schemas/rack.schema.ts apps/wms/src/location/schemas/rack.schema.spec.ts apps/wms/src/location/dto/rack.dto.ts
-git commit -m "feat(wms): thêm toạ độ/kích thước riêng từng rack (levelCount, bayCount, accessPoint)"
+git commit -m "feat(wms): thêm vị trí (xM/yM/rotation/accessPoint) vào Rack schema — kích thước tách sang RackTemplate riêng"
+```
+
+---
+
+### Task 2b: Tạo `RackTemplate` singleton — kích thước rack dùng chung toàn app
+
+**Files:**
+- Create: `be/apps/wms/src/location/schemas/rack-template.schema.ts`
+- Create: `be/apps/wms/src/location/schemas/rack-template.schema.spec.ts`
+- Create: `be/apps/wms/src/location/dto/rack-template.dto.ts`
+- Modify: `be/apps/wms/src/location/location.repository.ts`
+- Modify: `be/apps/wms/src/location/location.service.ts`
+- Modify: `be/apps/wms/src/location/location.controller.ts`
+- Modify: `be/apps/wms/src/location/location.module.ts`
+- Modify: `be/libs/common/src/errors/error-codes.ts`
+
+**Interfaces:**
+- Produces: `RackTemplate { widthM, depthM, levelCount, bayCount }` — document **singleton** (đúng 1 bản ghi duy nhất trong collection, không có `code`/`deletedAt` — không phải master data theo từng entity, là 1 config chung). Có `updatedBy`/`updatedAt` (đổi giá trị = audit ai sửa), không có `createdBy`/`deletedAt` (không tạo mới nhiều lần, không xoá).
+- Produces: `LocationRepository.getRackTemplate(): Promise<RackTemplateDocument>` — tự tạo bản ghi mặc định nếu chưa tồn tại (lazy init, tránh cần seed script riêng).
+- Produces: `LocationRepository.updateRackTemplate(dto, actorId): Promise<RackTemplateDocument>`.
+- Produces: `LocationService.getRackTemplate()/updateRackTemplate(dto, actorId)`.
+- Produces: endpoints `GET /location/rack-template`, `PUT /location/rack-template` (PUT vì đây là thay thế toàn bộ 1 singleton, không phải PATCH từng phần — nhất quán với ý nghĩa "cấu hình chung").
+- Produces: error code `RACK_TEMPLATE_INVALID` (validate input, dùng khi cần — thực tế DTO validate đã đủ, giữ dự phòng không bắt buộc dùng).
+
+- [ ] **Step 1: Viết test schema `RackTemplate`**
+
+Tạo `be/apps/wms/src/location/schemas/rack-template.schema.spec.ts`:
+
+```typescript
+import { RackTemplateSchema } from './rack-template.schema';
+
+describe('RackTemplate schema', () => {
+  it('có đủ field kích thước chuẩn dùng chung', () => {
+    const paths = RackTemplateSchema.paths;
+    expect(paths['widthM']).toBeDefined();
+    expect(paths['depthM']).toBeDefined();
+    expect(paths['levelCount']).toBeDefined();
+    expect(paths['bayCount']).toBeDefined();
+  });
+
+  it('collection tên rack_templates', () => {
+    expect(RackTemplateSchema.get('collection')).toBe('rack_templates');
+  });
+
+  it('levelCount và bayCount mặc định 1', () => {
+    expect(RackTemplateSchema.path('levelCount').getDefault()).toBe(1);
+    expect(RackTemplateSchema.path('bayCount').getDefault()).toBe(1);
+  });
+});
+```
+
+- [ ] **Step 2: Chạy test, xác nhận FAIL**
+
+Run: `cd be && npx jest apps/wms/src/location/schemas/rack-template.schema.spec.ts`
+Expected: FAIL — module không tồn tại.
+
+- [ ] **Step 3: Tạo `RackTemplate` schema**
+
+Tạo `be/apps/wms/src/location/schemas/rack-template.schema.ts`:
+
+```typescript
+import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
+import { HydratedDocument, Types } from 'mongoose';
+
+/**
+ * Kích thước rack dùng CHUNG toàn app — singleton (đúng 1 document).
+ * Sửa field ở đây = đổi kích thước hiển thị/tính toán cho MỌI rack cùng lúc.
+ * Không phải master data theo từng entity nên không có code/deletedAt.
+ */
+@Schema({ collection: 'rack_templates', timestamps: true })
+export class RackTemplate {
+  @Prop({ type: Number, required: true, default: 10 })
+  widthM!: number;
+
+  @Prop({ type: Number, required: true, default: 1.5 })
+  depthM!: number;
+
+  @Prop({ type: Number, required: true, default: 3, min: 1 })
+  levelCount!: number;
+
+  @Prop({ type: Number, required: true, default: 3, min: 1 })
+  bayCount!: number;
+
+  @Prop({ type: Types.ObjectId })
+  updatedBy?: Types.ObjectId;
+}
+
+export type RackTemplateDocument = HydratedDocument<RackTemplate>;
+export const RackTemplateSchema = SchemaFactory.createForClass(RackTemplate);
+```
+
+- [ ] **Step 4: Chạy test, xác nhận PASS**
+
+Run: `cd be && npx jest apps/wms/src/location/schemas/rack-template.schema.spec.ts`
+Expected: PASS
+
+- [ ] **Step 5: Thêm error code (dự phòng, dùng nếu cần validate nghiệp vụ ngoài DTO)**
+
+Thêm vào `be/libs/common/src/errors/error-codes.ts`, ngay sau nhóm `GATE_CODE_EXISTS` đã thêm ở Task 3 Step 1:
+
+```typescript
+  RACK_TEMPLATE_NOT_FOUND: {
+    status: HttpStatus.NOT_FOUND,
+    message: 'Chưa cấu hình kích thước kệ chuẩn',
+  },
+```
+
+- [ ] **Step 6: Tạo DTO cho RackTemplate**
+
+Tạo `be/apps/wms/src/location/dto/rack-template.dto.ts`:
+
+```typescript
+import { ApiProperty } from '@nestjs/swagger';
+import { Expose } from 'class-transformer';
+import { IsInt, IsNumber, Min } from 'class-validator';
+
+export class UpdateRackTemplateDto {
+  @ApiProperty({ example: 10, description: 'Chiều rộng chuẩn mọi rack (mét)' })
+  @IsNumber()
+  @Min(0.1)
+  widthM!: number;
+
+  @ApiProperty({ example: 1.5, description: 'Chiều sâu chuẩn mọi rack (mét)' })
+  @IsNumber()
+  @Min(0.1)
+  depthM!: number;
+
+  @ApiProperty({ example: 3, description: 'Số tầng chuẩn mọi rack' })
+  @IsInt()
+  @Min(1)
+  levelCount!: number;
+
+  @ApiProperty({ example: 3, description: 'Số khoang chuẩn mọi rack' })
+  @IsInt()
+  @Min(1)
+  bayCount!: number;
+}
+
+export class RackTemplateResponseDto {
+  @Expose()
+  @ApiProperty()
+  widthM!: number;
+
+  @Expose()
+  @ApiProperty()
+  depthM!: number;
+
+  @Expose()
+  @ApiProperty()
+  levelCount!: number;
+
+  @Expose()
+  @ApiProperty()
+  bayCount!: number;
+
+  @Expose()
+  @ApiProperty()
+  updatedAt!: Date;
+}
+```
+
+- [ ] **Step 7: Thêm `getRackTemplate`/`updateRackTemplate` vào `LocationRepository`**
+
+Thêm import ở đầu `be/apps/wms/src/location/location.repository.ts`:
+
+```typescript
+import {
+  RackTemplate,
+  RackTemplateDocument,
+} from './schemas/rack-template.schema';
+import { UpdateRackTemplateDto } from './dto/rack-template.dto';
+```
+
+Thêm constructor param:
+
+```typescript
+    @InjectModel(RackTemplate.name)
+    private readonly rackTemplateModel: Model<RackTemplateDocument>,
+```
+
+Thêm methods:
+
+```typescript
+  // ─── RackTemplate (singleton) ────────────────────────────────────────────
+
+  /** Lazy init: tạo bản ghi mặc định nếu collection rỗng — tránh cần seed script riêng. */
+  async getRackTemplate(): Promise<RackTemplateDocument> {
+    const existing = await this.rackTemplateModel.findOne().exec();
+    if (existing) return existing;
+    return this.rackTemplateModel.create({});
+  }
+
+  async updateRackTemplate(
+    dto: UpdateRackTemplateDto,
+    actorId: string,
+  ): Promise<RackTemplateDocument> {
+    const current = await this.getRackTemplate();
+    current.set({ ...dto, updatedBy: new Types.ObjectId(actorId) });
+    await current.save();
+    return current;
+  }
+```
+
+- [ ] **Step 8: Thêm methods vào `LocationService`**
+
+Thêm import ở đầu `be/apps/wms/src/location/location.service.ts`:
+
+```typescript
+import type { RackTemplateDocument } from './schemas/rack-template.schema';
+import type { UpdateRackTemplateDto } from './dto/rack-template.dto';
+```
+
+Thêm vào class:
+
+```typescript
+  // ─── RackTemplate ─────────────────────────────────────────────────────────
+
+  async getRackTemplate(): Promise<RackTemplateDocument> {
+    return this.repo.getRackTemplate();
+  }
+
+  async updateRackTemplate(
+    dto: UpdateRackTemplateDto,
+    actorId: string,
+  ): Promise<RackTemplateDocument> {
+    return this.repo.updateRackTemplate(dto, actorId);
+  }
+```
+
+- [ ] **Step 9: Thêm endpoints vào `LocationController`**
+
+Thêm import:
+
+```typescript
+import {
+  UpdateRackTemplateDto,
+  RackTemplateResponseDto,
+} from './dto/rack-template.dto';
+```
+
+Thêm routes (đặt đầu file cạnh route `layout` sẽ thêm ở Task 5, route cố định không xung đột `:id`):
+
+```typescript
+  // ─── RackTemplate (singleton — route cố định) ────────────────────────────
+
+  @Get('rack-template')
+  @Roles(WmsRole.MANAGER, WmsRole.ADMIN)
+  @ApiOperation({
+    summary: 'Kích thước rack chuẩn dùng chung toàn app — [MANAGER, ADMIN]',
+  })
+  @ApiOkResponse({ type: RackTemplateResponseDto })
+  async getRackTemplate(): Promise<RackTemplateResponseDto> {
+    const doc = await this.svc.getRackTemplate();
+    return plainToInstance(
+      RackTemplateResponseDto,
+      doc.toObject(),
+      TO_INSTANCE_OPTS,
+    );
+  }
+
+  @Put('rack-template')
+  @Roles(WmsRole.MANAGER)
+  @ApiOperation({
+    summary:
+      'Cập nhật kích thước rack chuẩn — áp dụng cho MỌI rack ngay lập tức — [MANAGER]',
+  })
+  @ApiOkResponse({ type: RackTemplateResponseDto })
+  async updateRackTemplate(
+    @Body() dto: UpdateRackTemplateDto,
+    @CurrentUser('sub') actorId: string,
+  ): Promise<RackTemplateResponseDto> {
+    const doc = await this.svc.updateRackTemplate(dto, actorId);
+    return plainToInstance(
+      RackTemplateResponseDto,
+      doc.toObject(),
+      TO_INSTANCE_OPTS,
+    );
+  }
+```
+
+Thêm `Put` vào import từ `@nestjs/common` ở đầu file nếu chưa có.
+
+- [ ] **Step 10: Đăng ký `RackTemplate` schema trong `LocationModule`**
+
+Sửa `be/apps/wms/src/location/location.module.ts` — thêm import và entry:
+
+```typescript
+import {
+  RackTemplate,
+  RackTemplateSchema,
+} from './schemas/rack-template.schema';
+```
+
+```typescript
+      { name: RackTemplate.name, schema: RackTemplateSchema },
+```
+
+- [ ] **Step 11: Build và chạy toàn bộ test location**
+
+Run: `cd be && npx tsc -p apps/wms/tsconfig.app.json --noEmit && npx jest apps/wms/src/location`
+Expected: build sạch, tất cả test PASS.
+
+- [ ] **Step 12: Commit**
+
+```bash
+cd be && git add apps/wms/src/location libs/common/src/errors/error-codes.ts
+git commit -m "feat(wms): thêm RackTemplate singleton — kích thước rack dùng chung toàn app"
 ```
 
 ---
@@ -1391,9 +1644,9 @@ git commit -m "feat(wms): thêm entity Gate (cổng) với CRUD đầy đủ"
 - Test: `be/apps/wms/src/location/location.service.spec.ts`
 
 **Interfaces:**
-- Consumes: `LocationService.listZones/listAllRacks(mới)/listAisles/listGates` — cần thêm 1 method mới `listAllRacks()` (không lọc theo zoneId, khác `listRacks(zoneId)` hiện có) để ráp toàn bộ layout.
-- Produces: `LocationService.getLayout(): Promise<{ zones, racks, aisles, gates }>` — trả plain object, KHÔNG có `canvas`/`revision`/`status` (đơn giản hoá so với FE type cũ — không cần DRAFT/PUBLISH, canvas là hằng số phía FE hoặc field riêng — xem Task 6).
-- Produces: endpoint `GET /location/layout`, response `LayoutResponseDto`.
+- Consumes: `LocationService.listZones/listAllRacks(mới)/listAisles/listGates/getRackTemplate` (Task 2b) — cần thêm 1 method mới `findAllRacks()` ở repository (không lọc theo zoneId, khác `listRacks(zoneId)` hiện có) để ráp toàn bộ layout.
+- Produces: `LocationService.getLayout(): Promise<{ zones, racks, aisles, gates, rackTemplate }>` — trả plain object, KHÔNG có `canvas`/`revision`/`status` (đơn giản hoá so với FE type cũ — không cần DRAFT/PUBLISH, canvas là hằng số phía FE hoặc field riêng — xem Task 8). `rackTemplate` là 1 object đơn (không phải mảng — singleton), FE dùng để ráp kích thước vào từng rack (rack response không còn tự chứa kích thước — xem Task 2/2b).
+- Produces: endpoint `GET /location/layout`, response `LayoutResponseDto` (bao gồm field `rackTemplate: RackTemplateResponseDto`).
 
 - [ ] **Step 1: Thêm method `findAllRacks` (không lọc zone) vào `LocationRepository`**
 
@@ -1412,15 +1665,17 @@ Thêm vào `be/apps/wms/src/location/location.service.spec.ts` (đọc file hi�
 
 ```typescript
   describe('getLayout', () => {
-    it('ráp zones, racks, aisles, gates thành 1 object layout', async () => {
+    it('ráp zones, racks, aisles, gates, rackTemplate thành 1 object layout', async () => {
       const mockZones = [{ id: 'z1' }];
       const mockRacks = [{ id: 'r1' }];
       const mockAisles = [{ id: 'a1' }];
       const mockGates = [{ id: 'g1' }];
+      const mockRackTemplate = { widthM: 10, depthM: 1.5, levelCount: 3, bayCount: 3 };
       repo.findAllZones.mockResolvedValue(mockZones);
       repo.findAllRacks.mockResolvedValue(mockRacks);
       repo.findAllAisles.mockResolvedValue(mockAisles);
       repo.findAllGates.mockResolvedValue(mockGates);
+      repo.getRackTemplate.mockResolvedValue(mockRackTemplate);
 
       const result = await service.getLayout();
 
@@ -1429,6 +1684,7 @@ Thêm vào `be/apps/wms/src/location/location.service.spec.ts` (đọc file hi�
         racks: mockRacks,
         aisles: mockAisles,
         gates: mockGates,
+        rackTemplate: mockRackTemplate,
       });
     });
   });
@@ -1448,20 +1704,22 @@ Thêm vào cuối class trong `be/apps/wms/src/location/location.service.ts`:
 ```typescript
   // ─── Layout tổng hợp ──────────────────────────────────────────────────────
 
-  /** Ráp toàn bộ zone/rack/aisle/gate thành 1 object cho FE vẽ sơ đồ 2D. Singleton — không phân trang, không lọc theo warehouseId (app = 1 kho). */
+  /** Ráp toàn bộ zone/rack/aisle/gate/rackTemplate thành 1 object cho FE vẽ sơ đồ 2D. Singleton — không phân trang, không lọc theo warehouseId (app = 1 kho). */
   async getLayout(): Promise<{
     zones: ZoneDocument[];
     racks: RackDocument[];
     aisles: AisleDocument[];
     gates: GateDocument[];
+    rackTemplate: RackTemplateDocument;
   }> {
-    const [zones, racks, aisles, gates] = await Promise.all([
+    const [zones, racks, aisles, gates, rackTemplate] = await Promise.all([
       this.repo.findAllZones(),
       this.repo.findAllRacks(),
       this.repo.findAllAisles(),
       this.repo.findAllGates(),
+      this.repo.getRackTemplate(),
     ]);
-    return { zones, racks, aisles, gates };
+    return { zones, racks, aisles, gates, rackTemplate };
   }
 ```
 
@@ -1481,6 +1739,7 @@ import { ZoneResponseDto } from './zone.dto';
 import { RackResponseDto } from './rack.dto';
 import { AisleResponseDto } from './aisle.dto';
 import { GateResponseDto } from './gate.dto';
+import { RackTemplateResponseDto } from './rack-template.dto';
 
 export class LayoutResponseDto {
   @Expose()
@@ -1502,6 +1761,11 @@ export class LayoutResponseDto {
   @Type(() => GateResponseDto)
   @ApiProperty({ type: [GateResponseDto] })
   gates!: GateResponseDto[];
+
+  @Expose()
+  @Type(() => RackTemplateResponseDto)
+  @ApiProperty({ type: RackTemplateResponseDto })
+  rackTemplate!: RackTemplateResponseDto;
 }
 ```
 
@@ -1533,6 +1797,7 @@ Thêm route — đặt **trước** `zones` static route (đầu file, ngay sau 
         racks: layout.racks.map((r) => r.toObject()),
         aisles: layout.aisles.map((a) => a.toObject()),
         gates: layout.gates.map((g) => g.toObject()),
+        rackTemplate: layout.rackTemplate.toObject(),
       },
       TO_INSTANCE_OPTS,
     );
@@ -1563,7 +1828,7 @@ git commit -m "feat(wms): thêm endpoint GET /location/layout ráp zone/rack/ais
 - Modify: `be/apps/wms/src/location/location.repository.ts` (thêm `findShelvesWithRackCoords` hoặc join)
 
 **Interfaces:**
-- Consumes: `Rack.xM/yM/widthM/depthM` (Task 2), `LocationRepository.findStagingShelf()` (đã có sẵn — trả `ShelfDocument | null`).
+- Consumes: `Rack.xM/yM` (Task 2) + `RackTemplate.widthM/depthM` (Task 2b — kích thước giờ dùng chung, KHÔNG còn nằm trên từng Rack), `LocationRepository.findStagingShelf()` (đã có sẵn — trả `ShelfDocument | null`), `LocationRepository.getRackTemplate()` (Task 2b).
 - Produces: `PutAwaySuggestionService.suggest(sku, qty)` — **signature và response shape KHÔNG đổi** (`PutAwaySuggestionResult { suggestions: PutAwaySuggestionItem[], warning }`), chỉ đổi thuật toán ranking bên trong. Không phá API contract hiện có.
 
 **Chi tiết thuật toán mới** (thay thế `rankSingleShelf`):
@@ -1592,16 +1857,16 @@ Ghi nhận cách mock `stockRepo`/`locationRepo`/`configService` hiện tại tr
 
 - [ ] **Step 2: Thêm method lấy toạ độ rack theo shelf vào `LocationRepository`**
 
-Thêm vào `be/apps/wms/src/location/location.repository.ts`, sau `findShelves()`:
+Thêm vào `be/apps/wms/src/location/location.repository.ts`, sau `findShelves()`. Kích thước rack (`widthM`/`depthM`) giờ đọc từ `RackTemplate` singleton (Task 2b) chứ không còn trên từng document `Rack` — tâm rack = `rack.xM/yM` (góc trên-trái) + nửa kích thước từ template, giống nhau cho mọi rack vì template dùng chung toàn app:
 
 ```typescript
   /**
    * Map shelfId → toạ độ tâm rack chứa nó (mét) — dùng tính khoảng cách
-   * trong weighted put-away suggestion. Rack chưa từng set toạ độ (widthM=0
-   * mặc định) vẫn trả về entry với x/y = 0 — caller tự quyết định có coi là
-   * "chưa có toạ độ" hay không (v1: coi 0,0 hợp lệ, distance vẫn tính được,
-   * chỉ có thể sai lệch nếu rack thật sự đặt tại góc 0,0 — chấp nhận được vì
-   * MANAGER sẽ set toạ độ thật qua UI map trước khi dùng suggestion).
+   * trong weighted put-away suggestion. Kích thước rack lấy từ RackTemplate
+   * dùng chung (mọi rack cùng kích thước) — không đọc trên từng Rack nữa.
+   * Rack chưa từng set toạ độ (xM/yM=0 mặc định) vẫn trả về entry hợp lệ —
+   * caller không cần phân biệt, chấp nhận được vì MANAGER sẽ set toạ độ
+   * thật qua UI map trước khi dùng suggestion.
    */
   async findRackCentersByShelfId(
     shelfIds: Types.ObjectId[],
@@ -1614,15 +1879,18 @@ Thêm vào `be/apps/wms/src/location/location.repository.ts`, sau `findShelves()
     const rackIds = [...new Set(shelves.map((s) => s.rackId.toString()))].map(
       (id) => new Types.ObjectId(id),
     );
-    const racks = await this.rackModel
-      .find({ _id: { $in: rackIds } })
-      .select('_id xM yM widthM depthM')
-      .lean()
-      .exec();
+    const [racks, template] = await Promise.all([
+      this.rackModel
+        .find({ _id: { $in: rackIds } })
+        .select('_id xM yM')
+        .lean()
+        .exec(),
+      this.getRackTemplate(),
+    ]);
     const rackCenterById = new Map(
       racks.map((r) => [
         r._id.toString(),
-        { xM: r.xM + r.widthM / 2, yM: r.yM + r.depthM / 2 },
+        { xM: r.xM + template.widthM / 2, yM: r.yM + template.depthM / 2 },
       ]),
     );
     const result = new Map<string, { xM: number; yM: number }>();
@@ -2167,11 +2435,12 @@ git commit -m "feat(wms): thêm endpoint GET /location/shelves/:id/contents cho 
 - Create: `fe-pbvm-warehouse/tests/unit/warehouse-layout-service.test.ts`
 
 **Interfaces:**
-- Consumes: `GET /location/layout` (Task 5), `PATCH /location/zones/:id`, `PATCH /location/racks/:id`, `PATCH /location/aisles/:id`, `PATCH /location/gates/:id` (đã có sẵn Zone/Rack, mới ở Aisle/Gate Task 3/4), `apiClient`/`unwrapApiData`/`ApiEnvelope` từ `@/lib/api-contract` (pattern giống `warehouse-structure.service.ts`).
-- Produces: `fetchWarehouseLayout(): Promise<WarehouseLayout>` — map response BE (`LayoutResponseDto`: `zones/racks/aisles/gates` phẳng, không `canvas`) sang type FE `WarehouseLayout` (cần `canvas`, `id`, `revision`, `status`). Canvas không có ở BE — dùng hằng số cố định phía FE (kho không đổi kích thước khung thường xuyên) hoặc tính từ bounding box của mọi zone. **Quyết định: tính từ bounding box** — đơn giản, tự động scale theo dữ liệu thật, không cần thêm API/schema riêng cho canvas.
+- Consumes: `GET /location/layout` (Task 5, response nay có thêm `rackTemplate`), `PATCH /location/zones/:id`, `PATCH /location/racks/:id` (giờ chỉ nhận `xM/yM/rotation/accessPointXM/accessPointYM`), `PATCH /location/aisles/:id`, `PATCH /location/gates/:id`, `GET/PUT /location/rack-template` (Task 2b), `apiClient`/`unwrapApiData`/`ApiEnvelope` từ `@/lib/api-contract` (pattern giống `warehouse-structure.service.ts`).
+- Produces: `fetchWarehouseLayout(): Promise<WarehouseLayout>` — map response BE (`LayoutResponseDto`: `zones/racks/aisles/gates` phẳng + `rackTemplate` đơn) sang type FE `WarehouseLayout`. Mỗi rack trong `WarehouseLayout.racks` được ráp `widthM/depthM/levelCount/bayCount` **từ `rackTemplate` dùng chung** (không còn nằm trên response rack riêng lẻ) — mọi rack trong kết quả trả về đều có cùng 4 giá trị này. Canvas không có ở BE — tính từ bounding box của mọi zone.
 - Produces: `patchZone(zoneId, patch)`, `patchRack(rackId, patch)`, `patchAisle(aisleId, patch)`, `patchGate(gateId, patch)` — mỗi hàm gọi đúng 1 PATCH endpoint tương ứng.
+- Produces: `fetchRackTemplate(): Promise<RackTemplate>`, `updateRackTemplate(patch): Promise<RackTemplate>` — đọc/sửa kích thước chuẩn dùng chung (gọi `GET`/`PUT /location/rack-template`).
 
-- [ ] **Step 1: Viết test cho `fetchWarehouseLayout` map đúng shape + tính canvas từ bounding box**
+- [ ] **Step 1: Viết test cho `fetchWarehouseLayout` ráp kích thước rack từ `rackTemplate` + tính canvas từ bounding box**
 
 Tạo `fe-pbvm-warehouse/tests/unit/warehouse-layout-service.test.ts`:
 
@@ -2179,31 +2448,54 @@ Tạo `fe-pbvm-warehouse/tests/unit/warehouse-layout-service.test.ts`:
 import { describe, expect, it, vi } from "vitest";
 
 vi.mock("@/lib/api-client", () => ({
-  apiClient: { get: vi.fn(), patch: vi.fn() },
+  apiClient: { get: vi.fn(), patch: vi.fn(), put: vi.fn() },
 }));
 
 import { apiClient } from "@/lib/api-client";
-import { fetchWarehouseLayout } from "@/features/warehouse-layout/services/warehouse-layout.service";
+import {
+  fetchRackTemplate,
+  fetchWarehouseLayout,
+} from "@/features/warehouse-layout/services/warehouse-layout.service";
 
 describe("fetchWarehouseLayout", () => {
-  it("map response BE sang WarehouseLayout, tính canvas từ bounding box các zone", async () => {
+  it("map response BE sang WarehouseLayout, ráp kích thước rack từ rackTemplate dùng chung, tính canvas từ bounding box zone", async () => {
     vi.mocked(apiClient.get).mockResolvedValue({
       data: {
         zones: [
           { id: "z1", code: "A", name: "Zone A", xM: 1, yM: 1, widthM: 16, heightM: 22, rotation: 0 },
         ],
-        racks: [],
+        racks: [
+          { id: "r1", zoneId: "z1", code: "A1", name: "Rack A1", xM: 3, yM: 3, rotation: 0, accessPointXM: 8, accessPointYM: 6 },
+        ],
         aisles: [],
         gates: [],
+        rackTemplate: { widthM: 10, depthM: 1.5, levelCount: 3, bayCount: 3 },
       },
     });
 
     const layout = await fetchWarehouseLayout();
 
     expect(layout.zones).toHaveLength(1);
+    expect(layout.racks[0].widthM).toBe(10);
+    expect(layout.racks[0].depthM).toBe(1.5);
+    expect(layout.racks[0].levelCount).toBe(3);
+    expect(layout.racks[0].bayCount).toBe(3);
     expect(layout.canvas.widthM).toBeGreaterThanOrEqual(17); // 1 + 16
     expect(layout.canvas.heightM).toBeGreaterThanOrEqual(23); // 1 + 22
     expect(layout.status).toBe("PUBLISHED");
+  });
+});
+
+describe("fetchRackTemplate", () => {
+  it("gọi GET /location/rack-template", async () => {
+    vi.mocked(apiClient.get).mockResolvedValue({
+      data: { widthM: 10, depthM: 1.5, levelCount: 3, bayCount: 3 },
+    });
+
+    const template = await fetchRackTemplate();
+
+    expect(template.widthM).toBe(10);
+    expect(apiClient.get).toHaveBeenCalledWith("/location/rack-template");
   });
 });
 ```
@@ -2231,16 +2523,31 @@ import type {
 const CANVAS_PADDING_M = 2;
 const CANVAS_GRID_M = 0.5;
 
+export type RackTemplate = {
+  widthM: number;
+  depthM: number;
+  levelCount: number;
+  bayCount: number;
+};
+
+type RackPositionApiRow = {
+  id: string;
+  zoneId: string;
+  code: string;
+  name: string;
+  xM: number;
+  yM: number;
+  rotation: 0 | 90;
+  accessPointXM: number;
+  accessPointYM: number;
+};
+
 type LayoutApiResponse = {
   zones: WarehouseLayoutZone[];
-  racks: Array<
-    Omit<WarehouseLayoutRack, "shelfCodes" | "accessPoint"> & {
-      accessPointXM: number;
-      accessPointYM: number;
-    }
-  >;
+  racks: RackPositionApiRow[];
   aisles: WarehouseLayoutAisle[];
   gates: WarehouseLayoutGate[];
+  rackTemplate: RackTemplate;
 };
 
 function buildCanvas(zones: WarehouseLayoutZone[]) {
@@ -2258,7 +2565,10 @@ function buildCanvas(zones: WarehouseLayoutZone[]) {
   };
 }
 
-function toLayoutRack(rack: LayoutApiResponse["racks"][number]): WarehouseLayoutRack {
+function toLayoutRack(
+  rack: RackPositionApiRow,
+  template: RackTemplate,
+): WarehouseLayoutRack {
   return {
     id: rack.id,
     zoneId: rack.zoneId,
@@ -2266,11 +2576,11 @@ function toLayoutRack(rack: LayoutApiResponse["racks"][number]): WarehouseLayout
     name: rack.name,
     xM: rack.xM,
     yM: rack.yM,
-    widthM: rack.widthM,
-    depthM: rack.depthM,
+    widthM: template.widthM,
+    depthM: template.depthM,
     rotation: rack.rotation,
-    levelCount: rack.levelCount,
-    bayCount: rack.bayCount,
+    levelCount: template.levelCount,
+    bayCount: template.bayCount,
     shelfCodes: [],
     accessPoint: { xM: rack.accessPointXM, yM: rack.accessPointYM },
   };
@@ -2288,7 +2598,7 @@ export async function fetchWarehouseLayout(): Promise<WarehouseLayout> {
     status: "PUBLISHED",
     canvas: buildCanvas(data.zones),
     zones: data.zones,
-    racks: data.racks.map(toLayoutRack),
+    racks: data.racks.map((rack) => toLayoutRack(rack, data.rackTemplate)),
     aisles: data.aisles,
     gates: data.gates,
   };
@@ -2309,7 +2619,7 @@ export async function patchRack(
   patch: Record<string, unknown>,
 ) {
   const response = await apiClient.patch<
-    ApiEnvelope<LayoutApiResponse["racks"][number]> | LayoutApiResponse["racks"][number]
+    ApiEnvelope<RackPositionApiRow> | RackPositionApiRow
   >(`/location/racks/${encodeURIComponent(rackId)}`, patch);
   return unwrapApiData(response.data);
 }
@@ -2333,6 +2643,22 @@ export async function patchGate(
   >(`/location/gates/${encodeURIComponent(gateId)}`, patch);
   return unwrapApiData(response.data);
 }
+
+export async function fetchRackTemplate(): Promise<RackTemplate> {
+  const response = await apiClient.get<
+    ApiEnvelope<RackTemplate> | RackTemplate
+  >("/location/rack-template");
+  return unwrapApiData(response.data);
+}
+
+export async function updateRackTemplate(
+  patch: RackTemplate,
+): Promise<RackTemplate> {
+  const response = await apiClient.put<
+    ApiEnvelope<RackTemplate> | RackTemplate
+  >("/location/rack-template", patch);
+  return unwrapApiData(response.data);
+}
 ```
 
 - [ ] **Step 4: Chạy test, xác nhận PASS**
@@ -2343,13 +2669,13 @@ Expected: PASS
 - [ ] **Step 5: Type-check**
 
 Run: `cd fe-pbvm-warehouse && npx tsc --noEmit`
-Expected: không lỗi liên quan file mới. (Lưu ý: `WarehouseLayoutRack.shelfCodes` giờ luôn `[]` từ BE thật — component nào dựa vào `shelfCodes` để tự sinh shelf ảo (`layoutToWarehouseShelves` trong `putaway-navigation.ts`) sẽ cần sửa ở Task 9 để dùng shelf thật thay vì suy diễn.)
+Expected: không lỗi liên quan file mới. (Lưu ý: `WarehouseLayoutRack.shelfCodes` giờ luôn `[]` từ BE thật — component nào dựa vào `shelfCodes` để tự sinh shelf ảo (`layoutToWarehouseShelves` trong `putaway-navigation.ts`) sẽ cần sửa ở Task 10 để dùng shelf thật thay vì suy diễn.)
 
 - [ ] **Step 6: Commit**
 
 ```bash
 cd fe-pbvm-warehouse && git add src/features/warehouse-layout/services/warehouse-layout.service.ts tests/unit/warehouse-layout-service.test.ts
-git commit -m "feat: thêm warehouse-layout.service gọi API layout thật thay vì fallback mock"
+git commit -m "feat: thêm warehouse-layout.service gọi API layout thật + rack-template dùng chung"
 ```
 
 ---
@@ -2638,24 +2964,297 @@ git commit -m "refactor: layoutToWarehouseShelves dùng shelf thật từ BE tha
 
 ---
 
-### Task 11: Nối `onPatch`/`onApply` trong `WarehouseLayoutInspector`/`RackConfigurationDialog` gọi API thật
+### Task 11: Bỏ phần kích thước rack khỏi `WarehouseLayoutInspector`, loại `RackConfigurationDialog` khỏi luồng chính
 
 **Files:**
-- Modify: `fe-pbvm-warehouse/tests/unit/warehouse-navigation-components.test.tsx` (hoặc file test tương ứng inspector nếu tách riêng — kiểm tra trước)
+- Modify: `fe-pbvm-warehouse/src/features/warehouse-layout/components/warehouse-layout-inspector.tsx`
+- Modify: `fe-pbvm-warehouse/tests/unit/warehouse-navigation-components.test.tsx` (hoặc file test tương ứng inspector — kiểm tra trước, sửa theo)
 
 **Interfaces:**
-- Consumes: `patchZone/patchRack/patchAisle/patchGate` (Task 8).
-- Không sửa `WarehouseLayoutInspector.tsx`/`RackConfigurationDialog.tsx` component nội bộ — chúng **đã đúng thiết kế "dumb component"**: nhận `onPatch`/`onApply`/`onDelete`/`onRotate` như callback prop, không tự gọi API. Việc "nối API thật" thuộc về **component cha** (trang Map, Task 12) — nơi implement các callback này để gọi service tương ứng theo `selection.kind`.
+- Consumes: `patchZone/patchAisle/patchGate/patchRack` (Task 8) — `patchRack` giờ chỉ nhận `xM/yM/rotation/accessPointXM/accessPointYM`, không còn `widthM/depthM/levelCount/bayCount`.
+- Produces: `WarehouseLayoutInspector` — khi `selection.kind === 'rack'`, KHÔNG còn hiển thị field "Dài/Sâu/Số tầng/Số khoang" và nút "Xoay ngang/dọc" gắn với kích thước, KHÔNG render `RackConfigurationDialog` nữa (không còn ý nghĩa "đồng bộ từ 1 rack mẫu" khi mọi rack đã luôn dùng chung `RackTemplate`). Chỉ còn field vị trí (`xM/yM`) + nút xoay (`rotation`, vẫn hợp lệ vì rotation là thuộc tính đặt-để riêng của từng rack, không phải kích thước).
 
-**Quyết định thiết kế:** giữ nguyên 2 file component vì chúng đã tách đúng trách nhiệm (UI thuần, logic gọi API ở page cha). Task này chỉ xác nhận qua test rằng props đã đúng type — không có code thay đổi trong chính 2 component. Gộp việc "nối callback thật" vào Task 12 vì đó là nơi callback được implement.
+**Lý do:** kích thước rack đã chuyển sang `RackTemplate` singleton (Task 2b) — sửa kích thước qua form riêng (Task 12's `RackTemplateForm`), không sửa qua inspector từng rack nữa. `rack-configuration-dialog.tsx` **không xoá file** (có thể cần lại nếu sau này quay về mô hình per-rack) nhưng không còn import/render ở đâu trong luồng chính.
 
-- [ ] **Step 1: Xác nhận không cần sửa gì ở 2 file component**
+- [ ] **Step 1: Đọc test hiện có liên quan đến rack fields trong inspector**
 
-Run: `grep -n "onPatch\|onApply\|onDelete\|onRotate" fe-pbvm-warehouse/src/features/warehouse-layout/components/warehouse-layout-inspector.tsx fe-pbvm-warehouse/src/features/warehouse-layout/components/rack-configuration-dialog.tsx`
+Run: `grep -n "levelCount\|bayCount\|depthM\|RackConfigurationDialog" fe-pbvm-warehouse/tests/unit/warehouse-navigation-components.test.tsx`
 
-Xác nhận cả 2 file chỉ gọi callback ra ngoài, không có `apiClient`/`fetch` nội bộ. Nếu đúng như khảo sát ban đầu, không cần sửa gì — chuyển sang Task 12.
+Ghi nhận các test đang assert sự tồn tại của field "Số tầng"/"Số khoang"/nút đồng bộ — các test này cần xoá hoặc sửa vì hành vi không còn đúng.
 
-- [ ] **Step 2: Không commit gì ở task này** — đây là bước xác nhận, việc implement thực tế nằm ở Task 12.
+- [ ] **Step 2: Sửa test — xoá assertion về rack size fields/RackConfigurationDialog trong inspector**
+
+Xoá các `it(...)` trong `warehouse-navigation-components.test.tsx` kiểm tra sự hiện diện của input "Số tầng", "Số khoang", "Dài (m)", "Sâu (m)" hoặc nút "Đồng bộ cấu hình kệ" khi `selection.kind === 'rack'`. Nếu file test có `it` xác nhận field "X (m)"/"Y (m)" vẫn hiển thị cho rack, giữ nguyên các test đó.
+
+- [ ] **Step 3: Chạy test, xác nhận FAIL (vì component chưa sửa, field cũ vẫn còn)**
+
+Run: `cd fe-pbvm-warehouse && npx vitest run tests/unit/warehouse-navigation-components.test.tsx`
+Expected: PASS nếu chỉ xoá assertion (không thêm assertion mới ở bước này) — nếu muốn theo đúng TDD nghiêm ngặt, thêm 1 assertion mới trước: `expect(screen.queryByLabelText("Số tầng")).not.toBeInTheDocument()` khi chọn rack, rồi xác nhận nó FAIL trước khi sửa component.
+
+- [ ] **Step 4: Sửa `WarehouseLayoutInspector` — bỏ rack size fields + `RackConfigurationDialog`**
+
+Sửa `fe-pbvm-warehouse/src/features/warehouse-layout/components/warehouse-layout-inspector.tsx`:
+
+```typescript
+"use client";
+
+import { RotateCw, Trash2 } from "lucide-react";
+
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import type { LayoutSelection } from "@/features/warehouse-layout/components/warehouse-floor-plan";
+import type { WarehouseLayout } from "@/types/api";
+
+function NumberField({
+  disabled,
+  label,
+  onChange,
+  step = 0.5,
+  value,
+}: {
+  disabled: boolean;
+  label: string;
+  onChange: (value: number) => void;
+  step?: number;
+  value: number;
+}) {
+  return (
+    <div className="grid gap-1.5">
+      <Label className="text-xs">{label}</Label>
+      <Input
+        aria-label={label}
+        disabled={disabled}
+        min={0}
+        onChange={(event) => onChange(Number(event.target.value))}
+        step={step}
+        type="number"
+        value={value}
+      />
+    </div>
+  );
+}
+
+function TextField({
+  disabled,
+  label,
+  onChange,
+  value,
+}: {
+  disabled: boolean;
+  label: string;
+  onChange: (value: string) => void;
+  value: string;
+}) {
+  return (
+    <div className="grid gap-1.5">
+      <Label className="text-xs">{label}</Label>
+      <Input
+        aria-label={label}
+        disabled={disabled}
+        onChange={(event) => onChange(event.target.value)}
+        value={value}
+      />
+    </div>
+  );
+}
+
+export function WarehouseLayoutInspector({
+  canEdit,
+  layout,
+  onDelete,
+  onPatch,
+  onRotate,
+  selection,
+}: {
+  canEdit: boolean;
+  layout: WarehouseLayout;
+  onDelete: () => void;
+  onPatch: (patch: Record<string, unknown>) => void;
+  onRotate: () => void;
+  selection: LayoutSelection;
+}) {
+  if (!selection) {
+    return (
+      <aside className="border border-dashed border-slate-300 bg-slate-50 p-4 text-sm text-muted-foreground">
+        Chọn khu vực, dãy kệ, lối đi hoặc cổng trên sơ đồ để xem thông số.
+      </aside>
+    );
+  }
+
+  const item =
+    selection.kind === "zone"
+      ? layout.zones.find((entry) => entry.id === selection.id)
+      : selection.kind === "rack"
+        ? layout.racks.find((entry) => entry.id === selection.id)
+        : selection.kind === "aisle"
+          ? layout.aisles.find((entry) => entry.id === selection.id)
+          : layout.gates.find((entry) => entry.id === selection.id);
+
+  if (!item) {
+    return null;
+  }
+
+  const selectionLabel = {
+    aisle: "lối đi",
+    gate: "cổng",
+    rack: "dãy kệ",
+    zone: "khu vực",
+  }[selection.kind];
+
+  return (
+    <aside className="border border-slate-300 bg-white">
+      <div className="border-b border-slate-200 bg-slate-50 px-4 py-3">
+        <div className="text-sm font-semibold">Thuộc tính {selectionLabel}</div>
+        <div className="mt-1 font-mono text-xs text-muted-foreground">
+          {item.code}
+        </div>
+      </div>
+
+      <div className="grid gap-4 p-4">
+        <TextField
+          disabled={!canEdit}
+          label="Mã"
+          onChange={(code) => onPatch({ code })}
+          value={item.code}
+        />
+
+        {"name" in item ? (
+          <TextField
+            disabled={!canEdit}
+            label="Tên"
+            onChange={(name) => onPatch({ name })}
+            value={item.name}
+          />
+        ) : null}
+        {"label" in item ? (
+          <TextField
+            disabled={!canEdit}
+            label="Nhãn"
+            onChange={(label) => onPatch({ label })}
+            value={item.label}
+          />
+        ) : null}
+
+        <div className="grid grid-cols-2 gap-3">
+          <NumberField
+            disabled={!canEdit}
+            label="X (m)"
+            onChange={(xM) => onPatch({ xM })}
+            value={item.xM}
+          />
+          <NumberField
+            disabled={!canEdit}
+            label="Y (m)"
+            onChange={(yM) => onPatch({ yM })}
+            value={item.yM}
+          />
+        </div>
+
+        {selection.kind === "zone" && "heightM" in item ? (
+          <>
+            <div className="grid grid-cols-2 gap-3">
+              <NumberField
+                disabled={!canEdit}
+                label="Rộng (m)"
+                onChange={(widthM) => onPatch({ widthM })}
+                value={item.widthM}
+              />
+              <NumberField
+                disabled={!canEdit}
+                label="Cao (m)"
+                onChange={(heightM) => onPatch({ heightM })}
+                value={item.heightM}
+              />
+            </div>
+            <Button disabled={!canEdit} onClick={onRotate} variant="outline">
+              <RotateCw data-icon="inline-start" />
+              Xoay ngang/dọc
+            </Button>
+          </>
+        ) : null}
+
+        {selection.kind === "rack" ? (
+          <>
+            <p className="text-xs text-muted-foreground">
+              Kích thước rack dùng chung toàn kho — sửa ở mục &quot;Kích
+              thước rack chuẩn&quot; phía trên sơ đồ, áp dụng cho mọi rack
+              cùng lúc.
+            </p>
+            <Button disabled={!canEdit} onClick={onRotate} variant="outline">
+              <RotateCw data-icon="inline-start" />
+              Xoay ngang/dọc
+            </Button>
+          </>
+        ) : null}
+
+        {selection.kind === "aisle" && "type" in item ? (
+          <>
+            <div className="grid grid-cols-2 gap-3">
+              <NumberField
+                disabled={!canEdit}
+                label="Rộng (m)"
+                onChange={(widthM) => onPatch({ widthM })}
+                value={item.widthM}
+              />
+              <NumberField
+                disabled={!canEdit}
+                label="Cao (m)"
+                onChange={(heightM) => onPatch({ heightM })}
+                value={item.heightM}
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <Button
+                disabled={!canEdit}
+                onClick={() => onPatch({ type: "MAIN" })}
+                variant={item.type === "MAIN" ? "default" : "outline"}
+              >
+                Đường chính
+              </Button>
+              <Button
+                disabled={!canEdit}
+                onClick={() => onPatch({ type: "RACK" })}
+                variant={item.type === "RACK" ? "default" : "outline"}
+              >
+                Lối giữa kệ
+              </Button>
+            </div>
+          </>
+        ) : null}
+
+        <Button
+          disabled={!canEdit}
+          onClick={onDelete}
+          variant="destructive"
+        >
+          <Trash2 data-icon="inline-start" />
+          Xóa phần tử
+        </Button>
+      </div>
+    </aside>
+  );
+}
+```
+
+**Thay đổi so với bản gốc:** xoá prop `onApplyRackConfiguration`, xoá import/render `RackConfigurationDialog`, xoá khối `NumberField` cho `widthM/depthM/levelCount/bayCount` khi `selection.kind === 'rack'`, thay bằng đoạn text hướng dẫn + vẫn giữ nút xoay (rotation vẫn per-rack).
+
+- [ ] **Step 5: Chạy test, xác nhận PASS**
+
+Run: `cd fe-pbvm-warehouse && npx vitest run tests/unit/warehouse-navigation-components.test.tsx`
+Expected: PASS
+
+- [ ] **Step 6: Type-check**
+
+Run: `cd fe-pbvm-warehouse && npx tsc --noEmit`
+Expected: sạch — nếu còn nơi nào khác import `onApplyRackConfiguration`/`RackConfigurationDialog` từ inspector, sẽ lộ lỗi ở đây, sửa theo cùng hướng (bỏ khỏi luồng chính).
+
+- [ ] **Step 7: Commit**
+
+```bash
+cd fe-pbvm-warehouse && git add src/features/warehouse-layout/components/warehouse-layout-inspector.tsx tests/unit/warehouse-navigation-components.test.tsx
+git commit -m "refactor: bỏ kích thước rack khỏi WarehouseLayoutInspector — kích thước dùng chung qua RackTemplate"
+```
 
 ---
 
@@ -2668,8 +3267,8 @@ Xác nhận cả 2 file chỉ gọi callback ra ngoài, không có `apiClient`/`
 - Modify: `fe-pbvm-warehouse/src/app/(dashboard)/locations/page.tsx` (thêm link sang `/locations/map`)
 
 **Interfaces:**
-- Consumes: `fetchWarehouseLayout` (Task 8), `patchZone/patchRack/patchAisle/patchGate` (Task 8), `fetchShelvesForRacks/fetchShelfContents` (Task 9), `layoutToWarehouseShelves` (Task 10, signature mới), `WarehouseFloorPlan`, `WarehouseLayoutInspector`, `RackConfigurationDialog`, `WarehouseArchitectureScene` (component có sẵn, không sửa).
-- Produces: page `/locations/map` — MANAGER/ADMIN xem + chỉnh sơ đồ kho, bấm vào rack để xem rack elevation với tồn kho thật.
+- Consumes: `fetchWarehouseLayout`, `patchZone/patchRack/patchAisle/patchGate`, `fetchRackTemplate/updateRackTemplate` (Task 8), `fetchShelvesForRacks/fetchShelfContents` (Task 9), `layoutToWarehouseShelves` (Task 10, signature mới), `WarehouseFloorPlan`, `WarehouseLayoutInspector` (Task 11, đã bỏ `onApplyRackConfiguration`), `WarehouseArchitectureScene` (component có sẵn, không sửa). **Không dùng `RackConfigurationDialog`/`applyRackConfiguration`** (loại khỏi luồng chính ở Task 11).
+- Produces: page `/locations/map` — MANAGER/ADMIN xem + chỉnh sơ đồ kho, sửa kích thước rack chuẩn dùng chung qua 1 form riêng (`RackTemplateForm`, con của `WarehouseMapClient`), bấm vào rack để xem rack elevation với tồn kho thật.
 
 - [ ] **Step 1: Viết test cho `WarehouseMapClient` — render floor plan khi có layout**
 
@@ -2693,10 +3292,17 @@ vi.mock("@/features/warehouse-layout/services/warehouse-layout.service", () => (
     aisles: [],
     gates: [],
   }),
+  fetchRackTemplate: vi.fn().mockResolvedValue({
+    widthM: 10,
+    depthM: 1.5,
+    levelCount: 3,
+    bayCount: 3,
+  }),
   patchZone: vi.fn(),
   patchRack: vi.fn(),
   patchAisle: vi.fn(),
   patchGate: vi.fn(),
+  updateRackTemplate: vi.fn(),
 }));
 
 vi.mock("@/features/warehouse-layout/services/warehouse-shelves.service", () => ({
@@ -2742,23 +3348,29 @@ import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
+import { Button } from "@/components/ui/button";
 import {
   Card,
   CardContent,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { getApiErrorMessage } from "@/lib/api-contract";
 import { hasAnyRole } from "@/lib/rbac";
 import { useSessionUser } from "@/hooks/use-session-user";
 import { WmsRole } from "@/lib/rbac";
 
 import {
+  fetchRackTemplate,
   fetchWarehouseLayout,
   patchAisle,
   patchGate,
   patchRack,
   patchZone,
+  updateRackTemplate,
+  type RackTemplate,
 } from "../services/warehouse-layout.service";
 import {
   fetchShelfContents,
@@ -2769,19 +3381,110 @@ import {
   type LayoutSelection,
 } from "./warehouse-floor-plan";
 import { WarehouseLayoutInspector } from "./warehouse-layout-inspector";
-import { RackConfigurationDialog } from "./rack-configuration-dialog";
-import { applyRackConfiguration } from "../utils/warehouse-layout";
 import { WarehouseArchitectureScene } from "@/features/warehouse-navigation/components/warehouse-architecture-scene";
 import {
   groupShelvesByRack,
   layoutToWarehouseShelves,
 } from "@/features/warehouse-navigation/utils/putaway-navigation";
-import type { RackConfigurationScope } from "../utils/warehouse-layout";
 import type { WarehouseShelf } from "@/types/api";
 
 const layoutKeys = {
   detail: ["warehouse-layout"] as const,
 };
+const rackTemplateKeys = {
+  detail: ["rack-template"] as const,
+};
+
+function RackTemplateForm({
+  canEdit,
+  onSaved,
+  template,
+}: {
+  canEdit: boolean;
+  onSaved: () => void;
+  template: RackTemplate;
+}) {
+  const [form, setForm] = useState(template);
+
+  const mutation = useMutation({
+    mutationFn: () => updateRackTemplate(form),
+    onError: (error) => toast.error(getApiErrorMessage(error)),
+    onSuccess: () => {
+      toast.success("Đã cập nhật kích thước rack cho toàn kho.");
+      onSaved();
+    },
+  });
+
+  return (
+    <div className="grid gap-3 border border-slate-300 bg-white p-4">
+      <h3 className="text-sm font-semibold">Kích thước rack chuẩn (áp dụng toàn kho)</h3>
+      <div className="grid grid-cols-2 gap-3">
+        <div className="grid gap-1.5">
+          <Label className="text-xs">Rộng (m)</Label>
+          <Input
+            aria-label="Rộng (m)"
+            disabled={!canEdit}
+            min={0.1}
+            onChange={(event) =>
+              setForm({ ...form, widthM: Number(event.target.value) })
+            }
+            step={0.5}
+            type="number"
+            value={form.widthM}
+          />
+        </div>
+        <div className="grid gap-1.5">
+          <Label className="text-xs">Sâu (m)</Label>
+          <Input
+            aria-label="Sâu (m)"
+            disabled={!canEdit}
+            min={0.1}
+            onChange={(event) =>
+              setForm({ ...form, depthM: Number(event.target.value) })
+            }
+            step={0.1}
+            type="number"
+            value={form.depthM}
+          />
+        </div>
+        <div className="grid gap-1.5">
+          <Label className="text-xs">Số tầng</Label>
+          <Input
+            aria-label="Số tầng"
+            disabled={!canEdit}
+            min={1}
+            onChange={(event) =>
+              setForm({ ...form, levelCount: Number(event.target.value) })
+            }
+            step={1}
+            type="number"
+            value={form.levelCount}
+          />
+        </div>
+        <div className="grid gap-1.5">
+          <Label className="text-xs">Số khoang</Label>
+          <Input
+            aria-label="Số khoang"
+            disabled={!canEdit}
+            min={1}
+            onChange={(event) =>
+              setForm({ ...form, bayCount: Number(event.target.value) })
+            }
+            step={1}
+            type="number"
+            value={form.bayCount}
+          />
+        </div>
+      </div>
+      <Button
+        disabled={!canEdit || mutation.isPending}
+        onClick={() => mutation.mutate()}
+      >
+        Áp dụng cho toàn bộ rack
+      </Button>
+    </div>
+  );
+}
 
 export function WarehouseMapClient() {
   const { user } = useSessionUser();
@@ -2799,6 +3502,11 @@ export function WarehouseMapClient() {
   const layoutQuery = useQuery({
     queryKey: layoutKeys.detail,
     queryFn: fetchWarehouseLayout,
+  });
+
+  const rackTemplateQuery = useQuery({
+    queryKey: rackTemplateKeys.detail,
+    queryFn: fetchRackTemplate,
   });
 
   const rackIds = useMemo(
@@ -2866,11 +3574,11 @@ export function WarehouseMapClient() {
     setSceneMode("rack");
   }
 
-  if (layoutQuery.isLoading) {
+  if (layoutQuery.isLoading || rackTemplateQuery.isLoading) {
     return <div className="p-6 text-sm text-muted-foreground">Đang tải sơ đồ kho…</div>;
   }
 
-  if (layoutQuery.isError || !layoutQuery.data) {
+  if (layoutQuery.isError || !layoutQuery.data || !rackTemplateQuery.data) {
     return (
       <div className="p-6 text-sm text-destructive">
         Không tải được sơ đồ kho.
@@ -2880,73 +3588,55 @@ export function WarehouseMapClient() {
 
   return (
     <div className="grid gap-4 p-6 lg:grid-cols-[1fr_320px]">
-      <Card>
-        <CardHeader>
-          <CardTitle>Sơ đồ kho</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <WarehouseArchitectureScene
-            contentsByShelf={{
-              [selectedShelfCode ?? ""]: contentsQuery.data ?? [],
-            }}
-            erroredShelfCodes={new Set()}
-            layout={layoutQuery.data}
-            layoutSource="api"
-            loadingShelfCodes={
-              contentsQuery.isLoading && selectedShelfCode
-                ? new Set([selectedShelfCode])
-                : new Set()
-            }
-            onBackToMap={() => setSceneMode("map")}
-            onOpenRack={handleOpenRack}
-            onRetryShelf={() => void contentsQuery.refetch()}
-            onSelectShelf={setSelectedShelfCode}
-            rackGroup={rackGroup}
-            route={null}
-            sceneMode={sceneMode}
-            selectedRackCode={selectedRackCode}
-            selectedShelfCode={selectedShelfCode}
-            suggestions={[]}
-            suggestedShelfCodes={new Set()}
-            unsupportedShelfCodes={new Set()}
-          />
-        </CardContent>
-      </Card>
+      <div className="grid gap-4">
+        <RackTemplateForm
+          canEdit={canEdit}
+          onSaved={() => {
+            void queryClient.invalidateQueries({
+              queryKey: rackTemplateKeys.detail,
+            });
+            void queryClient.invalidateQueries({ queryKey: layoutKeys.detail });
+          }}
+          template={rackTemplateQuery.data}
+        />
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Sơ đồ kho</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <WarehouseArchitectureScene
+              contentsByShelf={{
+                [selectedShelfCode ?? ""]: contentsQuery.data ?? [],
+              }}
+              erroredShelfCodes={new Set()}
+              layout={layoutQuery.data}
+              layoutSource="api"
+              loadingShelfCodes={
+                contentsQuery.isLoading && selectedShelfCode
+                  ? new Set([selectedShelfCode])
+                  : new Set()
+              }
+              onBackToMap={() => setSceneMode("map")}
+              onOpenRack={handleOpenRack}
+              onRetryShelf={() => void contentsQuery.refetch()}
+              onSelectShelf={setSelectedShelfCode}
+              rackGroup={rackGroup}
+              route={null}
+              sceneMode={sceneMode}
+              selectedRackCode={selectedRackCode}
+              selectedShelfCode={selectedShelfCode}
+              suggestions={[]}
+              suggestedShelfCodes={new Set()}
+              unsupportedShelfCodes={new Set()}
+            />
+          </CardContent>
+        </Card>
+      </div>
 
       <WarehouseLayoutInspector
         canEdit={canEdit}
         layout={layoutQuery.data}
-        onApplyRackConfiguration={(scope: RackConfigurationScope) => {
-          if (!selection || selection.kind !== "rack") return;
-          const next = applyRackConfiguration(
-            layoutQuery.data,
-            selection.id,
-            scope,
-          );
-          const changedRacks = next.racks.filter((rack, index) => {
-            const before = layoutQuery.data.racks[index];
-            return (
-              rack.widthM !== before.widthM ||
-              rack.depthM !== before.depthM ||
-              rack.levelCount !== before.levelCount ||
-              rack.bayCount !== before.bayCount ||
-              rack.rotation !== before.rotation
-            );
-          });
-          changedRacks.forEach((rack) => {
-            patchMutation.mutate({
-              kind: "rack",
-              id: rack.id,
-              patch: {
-                widthM: rack.widthM,
-                depthM: rack.depthM,
-                levelCount: rack.levelCount,
-                bayCount: rack.bayCount,
-                rotation: rack.rotation,
-              },
-            });
-          });
-        }}
         onDelete={() => {
           // Xoá không nằm trong scope task này — vô hiệu hoá nút xoá qua canEdit=false
           // ở component cha nếu cần; để trống handler an toàn (không throw).
@@ -2970,7 +3660,7 @@ export function WarehouseMapClient() {
 }
 ```
 
-**Lưu ý cho implementer:** `RackConfigurationDialog` được render **bên trong** `WarehouseLayoutInspector` (đã xác nhận ở Task 11 Step 1 — inspector tự import và render dialog khi `selection.kind === 'rack'`), nên không cần import/render riêng ở `WarehouseMapClient`. `onDelete` để trống có chủ đích — xoá zone/rack/aisle/gate qua map là hành động phá huỷ cấu trúc đang được Shelf/PutAway tham chiếu, không nằm trong scope "map + suggestion" của plan này; nếu cần, làm ở 1 plan riêng sau khi có review UX rõ ràng về ảnh hưởng dây chuyền.
+**Lưu ý cho implementer:** `RackTemplateForm` là component con mới, thay thế hoàn toàn vai trò của `RackConfigurationDialog` cũ — sửa 1 lần, áp dụng cho MỌI rack ngay lập tức (đúng ý "kích thước kệ đồng bộ toàn app" của user), không còn khái niệm "đồng bộ từ 1 rack mẫu sang rack khác" vì không còn "rack mẫu" — mọi rack luôn dùng chung 1 kích thước. `onDelete` để trống có chủ đích — xoá zone/rack/aisle/gate qua map là hành động phá huỷ cấu trúc đang được Shelf/PutAway tham chiếu, không nằm trong scope "map + suggestion" của plan này; nếu cần, làm ở 1 plan riêng sau khi có review UX rõ ràng về ảnh hưởng dây chuyền.
 
 - [ ] **Step 4: Chạy test, xác nhận PASS**
 
@@ -3048,19 +3738,21 @@ Run: `cd be && pnpm start:wms` (đảm bảo `WMS_DATABASE_URL`, Redis đã cấ
 
 Tạo tuần tự qua Swagger UI hoặc `curl`:
 1. 1 zone với `xM=1, yM=1, widthM=16, heightM=22`.
-2. 2 rack trong zone đó, mỗi rack `widthM/depthM/levelCount/bayCount` **khác nhau** (xác nhận yêu cầu "mỗi rack kích thước riêng").
-3. 2-3 shelf mỗi rack, 1 shelf đánh dấu `isStaging=true`.
-4. 1 aisle loại `MAIN`, 1 gate.
+2. `PUT /location/rack-template` với `widthM=10, depthM=1.5, levelCount=3, bayCount=3` — xác nhận đây là kích thước áp dụng cho MỌI rack.
+3. 2 rack trong zone đó ở vị trí khác nhau (chỉ `xM/yM/rotation`, KHÔNG truyền kích thước — xác nhận request tạo rack không cần/không nhận field kích thước).
+4. 2-3 shelf mỗi rack, 1 shelf đánh dấu `isStaging=true`.
+5. 1 aisle loại `MAIN`, 1 gate.
 
-- [ ] **Step 3: Gọi `GET /api/wms/location/layout`, xác nhận response chứa đủ 4 mảng với toạ độ đúng đã tạo.**
+- [ ] **Step 3: Gọi `GET /api/wms/location/layout`, xác nhận response chứa 4 mảng (zones/racks/aisles/gates) + object `rackTemplate` đơn, và cả 2 rack đều nhận cùng `widthM/depthM/levelCount/bayCount` từ `rackTemplate` khi FE ráp lại.**
 
 - [ ] **Step 4: Chạy FE**
 
 Run: `cd fe-pbvm-warehouse && pnpm dev`
 
 - [ ] **Step 5: Mở `/locations/map`, xác nhận:**
-- Floor plan hiển thị đúng zone/rack/aisle/gate theo toạ độ đã tạo.
-- Bấm chọn 1 rack → inspector hiện đúng thông số (kích thước riêng của rack đó, không bị trộn với rack khác).
+- Floor plan hiển thị đúng zone/rack/aisle/gate theo toạ độ đã tạo, cả 2 rack cùng kích thước.
+- Sửa "Kích thước rack chuẩn" ở form đầu trang, bấm "Áp dụng cho toàn bộ rack" → cả 2 rack trên floor plan đổi kích thước cùng lúc.
+- Bấm chọn 1 rack → inspector chỉ còn hiện vị trí (X/Y) + nút xoay, không còn field kích thước riêng.
 - Sửa toạ độ qua inspector → gọi `PATCH /location/racks/:id` thành công, floor plan cập nhật ngay (invalidate query).
 - Bấm vào 1 rack → chuyển sang rack elevation, thấy đúng số tầng shelf đã tạo.
 - Nếu đã tạo `InventoryStock` mẫu cho 1 shelf (qua GRN flow hoặc seed), xác nhận rack elevation hiển thị đúng SKU/số lượng thật.
@@ -3075,12 +3767,13 @@ Run: `cd fe-pbvm-warehouse && pnpm dev`
 
 | Quyết định trong spec | Task tương ứng |
 |---|---|
-| Zone/Rack toạ độ 2D | Task 1, 2 |
-| Mỗi rack kích thước riêng | Task 2 |
+| Zone toạ độ 2D | Task 1 |
+| Rack vị trí (không kích thước riêng) | Task 2 |
+| Kích thước rack dùng chung toàn app (`RackTemplate` singleton) | Task 2b |
 | Aisle/Gate | Task 3, 4 |
-| API layout tổng hợp | Task 5 |
+| API layout tổng hợp (kèm `rackTemplate`) | Task 5 |
 | Singleton 1 kho | Toàn bộ (không có `warehouseId` ở bất kỳ đâu) |
-| Chỉnh trực tiếp, không DRAFT/PUBLISH | Task 5 (không có field `status` điều khiển ở BE), Task 12 (patch áp dụng ngay) |
+| Chỉnh trực tiếp, không DRAFT/PUBLISH | Task 5 (không có field `status` điều khiển ở BE), Task 12 (patch/PUT áp dụng ngay) |
 | Weighted scoring put-away (không AI) | Task 6 |
 | Rack elevation đầy đủ với tồn kho thật | Task 7, 9, 12 |
-| Nối UI có sẵn thay vì viết lại (Phương án A) | Task 8–12 (tái sử dụng `WarehouseFloorPlan`, `WarehouseLayoutInspector`, `RackConfigurationDialog`, `WarehouseArchitectureScene` nguyên vẹn) |
+| Nối UI có sẵn thay vì viết lại (Phương án A) | Task 8–12 (tái sử dụng `WarehouseFloorPlan`, `WarehouseLayoutInspector`, `WarehouseArchitectureScene` nguyên vẹn; `RackConfigurationDialog` loại khỏi luồng chính ở Task 11, thay bằng `RackTemplateForm` mới) |
