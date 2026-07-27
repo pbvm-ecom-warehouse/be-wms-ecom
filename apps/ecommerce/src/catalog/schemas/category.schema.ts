@@ -21,6 +21,9 @@ export class Category {
   /** Thứ tự hiển thị giữa các siblings */
   @Prop({ default: 0 })
   position: number;
+
+  @Prop({ type: Date, default: null, index: true })
+  deletedAt?: Date | null;
 }
 
 export type CategoryDocument = HydratedDocument<Category>;

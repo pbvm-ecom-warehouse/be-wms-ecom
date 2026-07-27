@@ -136,10 +136,12 @@ export class CatalogRepository {
   }
 
   async listCategories(parentId?: string | null) {
-    const filter: Record<string, any> =
-      parentId !== undefined
-        ? { parentId: parentId ? new Types.ObjectId(parentId) : null }
-        : {};
+    const filter: Record<string, any> = {
+      deletedAt: null,
+    };
+    if (parentId !== undefined) {
+      filter.parentId = parentId ? new Types.ObjectId(parentId) : null;
+    }
     return this.categoryModel.find(filter).sort({ position: 1 }).lean();
   }
 
@@ -148,7 +150,9 @@ export class CatalogRepository {
   }
 
   async deleteCategory(id: string) {
-    return this.categoryModel.findByIdAndDelete(id).lean();
+    return this.categoryModel
+      .findByIdAndUpdate(id, { deletedAt: new Date() }, { new: true })
+      .lean();
   }
 
   // ── PRODUCT ───────────────────────────────────────────────────────────────

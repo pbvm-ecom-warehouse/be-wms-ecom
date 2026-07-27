@@ -148,8 +148,8 @@ export class CatalogAdminController {
     });
   }
 
-  @Delete('categories/:id')
-  @ApiOperation({ summary: '[Admin] Xóa danh mục' })
+  @Patch('categories/:id/soft-delete')
+  @ApiOperation({ summary: '[Admin] Xóa mềm danh mục' })
   @ApiParam({ name: 'id', description: 'ID danh mục' })
   @ApiOkResponse({ type: SuccessResponseDto })
   async deleteCategory(@Param('id') id: string) {
