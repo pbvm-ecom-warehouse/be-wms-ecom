@@ -180,11 +180,11 @@ export class CatalogRepository {
   async listProducts(query: ProductQueryDto) {
     const filter: Record<string, unknown> = {};
     if (query.categoryId) {
-      const catIds = [query.categoryId];
       if (Types.ObjectId.isValid(query.categoryId)) {
-        catIds.push(new Types.ObjectId(query.categoryId) as any);
+        filter.categoryId = new Types.ObjectId(query.categoryId);
+      } else {
+        filter.categoryId = new Types.ObjectId();
       }
-      filter.categoryId = { $in: catIds };
     }
     if (query.q) filter.name = { $regex: query.q, $options: 'i' };
 
@@ -278,22 +278,20 @@ export class CatalogRepository {
   }
 
   async listVariantsByProduct(productId: string) {
-    const ids = [productId];
-    if (Types.ObjectId.isValid(productId)) {
-      ids.push(new Types.ObjectId(productId) as any);
-    }
+    const queryId = Types.ObjectId.isValid(productId)
+      ? new Types.ObjectId(productId)
+      : new Types.ObjectId();
     return this.variantModel
-      .find({ productId: { $in: ids }, isActive: true })
+      .find({ productId: queryId, isActive: true })
       .lean();
   }
 
   async listAllVariantsByProduct(productId: string) {
-    const ids = [productId];
-    if (Types.ObjectId.isValid(productId)) {
-      ids.push(new Types.ObjectId(productId) as any);
-    }
+    const queryId = Types.ObjectId.isValid(productId)
+      ? new Types.ObjectId(productId)
+      : new Types.ObjectId();
     return this.variantModel
-      .find({ productId: { $in: ids } })
+      .find({ productId: queryId })
       .lean();
   }
 

@@ -133,14 +133,45 @@ export class OrderService {
       throw err;
     }
 
-    const nextFulfillment = order.hasPrintItems
-      ? FulfillmentStatus.AWAITING_PRINT
-      : FulfillmentStatus.READY_TO_PICK;
+    // 2. Lấy danh sách giao dịch đã đóng để tính lũy kế
+    const txns = await this.repo.listTransactions(orderId);
+    const paidTotal = txns
+      .filter((t) => t.status === TxnStatus.SUCCESS && (t.type === TxnType.CHARGE || t.type === TxnType.COD_COLLECT))
+      .reduce((sum, t) => sum + t.amount, 0);
+
+    const paidRatio = paidTotal / order.total;
+
+    const prevPaymentStatus = order.paymentStatus as PaymentStatus;
+    let nextPaymentStatus: PaymentStatus = prevPaymentStatus;
+    let nextOrderStatus = order.orderStatus;
+    let nextFulfillmentStatus = order.fulfillmentStatus;
+
+    if (order.hasPrintItems) {
+      if (paidRatio >= 0.99) {
+        nextPaymentStatus = PaymentStatus.PAID;
+        nextFulfillmentStatus = FulfillmentStatus.ISSUED;
+      } else if (paidRatio >= 0.59) {
+        nextPaymentStatus = PaymentStatus.PROGRESS_PAID;
+      } else if (paidRatio >= 0.29) {
+        nextPaymentStatus = PaymentStatus.DEPOSIT_PAID;
+        nextOrderStatus = OrderStatus.CONFIRMED;
+        nextFulfillmentStatus = FulfillmentStatus.AWAITING_PRINT;
+      }
+    } else {
+      if (paidRatio >= 0.99) {
+        nextPaymentStatus = PaymentStatus.PAID;
+        nextFulfillmentStatus = FulfillmentStatus.ISSUED;
+      } else if (paidRatio >= 0.49) {
+        nextPaymentStatus = PaymentStatus.DEPOSIT_PAID;
+        nextOrderStatus = OrderStatus.CONFIRMED;
+        nextFulfillmentStatus = FulfillmentStatus.READY_TO_PICK;
+      }
+    }
 
     const updated = await this.repo.updateOrder(orderId, {
-      paymentStatus: PaymentStatus.PAID,
-      orderStatus: OrderStatus.CONFIRMED,
-      fulfillmentStatus: nextFulfillment,
+      paymentStatus: nextPaymentStatus,
+      orderStatus: nextOrderStatus,
+      fulfillmentStatus: nextFulfillmentStatus,
     });
 
     // Báo khách hàng thanh toán thành công (Ecom → Notification)
@@ -161,36 +192,62 @@ export class OrderService {
       );
     }
 
+    // Phát lệnh in / lệnh xuất kho theo tiến trình mới
     if (order.hasPrintItems) {
-      // Đơn ly in -> Phát lệnh in sang WMS xưởng in
-      await this.orderQueue.add(EVENTS.PRINT_REQUESTED, {
-        orderId,
-        items: order.items
-          .filter((i) => i.isPrintItem)
-          .map((i) => ({
-            sku: i.sku,
-            quantity: i.quantity,
-            designFile: i.designFile,
-          })),
-      });
-      this.logger.log(
-        `Đơn in custom ${orderId} -> AWAITING_PRINT -> Phát lệnh in thành công`,
-      );
+      // Đơn in đợt 1 (vừa cọc 30%): Phát lệnh in sang WMS xưởng in
+      if (nextPaymentStatus === PaymentStatus.DEPOSIT_PAID && prevPaymentStatus !== PaymentStatus.DEPOSIT_PAID) {
+        await this.orderQueue.add(EVENTS.PRINT_REQUESTED, {
+          orderId,
+          items: order.items
+            .filter((i) => i.isPrintItem)
+            .map((i) => ({
+              sku: i.sku,
+              quantity: i.quantity,
+              designFile: i.designFile,
+            })),
+        });
+        this.logger.log(
+          `Đơn in custom ${orderId} -> AWAITING_PRINT -> Phát lệnh in thành công`,
+        );
+      }
+      // Đơn in đợt 3 (vừa đóng đủ 100% ONLINE): Phát lệnh xuất kho sang WMS
+      if (nextPaymentStatus === PaymentStatus.PAID && prevPaymentStatus !== PaymentStatus.PAID) {
+        await this.orderQueue.add(EVENTS.ORDER_READY_TO_FULFILL, {
+          orderId,
+          items: order.items.map((i) => ({ sku: i.sku, quantity: i.quantity })),
+          shippingAddress: order.shippingAddress,
+          recipient: {
+            name: order.shippingAddress.recipientName,
+            phone: order.shippingAddress.phone,
+          },
+          paymentMethod: order.paymentMethod,
+        });
+        this.logger.log(
+          `Đơn in custom ${orderId} -> ISSUED -> Phát lệnh xuất kho thành công`,
+        );
+      }
     } else {
-      // Đơn thường -> Phát lệnh xuất kho
-      await this.orderQueue.add(EVENTS.ORDER_READY_TO_FULFILL, {
-        orderId,
-        items: order.items.map((i) => ({ sku: i.sku, quantity: i.quantity })),
-        shippingAddress: order.shippingAddress,
-        recipient: {
-          name: order.shippingAddress.recipientName,
-          phone: order.shippingAddress.phone,
-        },
-        paymentMethod: 'ONLINE',
-      });
-      this.logger.log(
-        `Đơn hàng thường ${orderId} -> READY_TO_PICK -> Phát lệnh xuất kho thành công`,
-      );
+      // Đơn thường (không in):
+      // - Nếu là COD: phát lệnh xuất kho ngay khi cọc đợt 1 (50%) thành công
+      // - Nếu là ONLINE: phát lệnh xuất kho khi đóng đủ 100% đợt 2 thành công
+      const isCodFulfill = order.paymentMethod === PaymentMethod.COD && nextPaymentStatus === PaymentStatus.DEPOSIT_PAID && prevPaymentStatus !== PaymentStatus.DEPOSIT_PAID;
+      const isOnlineFulfill = order.paymentMethod === PaymentMethod.ONLINE && nextPaymentStatus === PaymentStatus.PAID && prevPaymentStatus !== PaymentStatus.PAID;
+
+      if (isCodFulfill || isOnlineFulfill) {
+        await this.orderQueue.add(EVENTS.ORDER_READY_TO_FULFILL, {
+          orderId,
+          items: order.items.map((i) => ({ sku: i.sku, quantity: i.quantity })),
+          shippingAddress: order.shippingAddress,
+          recipient: {
+            name: order.shippingAddress.recipientName,
+            phone: order.shippingAddress.phone,
+          },
+          paymentMethod: order.paymentMethod,
+        });
+        this.logger.log(
+          `Đơn hàng thường ${orderId} -> Phát lệnh xuất kho thành công`,
+        );
+      }
     }
 
     return updated;
@@ -332,20 +389,28 @@ export class OrderService {
         fulfillmentStatus: FulfillmentStatus.READY_TO_PICK,
       });
 
-      // Phát lệnh xuất kho
-      await this.orderQueue.add(EVENTS.ORDER_READY_TO_FULFILL, {
-        orderId,
-        items: items.map((i) => ({ sku: i.sku, quantity: i.quantity })),
-        shippingAddress: order.shippingAddress,
-        recipient: {
-          name: order.shippingAddress.recipientName,
-          phone: order.shippingAddress.phone,
-        },
-        paymentMethod: 'ONLINE',
-      });
-      this.logger.log(
-        `WMS in xong ly đơn ${orderId} -> READY_TO_PICK -> Phát lệnh xuất kho`,
-      );
+      // Đối với đơn hàng in:
+      // - Nếu là COD: cho phép xuất kho luôn vì đợt 3 sẽ thu COD khi giao thành công.
+      // - Nếu là ONLINE: chỉ xuất kho khi đã đóng đủ 100% (paymentStatus = PAID).
+      if (order.paymentMethod === PaymentMethod.COD || order.paymentStatus === PaymentStatus.PAID) {
+        await this.orderQueue.add(EVENTS.ORDER_READY_TO_FULFILL, {
+          orderId,
+          items: items.map((i) => ({ sku: i.sku, quantity: i.quantity })),
+          shippingAddress: order.shippingAddress,
+          recipient: {
+            name: order.shippingAddress.recipientName,
+            phone: order.shippingAddress.phone,
+          },
+          paymentMethod: order.paymentMethod,
+        });
+        this.logger.log(
+          `WMS in xong ly đơn ${orderId} -> READY_TO_PICK -> Phát lệnh xuất kho`,
+        );
+      } else {
+        this.logger.log(
+          `WMS in xong ly đơn ${orderId} -> READY_TO_PICK -> Chờ khách thanh toán nốt online đợt 3`,
+        );
+      }
     }
   }
 
@@ -367,6 +432,21 @@ export class OrderService {
 
     // Nếu COD -> chuyển sang PAID vì shipper đã thu hộ tiền mặt
     if (order.paymentMethod === PaymentMethod.COD) {
+      const txns = await this.repo.listTransactions(orderId);
+      const paidTotal = txns
+        .filter((t) => t.status === TxnStatus.SUCCESS && (t.type === TxnType.CHARGE || t.type === TxnType.COD_COLLECT))
+        .reduce((sum, t) => sum + t.amount, 0);
+      const remaining = order.total - paidTotal;
+      if (remaining > 0) {
+        await this.repo.appendTransaction({
+          orderId: new Types.ObjectId(order._id.toString()),
+          type: TxnType.COD_COLLECT,
+          provider: 'COD',
+          amount: remaining,
+          status: TxnStatus.SUCCESS,
+          providerTxnId: `cod_${orderId}_delivered`,
+        });
+      }
       updates.paymentStatus = PaymentStatus.PAID;
     }
 

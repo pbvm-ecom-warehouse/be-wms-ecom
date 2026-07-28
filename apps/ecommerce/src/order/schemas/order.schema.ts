@@ -8,6 +8,8 @@ export enum PaymentMethod {
 
 export enum PaymentStatus {
   UNPAID = 'UNPAID',
+  DEPOSIT_PAID = 'DEPOSIT_PAID',
+  PROGRESS_PAID = 'PROGRESS_PAID',
   PAID = 'PAID',
   REFUND_PENDING = 'REFUND_PENDING',
   REFUNDED = 'REFUNDED',
