@@ -181,10 +181,25 @@ export class CatalogRepository {
     const filter: Record<string, unknown> = {};
     if (query.categoryId) {
       if (Types.ObjectId.isValid(query.categoryId)) {
-        filter.categoryId = new Types.ObjectId(query.categoryId);
+        const catId = new Types.ObjectId(query.categoryId);
+        const isDeleted = await this.categoryModel.exists({
+          _id: catId,
+          deletedAt: { $ne: null },
+        });
+        if (isDeleted) {
+          return [];
+        }
+        filter.categoryId = catId;
       } else {
         filter.categoryId = new Types.ObjectId();
       }
+    } else {
+      const deletedCats = await this.categoryModel
+        .find({ deletedAt: { $ne: null } })
+        .select('_id')
+        .lean();
+      const deletedCatIds = deletedCats.map((c) => c._id);
+      filter.categoryId = { $nin: deletedCatIds };
     }
     if (query.q) filter.name = { $regex: query.q, $options: 'i' };
 
