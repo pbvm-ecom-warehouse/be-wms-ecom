@@ -39,6 +39,9 @@ export class GoodsReceiptNoteItem {
   @Prop()
   lotNumber?: string;
 
+  @Prop({ type: Date, required: true })
+  manufacturedDate!: Date;
+
   @Prop({ type: Date })
   expiryDate?: Date;
 

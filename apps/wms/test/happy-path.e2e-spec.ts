@@ -5,7 +5,7 @@ import { Model } from 'mongoose';
 import { getQueueToken } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import request from 'supertest';
-import { setupApp } from '@app/common';
+import { CloudinaryService, setupApp } from '@app/common';
 import { EVENTS, QUEUES, type OrderReadyToFulfillPayload } from '@app/events';
 import { AppModule } from '../src/app.module';
 import {
@@ -26,10 +26,6 @@ import {
   Shelf,
   type ShelfDocument,
 } from '../src/location/schemas/shelf.schema';
-import {
-  GoodsReceiptNote,
-  type GoodsReceiptNoteDocument,
-} from '../src/goods-receipt-note/schemas/goods-receipt-note.schema';
 
 /**
  * E2E happy-path WMS (S4-05): login → PO → GRN CONFIRMED (onHand+) → put-away
@@ -50,7 +46,6 @@ describe('WMS happy-path (e2e)', () => {
   let inventoryStockModel: Model<InventoryStockDocument>;
   let stockMovementModel: Model<StockMovementDocument>;
   let shelfModel: Model<ShelfDocument>;
-  let goodsReceiptNoteModel: Model<GoodsReceiptNoteDocument>;
   // orderQueue + goodsIssueRepo: gán ở beforeAll nhưng chỉ được ĐỌC ở phần
   // goods-issue (Task 4, nối tiếp cùng file này) — khai báo sẵn ở đây vì
   // beforeAll chỉ chạy 1 lần cho toàn bộ describe.
@@ -87,7 +82,14 @@ describe('WMS happy-path (e2e)', () => {
   beforeAll(async () => {
     const moduleRef = await Test.createTestingModule({
       imports: [AppModule],
-    }).compile();
+    })
+      .overrideProvider(CloudinaryService)
+      .useValue({
+        uploadImage: jest.fn().mockResolvedValue({
+          url: 'https://example.com/grn-proof.jpg',
+        }),
+      })
+      .compile();
     app = moduleRef.createNestApplication({ bufferLogs: true });
     setupApp(app, {
       corsOrigins: undefined,
@@ -100,7 +102,6 @@ describe('WMS happy-path (e2e)', () => {
     inventoryStockModel = app.get(getModelToken(InventoryStock.name));
     stockMovementModel = app.get(getModelToken(StockMovement.name));
     shelfModel = app.get(getModelToken(Shelf.name));
-    goodsReceiptNoteModel = app.get(getModelToken(GoodsReceiptNote.name));
     orderQueue = app.get(getQueueToken(QUEUES.ORDER));
     goodsIssueRepo = app.get(GoodsIssueRepository);
   });
@@ -293,20 +294,23 @@ describe('WMS happy-path (e2e)', () => {
     const grnRes = await request(app.getHttpServer())
       .post('/api/wms/goods-receipt-notes')
       .set('Authorization', `Bearer ${receiverToken}`)
-      .send({
-        purchaseOrderId,
-        items: [{ itemId, sku: itemSku, actualQty: RECEIVE_QTY, unit: 'cái' }],
+      .field('purchaseOrderId', purchaseOrderId)
+      .field(
+        'items',
+        JSON.stringify([
+          {
+            itemId,
+            actualQty: RECEIVE_QTY,
+            manufacturedDate: '2026-07-28',
+          },
+        ]),
+      )
+      .attach('images', Buffer.from('proof'), {
+        filename: 'grn-proof.jpg',
+        contentType: 'image/jpeg',
       })
       .expect(201);
     grnId = grnRes.body.data.id;
-
-    // Confirm bắt buộc có ảnh minh chứng (GRN_IMAGE_REQUIRED) — set thẳng qua
-    // model thay vì gọi Cloudinary thật trong e2e (endpoint upload ảnh không
-    // nằm trong scope happy-path này).
-    await goodsReceiptNoteModel.updateOne(
-      { _id: grnId },
-      { $push: { images: 'https://example.com/grn-proof.jpg' } },
-    );
 
     await request(app.getHttpServer())
       .post(`/api/wms/goods-receipt-notes/${grnId}/confirm`)

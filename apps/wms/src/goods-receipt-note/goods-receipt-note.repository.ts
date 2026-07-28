@@ -15,6 +15,7 @@ export interface ResolvedGoodsReceiptNoteItem {
   expectedQty: number;
   actualQty: number;
   lotNumber?: string;
+  manufacturedDate: Date;
   expiryDate?: Date;
   note?: string;
   wholePackageOnly: boolean;
@@ -32,6 +33,7 @@ export class GoodsReceiptNoteRepository {
     grnNumber: string,
     resolvedItems: ResolvedGoodsReceiptNoteItem[],
     actorId: string,
+    images: string[],
   ): Promise<GoodsReceiptNoteDocument> {
     return this.model.create({
       grnNumber,
@@ -39,6 +41,7 @@ export class GoodsReceiptNoteRepository {
       status: GoodsReceiptNoteStatus.DRAFT,
       // itemId giữ string — Mongoose tự cast theo schema; cast tay vì Model.create() đòi ObjectId ở kiểu tĩnh
       items: resolvedItems as unknown as GoodsReceiptNote['items'],
+      images,
       createdBy: new Types.ObjectId(actorId),
     });
   }
