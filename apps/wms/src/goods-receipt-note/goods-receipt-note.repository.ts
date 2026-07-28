@@ -14,20 +14,10 @@ export interface ResolvedGoodsReceiptNoteItem {
   sku: string;
   expectedQty: number;
   actualQty: number;
-  unit: string;
   lotNumber?: string;
   expiryDate?: Date;
   note?: string;
-  packageCount: number;
   wholePackageOnly: boolean;
-  packageSpec?: {
-    unit: string;
-    factor: number;
-    depthCm: number;
-    widthCm: number;
-    heightCm: number;
-    volumeCm3: number;
-  };
 }
 
 @Injectable()

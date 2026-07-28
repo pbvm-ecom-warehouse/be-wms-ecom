@@ -11,6 +11,7 @@ const makeRepo = () => ({
   countByPoNumberPrefix: jest.fn(),
   findPurchaseOrderByIdWithSession: jest.fn(),
   applyReceivedQtyAndStatus: jest.fn(),
+  existsByItemId: jest.fn(),
 });
 
 const makeSupplierService = () => ({
@@ -47,6 +48,7 @@ describe('PurchaseOrderService', () => {
     stockRepo.findItemById.mockResolvedValue({
       _id: itemId,
       sku: 'SKU-1',
+      unit: 'thùng',
       deletedAt: null,
     });
   });
@@ -54,68 +56,18 @@ describe('PurchaseOrderService', () => {
   describe('createPurchaseOrder', () => {
     const baseDto = {
       supplierId,
-      items: [{ itemId, expectedQty: 10, unit: 'cái' }],
+      items: [{ itemId, expectedQty: 10, unit: 'thùng' }],
     };
 
-    it('đếm PO theo thùng và không dùng factor của đơn vị phụ', async () => {
-      stockRepo.findItemById.mockResolvedValue({
-        _id: itemId,
-        sku: 'SKU-CARTON',
-        deletedAt: null,
-        unit: 'thùng',
-        altUnits: [{ unit: 'cái', factor: 24 }],
-        depth: 40,
-        width: 30,
-        height: 25,
-      });
-      supplierSvc.getSupplierItemByItemAndSupplier.mockResolvedValue({
-        purchasePrice: 100000,
-        isActive: true,
-        supplierId,
-      });
-      repo.createPurchaseOrder.mockResolvedValue({ poNumber: 'PO-CARTON' });
-
-      await svc.createPurchaseOrder(
-        {
-          supplierId,
-          items: [
-            {
-              itemId,
-              expectedQty: 20,
-              unit: 'thùng',
-              unitPrice: 100000,
-              packageSpec: {
-                unit: 'cái',
-                factor: 24,
-                depthCm: 1,
-                widthCm: 1,
-                heightCm: 1,
-              },
-            },
-          ],
-        },
-        actorId,
-      );
-
-      expect(repo.createPurchaseOrder).toHaveBeenCalledWith(
-        expect.anything(),
-        expect.any(String),
-        [
-          expect.objectContaining({
-            expectedQty: 20,
-            unit: 'thùng',
-            packageSpec: {
-              unit: 'thùng',
-              factor: 1,
-              depthCm: 40,
-              widthCm: 30,
-              heightCm: 25,
-              volumeCm3: 30000,
-            },
-          }),
-        ],
-        actorId,
-      );
+    it('throw PO_UNIT_MUST_MATCH_ITEM khi unit đặt hàng khác WarehouseItem.unit', async () => {
+      const dtoWrongUnit = {
+        ...baseDto,
+        items: [{ itemId, expectedQty: 10, unit: 'cái' }],
+      };
+      await expect(
+        svc.createPurchaseOrder(dtoWrongUnit as never, actorId),
+      ).rejects.toMatchObject({ code: 'PO_UNIT_MUST_MATCH_ITEM' });
+      expect(repo.createPurchaseOrder).not.toHaveBeenCalled();
     });
 
     it('throw SUPPLIER_NOT_ACTIVE khi NCC blacklist/inactive', async () => {
@@ -167,7 +119,7 @@ describe('PurchaseOrderService', () => {
             itemId,
             sku: 'SKU-1',
             expectedQty: 10,
-            unit: 'cái',
+            unit: 'thùng',
             unitPrice: 7000,
           },
         ],
@@ -182,7 +134,7 @@ describe('PurchaseOrderService', () => {
           {
             itemId,
             expectedQty: 10,
-            unit: 'cái',
+            unit: 'thùng',
             unitPrice: 9999,
           },
         ],
@@ -202,7 +154,7 @@ describe('PurchaseOrderService', () => {
             itemId,
             sku: 'SKU-1',
             expectedQty: 10,
-            unit: 'cái',
+            unit: 'thùng',
             unitPrice: 9999,
           },
         ],
@@ -217,7 +169,7 @@ describe('PurchaseOrderService', () => {
           {
             itemId,
             expectedQty: 10,
-            unit: 'cái',
+            unit: 'thùng',
             unitPrice: 7000,
           },
         ],
@@ -241,7 +193,7 @@ describe('PurchaseOrderService', () => {
           {
             itemId,
             expectedQty: 10,
-            unit: 'cái',
+            unit: 'thùng',
             unitPrice: 9999,
           },
         ],
@@ -265,7 +217,7 @@ describe('PurchaseOrderService', () => {
             itemId,
             sku: 'SKU-1',
             expectedQty: 10,
-            unit: 'cái',
+            unit: 'thùng',
             unitPrice: 9999,
           },
         ],
@@ -281,7 +233,7 @@ describe('PurchaseOrderService', () => {
           {
             itemId,
             expectedQty: 10,
-            unit: 'cái',
+            unit: 'thùng',
             unitPrice: 9999,
           },
         ],
@@ -302,7 +254,7 @@ describe('PurchaseOrderService', () => {
             itemId,
             sku: 'SKU-1',
             expectedQty: 10,
-            unit: 'cái',
+            unit: 'thùng',
             unitPrice: 9999,
           },
         ],
@@ -319,7 +271,7 @@ describe('PurchaseOrderService', () => {
           {
             itemId,
             expectedQty: 10,
-            unit: 'cái',
+            unit: 'thùng',
             unitPrice: 9999,
           },
         ],
@@ -410,7 +362,7 @@ describe('PurchaseOrderService', () => {
     it('không check MOQ khi unitPrice nhập tay nhưng SKU chưa có báo giá NCC', async () => {
       const dtoWithPrice = {
         ...baseDto,
-        items: [{ itemId, expectedQty: 1, unit: 'cái', unitPrice: 500 }],
+        items: [{ itemId, expectedQty: 1, unit: 'thùng', unitPrice: 500 }],
       };
       supplierSvc.getSupplierItemByItemAndSupplier.mockRejectedValue({
         code: 'SUPPLIER_ITEM_NOT_FOUND',
@@ -432,7 +384,7 @@ describe('PurchaseOrderService', () => {
           {
             itemId,
             expectedQty: 1,
-            unit: 'cái',
+            unit: 'thùng',
             unitPrice: 7000,
           },
         ],
@@ -502,14 +454,15 @@ describe('PurchaseOrderService', () => {
       const multiItemDto = {
         supplierId,
         items: [
-          { itemId, expectedQty: 10, unit: 'cái' },
-          { itemId: 'item002', expectedQty: 10, unit: 'cái' },
+          { itemId, expectedQty: 10, unit: 'thùng' },
+          { itemId: 'item002', expectedQty: 10, unit: 'thùng' },
         ],
       };
       stockRepo.findItemById.mockImplementation((id: string) =>
         Promise.resolve({
           _id: id,
           sku: id === itemId ? 'SKU-1' : 'SKU-2',
+          unit: 'thùng',
           deletedAt: null,
         }),
       );
@@ -564,6 +517,19 @@ describe('PurchaseOrderService', () => {
       await expect(svc.getPurchaseOrder('po1')).resolves.toEqual({
         poNumber: 'PO-X',
       });
+    });
+  });
+
+  describe('hasAnyPurchaseOrderForItem', () => {
+    it('trả về true khi repo tìm thấy PO tham chiếu item', async () => {
+      repo.existsByItemId.mockResolvedValue(true);
+      await expect(svc.hasAnyPurchaseOrderForItem(itemId)).resolves.toBe(true);
+      expect(repo.existsByItemId).toHaveBeenCalledWith(itemId);
+    });
+
+    it('trả về false khi item chưa có PO nào', async () => {
+      repo.existsByItemId.mockResolvedValue(false);
+      await expect(svc.hasAnyPurchaseOrderForItem(itemId)).resolves.toBe(false);
     });
   });
 

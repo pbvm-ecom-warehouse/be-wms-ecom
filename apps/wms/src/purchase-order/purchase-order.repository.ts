@@ -18,14 +18,6 @@ export interface ResolvedPurchaseOrderItem {
   expectedQty: number;
   unit: string;
   unitPrice: number;
-  packageSpec?: {
-    unit: string;
-    factor: number;
-    depthCm: number;
-    widthCm: number;
-    heightCm: number;
-    volumeCm3: number;
-  };
 }
 
 @Injectable()
@@ -127,6 +119,14 @@ export class PurchaseOrderRepository {
     return this.model
       .countDocuments({ poNumber: { $regex: `^${prefix}` } })
       .exec();
+  }
+
+  /** Item đã xuất hiện trong ≥1 PO (bất kỳ status) — dùng khóa sửa depth/width/height ở WarehouseItem. */
+  async existsByItemId(itemId: string): Promise<boolean> {
+    const doc = await this.model
+      .exists({ 'items.itemId': new Types.ObjectId(itemId) })
+      .exec();
+    return doc !== null;
   }
 
   /**

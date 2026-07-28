@@ -501,7 +501,7 @@ export class LocationService {
           (cell.fillFactor ?? 0.75);
         const occupiedVolumeCm3 = contents.reduce(
           (sum, item) =>
-            sum + item.packageCount * (item.packageVolumeCm3Snapshot ?? 0),
+            sum + item.quantity * (item.packageVolumeCm3Snapshot ?? 0),
           0,
         );
         return {

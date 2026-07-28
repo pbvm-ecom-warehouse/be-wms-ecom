@@ -1,5 +1,5 @@
 import { BullModule } from '@nestjs/bullmq';
-import { Module } from '@nestjs/common';
+import { forwardRef, Module } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
 import { QUEUES } from '@app/events';
 import {
@@ -44,6 +44,7 @@ import { SkuTemplateController } from './sku/sku-template.controller';
 import { SkuTemplateService } from './sku/sku-template.service';
 import { BarcodeRepository } from './barcode/barcode.repository';
 import { BarcodeService } from './barcode/barcode.service';
+import { PurchaseOrderModule } from '../purchase-order/purchase-order.module';
 
 @Module({
   imports: [
@@ -51,6 +52,8 @@ import { BarcodeService } from './barcode/barcode.service';
       { name: QUEUES.STOCK },
       { name: QUEUES.NOTIFICATION }, // S4-04: StockService.checkAndEmitStockLow → stock.low
     ),
+    // forwardRef: PurchaseOrderModule cũng import StockModule (findItemById) — xem purchase-order.module.ts.
+    forwardRef(() => PurchaseOrderModule),
     MongooseModule.forFeature([
       { name: WarehouseItem.name, schema: WarehouseItemSchema },
       { name: StockBalance.name, schema: StockBalanceSchema },

@@ -62,6 +62,10 @@ export class PurchaseOrderService {
       if (!warehouseItem || warehouseItem.deletedAt) {
         throw new AppException('STOCK_ITEM_NOT_FOUND');
       }
+      // Luôn đặt hàng theo đơn vị cơ sở (thùng) — không còn đặt theo đơn vị lẻ.
+      if (item.unit !== warehouseItem.unit) {
+        throw new AppException('PO_UNIT_MUST_MATCH_ITEM');
+      }
 
       let unitPrice = item.unitPrice;
       if (unitPrice === undefined) {
@@ -106,7 +110,6 @@ export class PurchaseOrderService {
           maxLeadTimeDays = maxOf(maxLeadTimeDays, supplierItem.leadTimeDays);
         }
       }
-      const packageSpec = this.resolvePackageSpec(item, warehouseItem);
       resolvedItems.push({
         itemId: item.itemId,
         // sku luôn denormalize từ WarehouseItem đã tra ở trên — không tin sku client tự gửi.
@@ -114,7 +117,6 @@ export class PurchaseOrderService {
         expectedQty: item.expectedQty,
         unit: item.unit,
         unitPrice,
-        packageSpec,
       });
     }
 
@@ -184,79 +186,15 @@ export class PurchaseOrderService {
       throw new AppException('PO_QTY_BELOW_MOQ');
     }
   }
-
-  private resolvePackageSpec(
-    item: {
-      unit: string;
-      packageSpec?: {
-        unit: string;
-        factor: number;
-        depthCm: number;
-        widthCm: number;
-        heightCm: number;
-      };
-    },
-    warehouseItem: {
-      unit: string;
-      altUnits?: { unit: string; factor: number }[];
-      depth?: number;
-      width?: number;
-      height?: number;
-    },
-  ) {
-    // Với master data chuẩn mới, 1 quantity luôn là 1 thùng. Không nhận
-    // packageSpec từ PO để tránh altUnits (vd 24 cái/thùng) bị dùng nhầm làm
-    // hệ số tồn kho và biến 20 thùng thành 480 cái.
-    if (warehouseItem.unit === 'thùng') {
-      if (
-        !warehouseItem.depth ||
-        !warehouseItem.width ||
-        !warehouseItem.height
-      ) {
-        return undefined;
-      }
-      return {
-        unit: 'thùng',
-        factor: 1,
-        depthCm: warehouseItem.depth,
-        widthCm: warehouseItem.width,
-        heightCm: warehouseItem.height,
-        volumeCm3:
-          warehouseItem.depth * warehouseItem.width * warehouseItem.height,
-      };
-    }
-
-    // Nhánh tương thích cho master/chứng từ cũ chưa quản lý tồn theo thùng.
-    if (item.packageSpec) {
-      const { depthCm, widthCm, heightCm } = item.packageSpec;
-      return {
-        ...item.packageSpec,
-        volumeCm3: depthCm * widthCm * heightCm,
-      };
-    }
-
-    if (!warehouseItem.depth || !warehouseItem.width || !warehouseItem.height) {
-      return undefined;
-    }
-    const factor =
-      warehouseItem.altUnits?.find((u) => u.unit === item.unit)?.factor ??
-      (item.unit === warehouseItem.unit ? 1 : undefined);
-    if (!factor) return undefined;
-    return {
-      unit: item.unit,
-      factor,
-      depthCm: warehouseItem.depth,
-      widthCm: warehouseItem.width,
-      heightCm: warehouseItem.height,
-      volumeCm3:
-        warehouseItem.depth * warehouseItem.width * warehouseItem.height,
-    };
-  }
-
   async listPurchaseOrders(
     query: QueryPurchaseOrderDto,
   ): Promise<{ data: PurchaseOrderDocument[]; total: number }> {
     return this.repo.findPurchaseOrders(query);
+  }
+
+  /** Item đã có ≥1 PO tham chiếu — dùng bởi StockService để khóa depth/width/height. */
+  async hasAnyPurchaseOrderForItem(itemId: string): Promise<boolean> {
+    return this.repo.existsByItemId(itemId);
   }
 
   /**
@@ -280,6 +218,9 @@ export class PurchaseOrderService {
         expectedQty: number;
         receivedQty: number;
         remainingQty: number;
+        itemDepth?: number;
+        itemWidth?: number;
+        itemHeight?: number;
       }>;
     }>;
     total: number;
@@ -304,7 +245,7 @@ export class PurchaseOrderService {
     const supplierNameById = new Map(
       suppliers.map((s) => [s._id.toString(), s.name]),
     );
-    const itemNameById = new Map(items.map((i) => [i._id.toString(), i.name]));
+    const itemById = new Map(items.map((i) => [i._id.toString(), i]));
 
     return {
       data: data.map((doc) => ({
@@ -315,16 +256,21 @@ export class PurchaseOrderService {
         expectedDate: doc.expectedDate,
         items: doc.items
           .filter((item) => item.receivedQty < item.expectedQty)
-          .map((item) => ({
-            itemId: item.itemId.toString(),
-            itemName: itemNameById.get(item.itemId.toString()) ?? item.sku,
-            sku: item.sku,
-            unit: item.unit,
-            expectedQty: item.expectedQty,
-            receivedQty: item.receivedQty,
-            remainingQty: item.expectedQty - item.receivedQty,
-            packageSpec: item.packageSpec,
-          })),
+          .map((item) => {
+            const warehouseItem = itemById.get(item.itemId.toString());
+            return {
+              itemId: item.itemId.toString(),
+              itemName: warehouseItem?.name ?? item.sku,
+              sku: item.sku,
+              unit: item.unit,
+              expectedQty: item.expectedQty,
+              receivedQty: item.receivedQty,
+              remainingQty: item.expectedQty - item.receivedQty,
+              itemDepth: warehouseItem?.depth,
+              itemWidth: warehouseItem?.width,
+              itemHeight: warehouseItem?.height,
+            };
+          }),
       })),
       total,
     };
@@ -389,6 +335,9 @@ export class PurchaseOrderService {
             category: warehouseItem?.category,
             type: warehouseItem?.type,
             images: warehouseItem?.images,
+            itemDepth: warehouseItem?.depth,
+            itemWidth: warehouseItem?.width,
+            itemHeight: warehouseItem?.height,
           };
         }),
       };

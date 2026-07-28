@@ -32,7 +32,6 @@ type InsertMovementData = {
   refType: string;
   refId: Types.ObjectId;
   createdBy: Types.ObjectId;
-  packageCount?: number;
   packageFactor?: number;
   packageVolumeCm3Snapshot?: number;
   suggestedCellId?: Types.ObjectId | null;
@@ -98,8 +97,8 @@ export interface PickSuggestion {
   lotId: Types.ObjectId | null;
   lotNumber: string | null;
   expiryDate: Date | null;
+  /** Số thùng — luôn số nguyên. */
   quantity: number;
-  packageCount?: number;
   packageFactor?: number;
 }
 
@@ -155,11 +154,16 @@ export class StockRepository {
       type: ItemType;
       images: string[];
       isPerishable: boolean;
+      depth?: number;
+      width?: number;
+      height?: number;
     }[]
   > {
     return this.itemModel
       .find({ _id: { $in: itemIds } })
-      .select('sku name barcode category type images isPerishable')
+      .select(
+        'sku name barcode category type images isPerishable depth width height',
+      )
       .lean()
       .exec();
   }
@@ -266,7 +270,7 @@ export class StockRepository {
       .exec();
   }
   /** Upsert InventoryStock: cộng dồn deltaQty vào quantity. */
-  /** Upsert InventoryStock: cộng dồn deltaQty vào quantity. */
+  /** Upsert InventoryStock: cộng dồn deltaQty vào quantity (số thùng). */
   upsertInventory(
     itemId: Types.ObjectId,
     shelfId: Types.ObjectId,
@@ -275,21 +279,16 @@ export class StockRepository {
     session?: ClientSession,
     packageMeta?: {
       cellId?: Types.ObjectId | null;
-      packageCount?: number;
       packageFactor?: number;
       packageVolumeCm3Snapshot?: number;
     },
   ): Promise<InventoryStockDocument | null> {
     const cellId = packageMeta?.cellId ?? null;
-    const inc: Record<string, number> = { quantity: deltaQty };
-    if (packageMeta?.packageCount !== undefined) {
-      inc['packageCount'] = packageMeta.packageCount;
-    }
     return this.inventoryModel
       .findOneAndUpdate(
         { itemId, shelfId, cellId, lotId },
         {
-          $inc: inc,
+          $inc: { quantity: deltaQty },
           $set: {
             ...(packageMeta?.packageFactor !== undefined
               ? { packageFactor: packageMeta.packageFactor }
@@ -306,14 +305,13 @@ export class StockRepository {
       )
       .exec();
   }
-  /** Trừ tồn vị trí có điều kiện để quét đồng thời không thể làm âm tồn/thùng. */
+  /** Trừ tồn vị trí có điều kiện để quét đồng thời không thể làm âm tồn (số thùng). */
   decrementInventoryIfAvailable(
     itemId: Types.ObjectId,
     shelfId: Types.ObjectId,
     cellId: Types.ObjectId | null,
     lotId: Types.ObjectId | null,
     quantity: number,
-    packageCount: number,
     session: ClientSession,
   ): Promise<InventoryStockDocument | null> {
     return this.inventoryModel
@@ -324,9 +322,8 @@ export class StockRepository {
           cellId,
           lotId,
           quantity: { $gte: quantity },
-          packageCount: { $gte: packageCount },
         },
-        { $inc: { quantity: -quantity, packageCount: -packageCount } },
+        { $inc: { quantity: -quantity } },
         { new: true, session },
       )
       .exec();
@@ -361,7 +358,7 @@ export class StockRepository {
             occupied: {
               $sum: {
                 $multiply: [
-                  '$packageCount',
+                  '$quantity',
                   { $ifNull: ['$packageVolumeCm3Snapshot', 0] },
                 ],
               },
@@ -391,7 +388,6 @@ export class StockRepository {
   async decrementUnassignedInventory(
     id: string,
     quantity: number,
-    packageCount: number,
     session: ClientSession,
   ): Promise<InventoryStockDocument | null> {
     return this.inventoryModel
@@ -404,7 +400,6 @@ export class StockRepository {
         {
           $inc: {
             quantity: -quantity,
-            packageCount: -packageCount,
           },
         },
         { new: true, session },
@@ -423,7 +418,6 @@ export class StockRepository {
       lotId: string | null;
       lotNumber: string | null;
       quantity: number;
-      packageCount: number;
       packageFactor: number | null;
       packageVolumeCm3Snapshot: number | null;
     }>
@@ -473,7 +467,6 @@ export class StockRepository {
           },
           lotNumber: { $ifNull: ['$lot.lotNumber', null] },
           quantity: 1,
-          packageCount: { $ifNull: ['$packageCount', 0] },
           packageFactor: { $ifNull: ['$packageFactor', null] },
           packageVolumeCm3Snapshot: {
             $ifNull: ['$packageVolumeCm3Snapshot', null],
@@ -660,7 +653,7 @@ export class StockRepository {
           occupied: {
             $sum: {
               $multiply: [
-                '$packageCount',
+                '$quantity',
                 { $ifNull: ['$packageVolumeCm3Snapshot', 0] },
               ],
             },
@@ -705,7 +698,6 @@ export class StockRepository {
       itemName: string;
       unit: string;
       quantity: number;
-      packageCount: number;
       packageFactor: number | null;
       packageVolumeCm3Snapshot: number | null;
       lotNumber: string | null;
@@ -718,7 +710,6 @@ export class StockRepository {
       itemName: string;
       unit: string;
       quantity: number;
-      packageCount: number;
       packageFactor: number | null;
       packageVolumeCm3Snapshot: number | null;
       lotNumber: string | null;
@@ -750,7 +741,6 @@ export class StockRepository {
           itemName: '$item.name',
           unit: '$item.unit',
           quantity: 1,
-          packageCount: { $ifNull: ['$packageCount', 0] },
           packageFactor: { $ifNull: ['$packageFactor', null] },
           packageVolumeCm3Snapshot: {
             $ifNull: ['$packageVolumeCm3Snapshot', null],
@@ -767,7 +757,6 @@ export class StockRepository {
       itemName: r.itemName,
       unit: r.unit,
       quantity: r.quantity,
-      packageCount: r.packageCount,
       packageFactor: r.packageFactor,
       packageVolumeCm3Snapshot: r.packageVolumeCm3Snapshot,
       lotNumber: r.lotNumber,
@@ -877,7 +866,6 @@ export class StockRepository {
         level: number;
         bay: number;
         quantity: number;
-        packageCount: number;
         packageFactor: number;
       }>([
         {
@@ -886,14 +874,13 @@ export class StockRepository {
             lotId: null,
             cellId: { $ne: null },
             quantity: { $gt: 0 },
-            packageCount: { $gt: 0 },
           },
         },
         shelfLookupStage,
         unwindShelfStage,
         cellLookupStage,
         unwindCellStage,
-        { $sort: { packageCount: -1 } },
+        { $sort: { quantity: -1 } },
         {
           $project: {
             _id: 0,
@@ -905,7 +892,6 @@ export class StockRepository {
             level: '$cell.level',
             bay: '$cell.bay',
             quantity: 1,
-            packageCount: 1,
             packageFactor: 1,
           },
         },
@@ -922,7 +908,6 @@ export class StockRepository {
         lotNumber: null,
         expiryDate: null,
         quantity: r.quantity,
-        packageCount: r.packageCount,
         packageFactor: r.packageFactor,
       }));
     }
@@ -939,7 +924,6 @@ export class StockRepository {
       lotNumber: string;
       expiryDate: Date;
       quantity: number;
-      packageCount: number;
       packageFactor: number;
     }>([
       {
@@ -947,7 +931,6 @@ export class StockRepository {
           itemId,
           cellId: { $ne: null },
           quantity: { $gt: 0 },
-          packageCount: { $gt: 0 },
           lotId: { $ne: null },
         },
       },
@@ -980,7 +963,6 @@ export class StockRepository {
           lotNumber: '$lot.lotNumber',
           expiryDate: '$lot.expiryDate',
           quantity: 1,
-          packageCount: 1,
           packageFactor: 1,
         },
       },
@@ -998,7 +980,6 @@ export class StockRepository {
       lotNumber: r.lotNumber,
       expiryDate: r.expiryDate,
       quantity: r.quantity,
-      packageCount: r.packageCount,
       packageFactor: r.packageFactor,
     }));
   }

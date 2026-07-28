@@ -1,5 +1,5 @@
 import { InjectQueue } from '@nestjs/bullmq';
-import { Injectable, Logger } from '@nestjs/common';
+import { forwardRef, Inject, Injectable, Logger } from '@nestjs/common';
 import {
   EVENTS,
   QUEUES,
@@ -26,6 +26,7 @@ import {
   isMongoDuplicateKeyError,
 } from './barcode/barcode.service';
 import { StockTransactionHelper } from './helpers/with-stock-transaction.helper';
+import { PurchaseOrderService } from '../purchase-order/purchase-order.service';
 
 // Giới hạn upload ảnh mặt hàng — nhất quán với StockCountService (IMG-01/IMG-07).
 const ALLOWED_IMAGE_MIMETYPES = ['image/jpeg', 'image/png', 'image/webp'];
@@ -56,6 +57,8 @@ export class StockService {
     private readonly barcodeSvc: BarcodeService,
     private readonly txHelper: StockTransactionHelper,
     private readonly cloudinary: CloudinaryService,
+    @Inject(forwardRef(() => PurchaseOrderService))
+    private readonly purchaseOrderService: PurchaseOrderService,
   ) {}
 
   /** Phát event báo Ecommerce cộng/trừ availableQty theo delta (đã gộp mọi kho).
@@ -182,9 +185,7 @@ export class StockService {
             barcode,
             name: dto.name,
             type: dto.type,
-            // WMS vận hành theo thùng nguyên. Đơn vị phụ (cái, chai...) chỉ
-            // mô tả quy cách 1 thùng và không được dùng làm đơn vị tồn.
-            unit: 'thùng',
+            unit: dto.unit,
             altUnits: dto.altUnits,
             attributes: attributeSnapshot,
             isPerishable: dto.isPerishable,
@@ -269,6 +270,21 @@ export class StockService {
     actorId: string,
     imageFiles?: UploadedImageFile[],
   ): Promise<WarehouseItemDocument> {
+    // depth/width/height quyết định packageSpec mà PO/GRN đọc "live" từ item
+    // (không còn snapshot) — sửa sau khi đã có PO sẽ làm lệch thể tích của
+    // các PO/GRN đã lập trước đó, nên khóa cứng lại (issue: bỏ packageSpec snapshot).
+    if (
+      dto.depth !== undefined ||
+      dto.width !== undefined ||
+      dto.height !== undefined
+    ) {
+      const hasPo =
+        await this.purchaseOrderService.hasAnyPurchaseOrderForItem(id);
+      if (hasPo) {
+        throw new AppException('STOCK_ITEM_DIMENSIONS_LOCKED');
+      }
+    }
+
     const updateData: UpdateWarehouseItemDto & { images?: string[] } = {
       ...dto,
     };

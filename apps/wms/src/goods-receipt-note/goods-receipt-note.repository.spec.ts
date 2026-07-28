@@ -103,9 +103,7 @@ describe('GoodsReceiptNoteRepository - vòng đời duyệt', () => {
         itemId: new Types.ObjectId().toString(),
         sku: 'SKU-1',
         expectedQty: 20,
-        actualQty: 20,
-        unit: 'cái',
-        packageCount: 2,
+        actualQty: 2,
         wholePackageOnly: true,
       },
     ];

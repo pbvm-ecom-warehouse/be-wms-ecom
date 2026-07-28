@@ -12,6 +12,7 @@ const makeModel = (overrides: Record<string, jest.Mock> = {}) => ({
   findOne: jest.fn().mockReturnThis(),
   find: jest.fn().mockReturnThis(),
   countDocuments: jest.fn().mockReturnThis(),
+  exists: jest.fn().mockReturnThis(),
   create: jest.fn(),
   sort: jest.fn().mockReturnThis(),
   skip: jest.fn().mockReturnThis(),
@@ -97,6 +98,23 @@ describe('PurchaseOrderRepository', () => {
         poNumber: { $regex: '^PO-20260702' },
       });
       expect(count).toBe(3);
+    });
+  });
+
+  describe('existsByItemId', () => {
+    it('trả về true khi tồn tại PO có dòng item khớp', async () => {
+      model.exec.mockResolvedValue({ _id: new Types.ObjectId() });
+      const result = await repo.existsByItemId(itemId);
+      expect(model.exists).toHaveBeenCalledWith({
+        'items.itemId': new Types.ObjectId(itemId),
+      });
+      expect(result).toBe(true);
+    });
+
+    it('trả về false khi không có PO nào tham chiếu item', async () => {
+      model.exec.mockResolvedValue(null);
+      const result = await repo.existsByItemId(itemId);
+      expect(result).toBe(false);
     });
   });
 

@@ -203,24 +203,16 @@ export class GoodsIssueService {
     );
     if (!inventory) throw new AppException('STOCK_INSUFFICIENT');
 
-    const packageCount = dto.packageCount ?? 0;
-    const quantity =
-      dto.quantity ?? packageCount * (inventory.packageFactor ?? 0);
-    if (quantity <= 0 || packageCount <= 0) {
+    // quantity = số thùng nguyên cần xuất — không còn quy đổi qua factor
+    // (quyết định: quantity luôn là thùng, factor chỉ để hiển thị).
+    const quantity = dto.quantity ?? 0;
+    if (quantity <= 0) {
       throw new AppException('GOODS_ISSUE_PACKAGE_COUNT_REQUIRED');
-    }
-    if (dto.quantity !== undefined && inventory.packageFactor) {
-      if (dto.quantity !== packageCount * inventory.packageFactor) {
-        throw new AppException('GOODS_ISSUE_PACKAGE_QTY_MISMATCH');
-      }
     }
     if (quantity > line.remainingQty) {
       throw new AppException('GOODS_ISSUE_QTY_EXCEEDS');
     }
-    if (
-      inventory.quantity < quantity ||
-      inventory.packageCount < packageCount
-    ) {
+    if (inventory.quantity < quantity) {
       throw new AppException('STOCK_INSUFFICIENT');
     }
 
@@ -254,7 +246,6 @@ export class GoodsIssueService {
           cell._id,
           lotId,
           quantity,
-          packageCount,
           session,
         );
       if (!inventoryUpdated) throw new AppException('STOCK_INSUFFICIENT');
@@ -277,7 +268,6 @@ export class GoodsIssueService {
           refType: 'goods_issue',
           refId: gi._id,
           createdBy: new Types.ObjectId(actorId),
-          packageCount: -packageCount,
           packageFactor: inventory.packageFactor,
           packageVolumeCm3Snapshot: inventory.packageVolumeCm3Snapshot,
           suggestedCellId,

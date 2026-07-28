@@ -112,7 +112,7 @@ describe('StockRepository', () => {
         _id: { $in: itemIds },
       });
       expect(warehouseItemModel.select).toHaveBeenCalledWith(
-        'sku name barcode category type images isPerishable',
+        'sku name barcode category type images isPerishable depth width height',
       );
       expect(warehouseItemModel.lean).toHaveBeenCalled();
       expect(result).toEqual([

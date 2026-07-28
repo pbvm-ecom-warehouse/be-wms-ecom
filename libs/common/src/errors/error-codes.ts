@@ -171,10 +171,6 @@ export const ERROR_CATALOG = {
     status: HttpStatus.CONFLICT,
     message: 'Số thùng phân khoang vượt quá tồn chưa phân còn lại',
   },
-  PACKAGE_FACTOR_MISMATCH: {
-    status: HttpStatus.CONFLICT,
-    message: 'Quy cách thùng không khớp dữ liệu tồn đã ghi nhận',
-  },
   NAVIGATION_GATE_NOT_FOUND: {
     status: HttpStatus.NOT_FOUND,
     message: 'Không tìm thấy cổng xuất phát GATE-01',
@@ -256,6 +252,10 @@ export const ERROR_CATALOG = {
     message:
       'Số lượng đặt thấp hơn số lượng đặt tối thiểu (MOQ) của NCC cho SKU này',
   },
+  PO_UNIT_MUST_MATCH_ITEM: {
+    status: HttpStatus.BAD_REQUEST,
+    message: 'Đơn vị đặt hàng phải khớp đơn vị cơ sở (thùng) của mặt hàng',
+  },
 
   // ── WMS — Goods Receipt Note ────────────────────────────────────────────
   GRN_NOT_FOUND: {
@@ -292,15 +292,11 @@ export const ERROR_CATALOG = {
   },
   GRN_PACKAGE_SPEC_REQUIRED: {
     status: HttpStatus.BAD_REQUEST,
-    message: 'Dòng hàng chưa có quy cách thùng từ đơn mua',
+    message: 'Mặt hàng chưa khai đủ kích thước (sâu/rộng/cao) để cất kệ',
   },
   GRN_PACKAGE_COUNT_REQUIRED: {
     status: HttpStatus.BAD_REQUEST,
     message: 'Số thùng thực nhận phải lớn hơn 0',
-  },
-  GRN_PACKAGE_QTY_MISMATCH: {
-    status: HttpStatus.BAD_REQUEST,
-    message: 'Số thùng và số lượng cơ sở không khớp quy cách',
   },
   PO_NOT_RECEIVABLE: {
     status: HttpStatus.CONFLICT,
@@ -342,6 +338,10 @@ export const ERROR_CATALOG = {
   STOCK_ITEM_SKU_CONFLICT: {
     status: HttpStatus.CONFLICT,
     message: 'SKU đã tồn tại trong hệ thống',
+  },
+  STOCK_ITEM_DIMENSIONS_LOCKED: {
+    status: HttpStatus.CONFLICT,
+    message: 'Kích thước đã bị khóa vì item đã có đơn đặt hàng — không thể sửa',
   },
   STOCK_INSUFFICIENT: {
     status: HttpStatus.CONFLICT,
@@ -389,10 +389,6 @@ export const ERROR_CATALOG = {
     status: HttpStatus.BAD_REQUEST,
     message: 'Lệnh cất chưa có snapshot quy cách thùng',
   },
-  PUTAWAY_PACKAGE_QTY_MISMATCH: {
-    status: HttpStatus.BAD_REQUEST,
-    message: 'Số thùng và số lượng cất không khớp quy cách',
-  },
   PUTAWAY_CELL_DIMENSION_MISMATCH: {
     status: HttpStatus.BAD_REQUEST,
     message: 'Thùng hàng không vừa khoang đã chọn',
@@ -430,10 +426,6 @@ export const ERROR_CATALOG = {
   GOODS_ISSUE_PACKAGE_COUNT_REQUIRED: {
     status: HttpStatus.BAD_REQUEST,
     message: 'Phải xuất ít nhất một thùng nguyên',
-  },
-  GOODS_ISSUE_PACKAGE_QTY_MISMATCH: {
-    status: HttpStatus.BAD_REQUEST,
-    message: 'Số thùng và số lượng xuất không khớp quy cách',
   },
 
   // ── WMS — Print Job ──────────────────────────────────────────────────────

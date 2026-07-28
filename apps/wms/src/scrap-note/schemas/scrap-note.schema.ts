@@ -32,7 +32,15 @@ export class ScrapNoteItem {
   @Prop({ type: Types.ObjectId, default: null })
   lotId!: Types.ObjectId | null;
 
-  @Prop({ type: Number, required: true, min: 0 })
+  @Prop({
+    type: Number,
+    required: true,
+    min: 0,
+    validate: {
+      validator: Number.isInteger,
+      message: 'quantity phải là số nguyên',
+    },
+  })
   quantity!: number;
 
   /** Lý do hủy — hết hạn/vỡ/ẩm mốc/khác, tự do nhập */

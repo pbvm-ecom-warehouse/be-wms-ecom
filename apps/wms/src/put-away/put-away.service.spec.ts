@@ -48,14 +48,14 @@ describe('PutAwayService theo khoang', () => {
 
   let service: PutAwayService;
 
+  // remainingQty giờ luôn là số thùng nguyên (không còn quy đổi qua factor).
   const task = () => ({
     _id: new Types.ObjectId(taskId),
     items: [
       {
         itemId,
         lotId: null,
-        remainingQty: 50,
-        remainingPackageCount: 5,
+        remainingQty: 5,
         packageSpec,
       },
     ],
@@ -93,7 +93,7 @@ describe('PutAwayService theo khoang', () => {
     locationRepo.lockActiveShelfForInventory.mockResolvedValue(shelf());
     locationService.findStagingShelf.mockResolvedValue({ _id: stagingShelfId });
     stockRepo.findOccupiedVolumeForCell.mockResolvedValue(0);
-    stockRepo.decrementInventoryIfAvailable.mockResolvedValue({ quantity: 30 });
+    stockRepo.decrementInventoryIfAvailable.mockResolvedValue({ quantity: 3 });
     repo.decrementRemainingQty.mockResolvedValue(task());
     repo.findTaskById.mockResolvedValueOnce(task()).mockResolvedValue(task());
   });
@@ -104,7 +104,7 @@ describe('PutAwayService theo khoang', () => {
     await expect(
       service.confirmLine(
         taskId,
-        { itemBarcode: 'WRONG', cellBarcode: 'R1-T1-B1', packageCount: 1 },
+        { itemBarcode: 'WRONG', cellBarcode: 'R1-T1-B1', quantity: 1 },
         actorId,
       ),
     ).rejects.toMatchObject({ code: 'PUTAWAY_ITEM_NOT_FOUND' });
@@ -116,7 +116,7 @@ describe('PutAwayService theo khoang', () => {
     await expect(
       service.confirmLine(
         taskId,
-        { itemBarcode: 'SKU-1', cellBarcode: 'WRONG', packageCount: 1 },
+        { itemBarcode: 'SKU-1', cellBarcode: 'WRONG', quantity: 1 },
         actorId,
       ),
     ).rejects.toMatchObject({ code: 'PUTAWAY_CELL_NOT_FOUND' });
@@ -126,7 +126,7 @@ describe('PutAwayService theo khoang', () => {
     await expect(
       service.confirmLine(
         taskId,
-        { itemBarcode: 'SKU-1', cellBarcode: 'R1-T1-B1', packageCount: 6 },
+        { itemBarcode: 'SKU-1', cellBarcode: 'R1-T1-B1', quantity: 6 },
         actorId,
       ),
     ).rejects.toMatchObject({ code: 'PUTAWAY_QTY_EXCEEDS' });
@@ -138,7 +138,7 @@ describe('PutAwayService theo khoang', () => {
     await expect(
       service.confirmLine(
         taskId,
-        { itemBarcode: 'SKU-1', cellBarcode: 'R1-T1-B1', packageCount: 1 },
+        { itemBarcode: 'SKU-1', cellBarcode: 'R1-T1-B1', quantity: 1 },
         actorId,
       ),
     ).rejects.toMatchObject({ code: 'PUTAWAY_CELL_CAPACITY_EXCEEDED' });
@@ -152,7 +152,7 @@ describe('PutAwayService theo khoang', () => {
       {
         itemBarcode: 'SKU-1',
         cellBarcode: 'R1-T1-B1',
-        packageCount: 2,
+        quantity: 2,
         suggestedCellId,
       },
       actorId,
@@ -163,7 +163,6 @@ describe('PutAwayService theo khoang', () => {
       stagingShelfId,
       null,
       null,
-      20,
       2,
       expect.anything(),
     );
@@ -171,11 +170,10 @@ describe('PutAwayService theo khoang', () => {
       itemId,
       shelfId,
       null,
-      20,
+      2,
       expect.anything(),
       expect.objectContaining({
         cellId,
-        packageCount: 2,
         packageFactor: 10,
         packageVolumeCm3Snapshot: 1000,
       }),
@@ -187,7 +185,7 @@ describe('PutAwayService theo khoang', () => {
         suggestedCellId: new Types.ObjectId(suggestedCellId),
         actualCellId: cellId,
         isOverride: true,
-        quantity: 20,
+        quantity: 2,
       }),
       expect.anything(),
     );
@@ -195,9 +193,8 @@ describe('PutAwayService theo khoang', () => {
       taskId,
       itemId,
       null,
-      20,
-      expect.anything(),
       2,
+      expect.anything(),
     );
     expect(
       (stockRepo as Record<string, unknown>).upsertBalance,
@@ -216,7 +213,7 @@ describe('PutAwayService theo khoang', () => {
       {
         itemBarcode: 'SKU-1',
         cellBarcode: 'R1-T1-B1',
-        packageCount: 1,
+        quantity: 1,
       },
       actorId,
     );
@@ -227,7 +224,6 @@ describe('PutAwayService theo khoang', () => {
       taskSourceShelfId,
       null,
       null,
-      10,
       1,
       expect.anything(),
     );

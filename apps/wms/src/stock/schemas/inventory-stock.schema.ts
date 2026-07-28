@@ -26,12 +26,18 @@ export class InventoryStock {
   @Prop({ type: SchemaTypes.ObjectId, default: null })
   lotId!: Types.ObjectId | null;
 
-  @Prop({ required: true, default: 0 })
+  /** Số thùng — luôn là số nguyên (quyết định: quantity luôn là thùng, không quy đổi). */
+  @Prop({
+    required: true,
+    default: 0,
+    validate: {
+      validator: Number.isInteger,
+      message: 'quantity phải là số nguyên',
+    },
+  })
   quantity!: number;
 
-  @Prop({ type: Number, default: 0 })
-  packageCount!: number;
-
+  /** Chỉ để hiển thị tham khảo (vd "= 24 cái") — không dùng để tính toán số lượng. */
   @Prop({ type: Number })
   packageFactor?: number;
 

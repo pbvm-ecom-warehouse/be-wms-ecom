@@ -1,5 +1,5 @@
 // apps/wms/src/supplier/supplier.module.ts
-import { Module } from '@nestjs/common';
+import { forwardRef, Module } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
 import { Supplier, SupplierSchema } from './schemas/supplier.schema';
 import {
@@ -17,7 +17,8 @@ import { StockModule } from '../stock/stock.module';
       { name: Supplier.name, schema: SupplierSchema },
       { name: SupplierItem.name, schema: SupplierItemSchema },
     ]),
-    StockModule, // findItemsByIds — gắn sku/itemName vào SupplierItem response
+    // forwardRef: StockModule → PurchaseOrderModule → SupplierModule → StockModule (vòng 3 module).
+    forwardRef(() => StockModule), // findItemsByIds — gắn sku/itemName vào SupplierItem response
   ],
   providers: [SupplierRepository, SupplierService],
   controllers: [SupplierController],

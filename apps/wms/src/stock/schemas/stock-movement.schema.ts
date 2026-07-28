@@ -41,13 +41,17 @@ export class StockMovement {
   @Prop({ enum: MovementType, required: true })
   type!: MovementType;
 
-  /** Số lượng có dấu: dương = nhập vào, âm = xuất ra */
-  @Prop({ required: true })
+  /** Số lượng có dấu: dương = nhập vào, âm = xuất ra. Luôn là số thùng (số nguyên). */
+  @Prop({
+    required: true,
+    validate: {
+      validator: Number.isInteger,
+      message: 'quantity phải là số nguyên',
+    },
+  })
   quantity!: number;
 
-  @Prop({ type: Number, default: 0 })
-  packageCount!: number;
-
+  /** Chỉ để hiển thị tham khảo (vd "= 24 cái") — không dùng để tính toán số lượng. */
   @Prop({ type: Number })
   packageFactor?: number;
 

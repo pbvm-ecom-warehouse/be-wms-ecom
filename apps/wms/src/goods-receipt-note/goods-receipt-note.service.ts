@@ -110,14 +110,6 @@ export class GoodsReceiptNoteService {
         unit: string;
         expectedQty: number;
         receivedQty: number;
-        packageSpec?: {
-          unit: string;
-          factor: number;
-          depthCm: number;
-          widthCm: number;
-          heightCm: number;
-          volumeCm3: number;
-        };
       }[];
     },
     items: CreateGoodsReceiptNoteItemDto[],
@@ -153,13 +145,10 @@ export class GoodsReceiptNoteService {
         // tránh lệch dữ liệu nếu client gõ nhầm hoặc dùng bản cũ.
         sku: poItem.sku,
         expectedQty: poItem.expectedQty,
+        // actualQty luôn là số thùng nguyên — không còn quy đổi qua đơn vị lẻ.
         actualQty: item.actualQty,
-        // unit cho phép khác PO (RECEIVER đếm theo đơn vị phụ) — bỏ trống thì lấy theo PO.
-        unit: item.unit ?? poItem.unit,
         lotNumber: item.lotNumber,
         expiryDate: item.expiryDate ? new Date(item.expiryDate) : undefined,
-        packageCount: this.resolvePackageCount(item, poItem.packageSpec),
-        packageSpec: poItem.packageSpec,
         wholePackageOnly: true,
         note: item.note,
       });
@@ -167,14 +156,7 @@ export class GoodsReceiptNoteService {
     return resolvedItems;
   }
 
-  private resolvePackageCount(
-    item: CreateGoodsReceiptNoteItemDto,
-    packageSpec?: { factor: number },
-  ): number {
-    if (item.packageCount !== undefined) return item.packageCount;
-    if (!packageSpec?.factor) return 0;
-    return item.actualQty / packageSpec.factor;
-  } /**
+  /**
    * Sửa toàn bộ items của 1 GRN còn DRAFT — thay thế hoàn toàn (không merge),
    * chạy lại đúng validate như lúc tạo. Chỉ cho phép khi DRAFT vì sau CONFIRMED
    * đã cộng tồn kho thật, sửa items sẽ làm lệch số liệu đã ghi sổ.
@@ -227,7 +209,7 @@ export class GoodsReceiptNoteService {
     ) {
       throw new AppException('GRN_INVALID_STATUS_TRANSITION');
     }
-    this.assertReadyForApproval(grn);
+    await this.assertReadyForApproval(grn);
     const submitted = await this.repo.updateStatusSubmitted(id, actorId);
     if (!submitted) throw new AppException('GRN_INVALID_STATUS_TRANSITION');
     return submitted;
@@ -251,7 +233,7 @@ export class GoodsReceiptNoteService {
     if (grn.status !== GoodsReceiptNoteStatus.PENDING_APPROVAL) {
       throw new AppException('GRN_INVALID_STATUS_TRANSITION');
     }
-    this.assertReadyForApproval(grn);
+    await this.assertReadyForApproval(grn);
 
     const po = await this.purchaseOrderService.getPurchaseOrder(
       grn.purchaseOrderId.toString(),
@@ -263,7 +245,6 @@ export class GoodsReceiptNoteService {
       itemId: string;
       sku: string;
       baseQty: number;
-      packageCount: number;
       packageSpec?: {
         unit: string;
         factor: number;
@@ -280,22 +261,34 @@ export class GoodsReceiptNoteService {
       const warehouseItem = await this.stockRepo.findItemById(
         line.itemId.toString(),
       );
-      const factor =
-        line.packageSpec?.factor ??
-        warehouseItem?.altUnits?.find((u) => u.unit === line.unit)?.factor ??
-        1;
-      const baseQty =
-        line.packageCount > 0
-          ? line.packageCount * factor
-          : line.actualQty * factor;
+      // baseQty = actualQty trực tiếp — actualQty luôn là số thùng nguyên,
+      // không còn quy đổi qua factor (quyết định: quantity luôn là thùng).
+      const baseQty = line.actualQty;
       const key = line.itemId.toString();
       baseQtyByItem.set(key, (baseQtyByItem.get(key) ?? 0) + baseQty);
+      // packageSpec không còn snapshot ở GRN — resolve "live" từ WarehouseItem
+      // ngay lúc approve, đây là điểm duy nhất còn tạo packageSpec (đi tiếp
+      // xuống PutAwayTask/InventoryStock, các tầng đó vẫn giữ nguyên snapshot).
+      // factor bên trong CHỈ để hiển thị tham khảo, không dùng để tính baseQty.
+      const packageSpec =
+        warehouseItem?.depth && warehouseItem?.width && warehouseItem?.height
+          ? {
+              unit: warehouseItem.unit,
+              factor: warehouseItem.altUnits?.[0]?.factor ?? 1,
+              depthCm: warehouseItem.depth,
+              widthCm: warehouseItem.width,
+              heightCm: warehouseItem.height,
+              volumeCm3:
+                warehouseItem.depth *
+                warehouseItem.width *
+                warehouseItem.height,
+            }
+          : undefined;
       resolvedLines.push({
         itemId: key,
         sku: line.sku,
         baseQty,
-        packageCount: line.packageCount,
-        packageSpec: line.packageSpec,
+        packageSpec,
         lotNumber: line.lotNumber,
         expiryDate: line.expiryDate,
       });
@@ -326,7 +319,6 @@ export class GoodsReceiptNoteService {
             itemId: string;
             lotId: Types.ObjectId | null;
             quantity: number;
-            packageCount: number;
             packageSpec?: {
               unit: string;
               factor: number;
@@ -365,7 +357,6 @@ export class GoodsReceiptNoteService {
               itemId: line.itemId,
               lotId,
               quantity: line.baseQty,
-              packageCount: line.packageCount,
               packageSpec: line.packageSpec,
             });
 
@@ -384,7 +375,6 @@ export class GoodsReceiptNoteService {
               line.baseQty,
               session,
               {
-                packageCount: line.packageCount,
                 packageFactor: line.packageSpec?.factor,
                 packageVolumeCm3Snapshot: line.packageSpec?.volumeCm3,
               },
@@ -399,7 +389,6 @@ export class GoodsReceiptNoteService {
                 refType: 'grn',
                 refId: grn._id,
                 createdBy: new Types.ObjectId(actorId),
-                packageCount: line.packageCount,
                 packageFactor: line.packageSpec?.factor,
                 packageVolumeCm3Snapshot: line.packageSpec?.volumeCm3,
               },
@@ -459,17 +448,29 @@ export class GoodsReceiptNoteService {
     return rejected;
   }
 
-  private assertReadyForApproval(grn: GoodsReceiptNoteDocument): void {
+  /**
+   * packageSpec không còn snapshot ở GRN item (bỏ trùng lặp với WarehouseItem) —
+   * tra "live" từng item để validate đủ kích thước trước khi cho submit/approve.
+   * Không còn so khớp số học qua factor — actualQty đã luôn là số thùng.
+   */
+  private async assertReadyForApproval(
+    grn: GoodsReceiptNoteDocument,
+  ): Promise<void> {
     if (grn.items.length === 0) throw new AppException('GRN_ITEM_REQUIRED');
     if (grn.images.length === 0) throw new AppException('GRN_IMAGE_REQUIRED');
     for (const line of grn.items) {
-      if (!line.packageSpec)
+      const warehouseItem = await this.stockRepo.findItemById(
+        line.itemId.toString(),
+      );
+      if (
+        !warehouseItem?.depth ||
+        !warehouseItem?.width ||
+        !warehouseItem?.height
+      ) {
         throw new AppException('GRN_PACKAGE_SPEC_REQUIRED');
-      if (line.packageCount <= 0)
+      }
+      if (line.actualQty <= 0) {
         throw new AppException('GRN_PACKAGE_COUNT_REQUIRED');
-      const expectedBaseQty = line.packageCount * line.packageSpec.factor;
-      if (expectedBaseQty !== line.actualQty) {
-        throw new AppException('GRN_PACKAGE_QTY_MISMATCH');
       }
     }
   }
@@ -560,15 +561,20 @@ export class GoodsReceiptNoteService {
     return docs.map((doc) => {
       const plain = doc.toObject() as unknown as Record<string, unknown>;
       const po = poById.get(doc.purchaseOrderId.toString());
+      // totalPackageCount = tổng số thùng — actualQty CHÍNH LÀ số thùng
+      // (không còn field packageCount riêng, quyết định: quantity luôn là thùng).
       const totalPackageCount = doc.items.reduce(
-        (sum, item) => sum + (item.packageCount ?? 0),
+        (sum, item) => sum + item.actualQty,
         0,
       );
-      const totalVolumeCm3 = doc.items.reduce(
-        (sum, item) =>
-          sum + (item.packageCount ?? 0) * (item.packageSpec?.volumeCm3 ?? 0),
-        0,
-      );
+      const totalVolumeCm3 = doc.items.reduce((sum, item) => {
+        const warehouseItem = itemById.get(item.itemId.toString());
+        const volumeCm3 =
+          warehouseItem?.depth && warehouseItem?.width && warehouseItem?.height
+            ? warehouseItem.depth * warehouseItem.width * warehouseItem.height
+            : 0;
+        return sum + item.actualQty * volumeCm3;
+      }, 0);
       return {
         ...plain,
         totalPackageCount,
@@ -599,6 +605,9 @@ export class GoodsReceiptNoteService {
               poItem != null
                 ? poItem.expectedQty - poItem.receivedQty
                 : undefined,
+            itemDepth: warehouseItem?.depth,
+            itemWidth: warehouseItem?.width,
+            itemHeight: warehouseItem?.height,
           };
         }),
       };

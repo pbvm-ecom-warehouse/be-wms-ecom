@@ -4,7 +4,6 @@ import {
   IsEnum,
   IsInt,
   IsMongoId,
-  IsNumber,
   IsOptional,
   IsString,
   Max,
@@ -20,34 +19,36 @@ export class ConfirmPutAwayLineDto {
   @MinLength(1)
   itemBarcode!: string;
 
-  @ApiPropertyOptional({ example: 'A1-T1', description: 'Legacy barcode shelf' })
+  @ApiPropertyOptional({
+    example: 'A1-T1',
+    description: 'Legacy barcode shelf',
+  })
   @IsOptional()
   @IsString()
   @MinLength(1)
   shelfCode?: string;
 
-  @ApiPropertyOptional({ example: 'A1-T1-B1', description: 'Barcode khoang quét tại vị trí cất' })
+  @ApiPropertyOptional({
+    example: 'A1-T1-B1',
+    description: 'Barcode khoang quét tại vị trí cất',
+  })
   @IsOptional()
   @IsString()
   @MinLength(1)
   cellBarcode?: string;
 
-  @ApiPropertyOptional({ description: 'Khoang hệ thống đã gợi ý để audit override' })
+  @ApiPropertyOptional({
+    description: 'Khoang hệ thống đã gợi ý để audit override',
+  })
   @IsOptional()
   @IsMongoId()
   suggestedCellId?: string;
 
-  @ApiPropertyOptional({ example: 20, description: 'Legacy số lượng base unit' })
-  @IsOptional()
-  @IsNumber()
-  @Min(1)
-  quantity?: number;
-
   @ApiPropertyOptional({ example: 2, description: 'Số thùng nguyên cần cất' })
   @IsOptional()
-  @IsNumber()
+  @IsInt()
   @Min(1)
-  packageCount?: number;
+  quantity?: number;
 
   @ApiPropertyOptional({
     description: 'Lô hàng — bắt buộc nếu item isPerishable',
@@ -119,6 +120,7 @@ export class PutAwayItemResponseDto {
   @ApiPropertyOptional()
   lotId!: string | null;
 
+  /** Số thùng cần xếp — luôn là số nguyên. */
   @Expose()
   @ApiProperty()
   quantity!: number;
@@ -126,14 +128,6 @@ export class PutAwayItemResponseDto {
   @Expose()
   @ApiProperty()
   remainingQty!: number;
-
-  @Expose()
-  @ApiProperty()
-  packageCount!: number;
-
-  @Expose()
-  @ApiProperty()
-  remainingPackageCount!: number;
 
   @Expose()
   @Type(() => PutAwayPackageSpecResponseDto)

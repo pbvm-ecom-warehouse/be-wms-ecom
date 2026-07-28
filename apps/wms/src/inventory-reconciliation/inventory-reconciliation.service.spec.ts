@@ -11,8 +11,7 @@ describe('InventoryReconciliationService', () => {
   const dto = {
     inventoryId: inventoryId.toString(),
     cellBarcode: 'R01-T1-B2',
-    packageCount: 2,
-    packageFactor: 10,
+    quantity: 2,
     packageDepthCm: 40,
     packageWidthCm: 30,
     packageHeightCm: 20,
@@ -56,8 +55,7 @@ describe('InventoryReconciliationService', () => {
       shelfId,
       lotId: null,
       cellId: null,
-      quantity: 50,
-      packageCount: 5,
+      quantity: 5,
       packageFactor: 10,
     });
     locationRepo.findCellByCode.mockResolvedValue({ _id: cellId });
@@ -70,7 +68,7 @@ describe('InventoryReconciliationService', () => {
       fillFactor: 0.75,
     });
     stockRepo.findOccupiedVolumeForCell.mockResolvedValue(0);
-    stockRepo.decrementUnassignedInventory.mockResolvedValue({ quantity: 30 });
+    stockRepo.decrementUnassignedInventory.mockResolvedValue({ quantity: 3 });
     stockRepo.upsertInventory.mockResolvedValue({});
     assignmentModel.create.mockResolvedValue([]);
   });
@@ -89,7 +87,6 @@ describe('InventoryReconciliationService', () => {
 
     expect(stockRepo.decrementUnassignedInventory).toHaveBeenCalledWith(
       dto.inventoryId,
-      20,
       2,
       session,
     );
@@ -97,17 +94,16 @@ describe('InventoryReconciliationService', () => {
       itemId,
       shelfId,
       null,
-      20,
+      2,
       session,
       expect.objectContaining({
         cellId,
-        packageCount: 2,
         packageFactor: 10,
         packageVolumeCm3Snapshot: 24000,
       }),
     );
     expect(assignmentModel.create).toHaveBeenCalledWith(
-      [expect.objectContaining({ quantity: 20, packageCount: 2, cellId })],
+      [expect.objectContaining({ quantity: 2, cellId })],
       { session },
     );
   });

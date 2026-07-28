@@ -7,7 +7,6 @@ describe('CreateGoodsReceiptNoteItemDto', () => {
     const dto = plainToInstance(CreateGoodsReceiptNoteItemDto, {
       itemId: '507f1f77bcf86cd799439011',
       actualQty: 1.5,
-      packageCount: 1.5,
     });
 
     const errors = await validate(dto);
@@ -15,7 +14,7 @@ describe('CreateGoodsReceiptNoteItemDto', () => {
     expect(errors).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          property: 'packageCount',
+          property: 'actualQty',
           constraints: expect.objectContaining({ isInt: expect.any(String) }),
         }),
       ]),

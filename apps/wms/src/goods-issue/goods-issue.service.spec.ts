@@ -57,12 +57,12 @@ describe('GoodsIssueService theo khoang và thùng nguyên', () => {
   const goodsIssue = () => ({
     _id: new Types.ObjectId(giId),
     orderId,
-    items: [{ itemId, sku: 'SKU-1', quantity: 50, remainingQty: 50 }],
+    items: [{ itemId, sku: 'SKU-1', quantity: 5, remainingQty: 5 }],
   });
   const cell = () => ({ _id: cellId, shelfId });
+  // quantity giờ luôn là số thùng nguyên — không còn packageCount riêng.
   const inventory = () => ({
-    quantity: 50,
-    packageCount: 5,
+    quantity: 5,
     packageFactor: 10,
     packageVolumeCm3Snapshot: 1000,
   });
@@ -88,7 +88,7 @@ describe('GoodsIssueService theo khoang và thùng nguyên', () => {
     locationRepo.findShelfById.mockResolvedValue({ _id: shelfId });
     locationRepo.lockActiveCellForInventory.mockResolvedValue(cell());
     stockRepo.findInventory.mockResolvedValue(inventory());
-    stockRepo.decrementInventoryIfAvailable.mockResolvedValue({ quantity: 40 });
+    stockRepo.decrementInventoryIfAvailable.mockResolvedValue({ quantity: 4 });
     stockRepo.issueReservedIfAvailable.mockResolvedValue(true);
     repo.decrementRemainingQty.mockResolvedValue(goodsIssue());
     repo.markConfirmedIfAllDone.mockResolvedValue(false);
@@ -157,25 +157,20 @@ describe('GoodsIssueService theo khoang và thùng nguyên', () => {
     await expect(
       service.confirmLine(
         giId,
-        { itemBarcode: 'SKU-1', cellBarcode: 'WRONG', packageCount: 1 },
+        { itemBarcode: 'SKU-1', cellBarcode: 'WRONG', quantity: 1 },
         actorId,
       ),
     ).rejects.toMatchObject({ code: 'GOODS_ISSUE_CELL_NOT_FOUND' });
   });
 
-  it('chặn số lượng cơ sở không khớp số thùng nguyên', async () => {
+  it('chặn quantity <= 0', async () => {
     await expect(
       service.confirmLine(
         giId,
-        {
-          itemBarcode: 'SKU-1',
-          cellBarcode: 'R1-T1-B1',
-          packageCount: 2,
-          quantity: 15,
-        },
+        { itemBarcode: 'SKU-1', cellBarcode: 'R1-T1-B1', quantity: 0 },
         actorId,
       ),
-    ).rejects.toMatchObject({ code: 'GOODS_ISSUE_PACKAGE_QTY_MISMATCH' });
+    ).rejects.toMatchObject({ code: 'GOODS_ISSUE_PACKAGE_COUNT_REQUIRED' });
   });
 
   it('rollback nghiệp vụ khi tồn cell không còn đủ tại thời điểm transaction', async () => {
@@ -184,7 +179,7 @@ describe('GoodsIssueService theo khoang và thùng nguyên', () => {
     await expect(
       service.confirmLine(
         giId,
-        { itemBarcode: 'SKU-1', cellBarcode: 'R1-T1-B1', packageCount: 2 },
+        { itemBarcode: 'SKU-1', cellBarcode: 'R1-T1-B1', quantity: 2 },
         actorId,
       ),
     ).rejects.toMatchObject({ code: 'STOCK_INSUFFICIENT' });
@@ -200,7 +195,7 @@ describe('GoodsIssueService theo khoang và thùng nguyên', () => {
       {
         itemBarcode: 'SKU-1',
         cellBarcode: 'R1-T1-B1',
-        packageCount: 2,
+        quantity: 2,
         suggestedCellId,
       },
       actorId,
@@ -211,20 +206,18 @@ describe('GoodsIssueService theo khoang và thùng nguyên', () => {
       shelfId,
       cellId,
       null,
-      20,
       2,
       expect.anything(),
     );
     expect(stockRepo.issueReservedIfAvailable).toHaveBeenCalledWith(
       itemId,
-      20,
+      2,
       expect.anything(),
     );
     expect(stockRepo.insertMovement).toHaveBeenCalledWith(
       expect.objectContaining({
         cellId,
-        quantity: -20,
-        packageCount: -2,
+        quantity: -2,
         suggestedCellId: new Types.ObjectId(suggestedCellId),
         actualCellId: cellId,
         isOverride: true,

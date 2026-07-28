@@ -9,6 +9,7 @@ import { CreateUserDto } from '../users/dto/create-user.dto';
 import { User } from '../users/schemas/user.schema';
 import { UsersService } from '../users/users.service';
 import { LocationService } from '../location/location.service';
+import { AisleType } from '../location/schemas/aisle.schema';
 import { StockService } from '../stock/stock.service';
 import { SupplierService } from '../supplier/supplier.service';
 import { ItemType } from '../stock/schemas/warehouse-item.schema';
@@ -250,12 +251,15 @@ async function seedZoneAndItems(
     return null;
   }
 
+  // Chừa 2m phía trên zone làm lối đi (aisle) để access point của rack nối
+  // được vào — validateLayout (warehouse-layout.validator.ts) chặn rack
+  // không có access point nằm trong 1 aisle nào (RACK_ACCESS_POINT_NOT_CONNECTED).
   const zone = await locationService.createZone(
     {
       name: 'Khu A (seed)',
       code: SEED_ZONE_CODE,
       xM: 0,
-      yM: 0,
+      yM: 2,
       widthM: 20,
       heightM: 10,
     },
@@ -263,8 +267,31 @@ async function seedZoneAndItems(
   );
   const zoneId = zone._id.toString();
 
+  await locationService.createAisle(
+    {
+      code: 'SEED-AISLE-A1',
+      type: AisleType.MAIN,
+      xM: 0,
+      yM: 0,
+      widthM: 20,
+      heightM: 2,
+    },
+    adminId,
+  );
+
+  // RackTemplate mặc định widthM:10/depthM:1.5 (rack-template.schema.ts) — đặt
+  // rack sát mép trên zone (yM:2) và access point ngay phía trên nó (yM:1),
+  // nằm trong aisle vừa tạo (y: 0 → 2).
   const rack = await locationService.createRack(
-    { zoneId, name: 'Kệ A1 (seed)', code: 'SEED-A1' },
+    {
+      zoneId,
+      name: 'Kệ A1 (seed)',
+      code: 'SEED-A1',
+      xM: 0,
+      yM: 2,
+      accessPointXM: 5,
+      accessPointYM: 1,
+    },
     adminId,
   );
   const rackId = rack._id.toString();
