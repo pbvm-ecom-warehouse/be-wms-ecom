@@ -50,8 +50,13 @@ export class StockConsumer extends WorkerHost {
       }
       case EVENTS.ITEM_CREATED: {
         const payload = job.data as WarehouseItemCreatedPayload;
-        // Chỉ đồng bộ các sản phẩm thuộc diện đăng bán lẻ trên Ecom
-        if (payload.type === 'CUP_BLANK' || payload.type === 'CUP_PRINTED') {
+        // Đồng bộ các sản phẩm từ WMS sang Ecom
+        if (
+          payload.type === 'CUP_BLANK' ||
+          payload.type === 'CUP_PRINTED' ||
+          payload.type === 'MATERIAL' ||
+          payload.type === 'PACKAGING'
+        ) {
           const attributesObj: Record<string, string> = {};
           if (Array.isArray(payload.attributes)) {
             for (const attr of payload.attributes) {
