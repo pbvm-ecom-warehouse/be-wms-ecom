@@ -1,4 +1,7 @@
-import { calculateNavigationPath } from './navigation.service';
+import {
+  calculateNavigationPath,
+  findNearestAisleAccessPoint,
+} from './navigation.service';
 
 const horizontalAisle = {
   id: 'main',
@@ -69,6 +72,69 @@ describe('calculateNavigationPath', () => {
       { xM: 21.5, yM: 4.5 },
     ]);
     expect(path.distanceM).toBe(27.5);
+  });
+
+  it('nối được hai aisle cùng phương chồng một phần', () => {
+    const path = calculateNavigationPath({
+      aisles: [
+        { id: 'main', xM: 0, yM: 4, widthM: 10, heightM: 2 },
+        { id: 'rack-aisle', xM: 8, yM: 4, widthM: 10, heightM: 2 },
+      ],
+      gates: [{ code: 'GATE-01', xM: 1, yM: 5 }],
+      racks: [{ id: 'rack-overlap', accessPointXM: 17, accessPointYM: 5 }],
+      startGateCode: 'GATE-01',
+      targetRackId: 'rack-overlap',
+    });
+
+    expect(path.points).toEqual([
+      { xM: 1, yM: 5 },
+      { xM: 8, yM: 5 },
+      { xM: 17, yM: 5 },
+    ]);
+    expect(path.distanceM).toBe(16);
+  });
+
+  it('nối được hai aisle cùng phương chạm đầu', () => {
+    const path = calculateNavigationPath({
+      aisles: [
+        { id: 'left', xM: 0, yM: 4, widthM: 8, heightM: 2 },
+        { id: 'right', xM: 8, yM: 4, widthM: 8, heightM: 2 },
+      ],
+      gates: [{ code: 'GATE-01', xM: 1, yM: 5 }],
+      racks: [{ id: 'rack-touch', accessPointXM: 15, accessPointYM: 5 }],
+      startGateCode: 'GATE-01',
+      targetRackId: 'rack-touch',
+    });
+
+    expect(path.points).toEqual([
+      { xM: 1, yM: 5 },
+      { xM: 8, yM: 5 },
+      { xM: 15, yM: 5 },
+    ]);
+    expect(path.distanceM).toBe(14);
+  });
+
+  it('chọn aisle giữa rack khi khoảng cách bằng đường chính', () => {
+    expect(
+      findNearestAisleAccessPoint({ xM: 8, yM: 8, widthM: 2, heightM: 2 }, [
+        {
+          id: 'main',
+          type: 'MAIN',
+          xM: 4,
+          yM: 8,
+          widthM: 2,
+          heightM: 2,
+        },
+        {
+          id: 'rack',
+          type: 'RACK',
+          xM: 12,
+          yM: 8,
+          widthM: 2,
+          heightM: 2,
+        },
+      ]),
+    ).toEqual({ xM: 12, yM: 9 });
   });
   it('chặn rack có access point không nối aisle', () => {
     expect(() =>

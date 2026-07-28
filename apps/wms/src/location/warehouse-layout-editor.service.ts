@@ -23,6 +23,7 @@ import {
   validateWarehouseLayoutGeometry,
   type WarehouseLayoutValidationIssue,
 } from './warehouse-layout.validator';
+import { findNearestAisleAccessPoint } from './navigation.service';
 
 function isMongoDuplicateKeyError(error: unknown): boolean {
   return (
@@ -86,6 +87,7 @@ export class WarehouseLayoutEditorService {
         await this.applyOperation(operation, actorId, session, idMap);
       }
 
+      await this.normalizeRackAccessPoints(actorId, session);
       const snapshot = await this.loadSnapshot(session);
       const stagingRackIds = new Set(
         snapshot.shelves
@@ -592,6 +594,49 @@ export class WarehouseLayoutEditorService {
       aisles,
       gates,
     };
+  }
+
+  private async normalizeRackAccessPoints(
+    actorId: string,
+    session: ClientSession,
+  ): Promise<void> {
+    const template = await this.repo.getRackTemplate(session);
+    const racks = await this.repo.findAllRacks(session);
+    const aisles = await this.repo.findAllAisles(session);
+    if (aisles.length === 0) return;
+
+    for (const rack of racks) {
+      const rotated = rack.rotation === 90;
+      const point = findNearestAisleAccessPoint(
+        {
+          xM: rack.xM,
+          yM: rack.yM,
+          widthM: rotated ? template.depthM : template.widthM,
+          heightM: rotated ? template.widthM : template.depthM,
+        },
+        aisles.map((aisle) => ({
+          id: aisle._id.toString(),
+          type: aisle.type,
+          xM: aisle.xM,
+          yM: aisle.yM,
+          widthM: aisle.widthM,
+          heightM: aisle.heightM,
+        })),
+      );
+      if (
+        !point ||
+        (Math.abs(rack.accessPointXM - point.xM) < 0.001 &&
+          Math.abs(rack.accessPointYM - point.yM) < 0.001)
+      ) {
+        continue;
+      }
+      await this.repo.updateRack(
+        rack._id.toString(),
+        { accessPointXM: point.xM, accessPointYM: point.yM },
+        actorId,
+        session,
+      );
+    }
   }
 
   private async assertNoInitiallyStagingShelfIsDeleted(
