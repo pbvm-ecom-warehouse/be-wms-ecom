@@ -14,6 +14,9 @@ export class RackTemplate {
   @Prop({ type: Number, required: true, default: 1.5 })
   depthM!: number;
 
+  @Prop({ type: Number, required: true, default: 1, min: 0.1 })
+  heightM!: number;
+
   @Prop({ type: Number, required: true, default: 1, min: 1 })
   levelCount!: number;
 

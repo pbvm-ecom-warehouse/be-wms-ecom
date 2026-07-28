@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { HttpStatus, Injectable } from '@nestjs/common';
 import { ClientSession, Types } from 'mongoose';
 import { AppException } from '@app/common/errors/app.exception';
 import { LocationRepository } from './location.repository';
@@ -33,8 +33,15 @@ export class LocationService {
     private readonly stockRepo: StockRepository,
   ) {}
 
-  private async validateLayout(session: ClientSession): Promise<void> {
-    const config = await this.repo.getLayoutConfig(session);
+  private async validateLayout(
+    session: ClientSession,
+    currentConfig?: {
+      widthM: number;
+      heightM: number;
+      gridM: number;
+    },
+  ): Promise<void> {
+    const config = currentConfig ?? (await this.repo.getLayoutConfig(session));
     const rackTemplate = await this.repo.getRackTemplate(session);
     const zones = await this.repo.findAllZones(session);
     const racks = await this.repo.findAllRacks(session);
@@ -415,8 +422,20 @@ export class LocationService {
     });
   }
 
-  async resetLayout(actorId: string) {
-    await this.mutateWithRevision(actorId, async (session) => {
+  async resetLayout(expectedRevision: number, actorId: string) {
+    await this.repo.runInTransaction(async (session) => {
+      const config = await this.repo.getLayoutConfig(session);
+      if (config.revision !== expectedRevision) {
+        throw new AppException(
+          'LAYOUT_REVISION_CONFLICT',
+          undefined,
+          HttpStatus.CONFLICT,
+          {
+            expectedRevision,
+            currentRevision: config.revision,
+          },
+        );
+      }
       const shelves = await this.repo.findAllShelves(session);
       const shelfIds = shelves.map((shelf) => shelf._id);
       if (
@@ -430,7 +449,8 @@ export class LocationService {
       await this.repo.softDeleteAllZones(actorId, session);
       await this.repo.softDeleteAllAisles(actorId, session);
       await this.repo.softDeleteAllGates(actorId, session);
-      return true;
+      await this.validateLayout(session, config);
+      await this.repo.incrementLayoutRevision(actorId, session);
     });
 
     return this.getLayout();

@@ -152,6 +152,29 @@ describe('LocationRepository', () => {
       expect(config.revision).toBe(4);
     });
   });
+  describe('rack template', () => {
+    it('backfill tổng chiều cao theo số tầng cho document legacy', async () => {
+      const legacy = {
+        levelCount: 3,
+        heightM: 1,
+        $isDefault: jest.fn().mockReturnValue(true),
+        set: jest.fn(function (
+          this: { heightM: number },
+          patch: { heightM: number },
+        ) {
+          this.heightM = patch.heightM;
+        }),
+        save: jest.fn().mockResolvedValue(undefined),
+      };
+      rackTemplateModel.exec.mockResolvedValue(legacy);
+
+      const result = await repo.getRackTemplate();
+
+      expect(legacy.set).toHaveBeenCalledWith({ heightM: 3 });
+      expect(legacy.save).toHaveBeenCalledTimes(1);
+      expect(result.heightM).toBe(3);
+    });
+  });
   describe('delete guard lookups', () => {
     it('hasRacksInZone chỉ xét rack chưa soft-delete', async () => {
       rackModel.exec.mockResolvedValue({ _id: new Types.ObjectId() });

@@ -59,6 +59,7 @@ import {
   LayoutResponseEnvelopeDto,
   LayoutRevisionConflictErrorDto,
   LayoutValidationErrorDto,
+  ResetWarehouseLayoutDto,
   SaveWarehouseLayoutResponseDto,
   SaveWarehouseLayoutResponseEnvelopeDto,
 } from './dto/layout.dto';
@@ -163,9 +164,10 @@ export class LocationController {
     type: LayoutConflictErrorDto,
   })
   async resetLayout(
+    @Body() dto: ResetWarehouseLayoutDto,
     @CurrentUser('sub') actorId: string,
   ): Promise<LayoutResponseDto> {
-    const layout = await this.svc.resetLayout(actorId);
+    const layout = await this.svc.resetLayout(dto.expectedRevision, actorId);
     return this.toLayoutResponse(layout);
   }
 

@@ -73,6 +73,7 @@ describe('LocationService', () => {
     repo.getRackTemplate.mockResolvedValue({
       widthM: 10,
       depthM: 1.5,
+      heightM: 1,
       levelCount: 1,
       bayCount: 1,
     });
@@ -429,12 +430,31 @@ describe('LocationService', () => {
     });
   });
   describe('resetLayout', () => {
+    it('chặn reset bằng revision cũ trước khi xóa layout', async () => {
+      repo.getLayoutConfig.mockResolvedValue({
+        widthM: 40,
+        heightM: 24,
+        gridM: 0.5,
+        revision: 11,
+        updatedAt: new Date(),
+      });
+
+      await expect(svc.resetLayout(8, 'actor1')).rejects.toMatchObject({
+        code: 'LAYOUT_REVISION_CONFLICT',
+        details: { expectedRevision: 8, currentRevision: 11 },
+      });
+
+      expect(repo.findAllShelves).not.toHaveBeenCalled();
+      expect(repo.softDeleteAllShelves).not.toHaveBeenCalled();
+      expect(repo.incrementLayoutRevision).not.toHaveBeenCalled();
+    });
+
     it('chặn reset khi còn tồn kho trên shelf đang hoạt động', async () => {
       const shelfId = new Types.ObjectId();
       repo.findAllShelves.mockResolvedValue([{ _id: shelfId }]);
       stockRepo.hasPositiveInventoryOnAnyShelf.mockResolvedValue(true);
 
-      await expect(svc.resetLayout('actor1')).rejects.toMatchObject({
+      await expect(svc.resetLayout(1, 'actor1')).rejects.toMatchObject({
         code: 'LAYOUT_RESET_REQUIRES_EMPTY_STOCK',
       });
 
@@ -464,7 +484,7 @@ describe('LocationService', () => {
           updatedAt,
         });
 
-      const result = await svc.resetLayout('actor1');
+      const result = await svc.resetLayout(1, 'actor1');
 
       expect(repo.softDeleteAllShelves).toHaveBeenCalledWith(
         'actor1',
@@ -503,6 +523,7 @@ describe('LocationService', () => {
         rackTemplate: {
           widthM: 10,
           depthM: 1.5,
+          heightM: 1,
           levelCount: 1,
           bayCount: 1,
         },

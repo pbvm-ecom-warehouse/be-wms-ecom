@@ -146,6 +146,7 @@ describe('WarehouseLayoutEditorService', () => {
     repo.getRackTemplate.mockResolvedValue({
       widthM: 4,
       depthM: 1.5,
+      heightM: 3,
       levelCount: 3,
       bayCount: 2,
     });
@@ -416,6 +417,7 @@ describe('WarehouseLayoutEditorService', () => {
     repo.getRackTemplate.mockResolvedValue({
       widthM: 4,
       depthM: 1.5,
+      heightM: 3,
       levelCount: 3,
       bayCount: 2,
     });
@@ -502,6 +504,7 @@ describe('WarehouseLayoutEditorService', () => {
     repo.getRackTemplate.mockResolvedValue({
       widthM: 4,
       depthM: 1.5,
+      heightM: 3,
       levelCount: 3,
       bayCount: 2,
     });
@@ -568,6 +571,7 @@ describe('WarehouseLayoutEditorService', () => {
     repo.getRackTemplate.mockResolvedValue({
       widthM: 4,
       depthM: 1.5,
+      heightM: 3,
       levelCount: 3,
       bayCount: 2,
     });
@@ -606,6 +610,41 @@ describe('WarehouseLayoutEditorService', () => {
     );
     expect(repo.syncStorageCellsForShelf).not.toHaveBeenCalled();
   });
+
+  it('chặn thu nhỏ kích thước tầng đang có tồn kho', async () => {
+    repo.getLayoutConfig.mockResolvedValue({ revision: 5 });
+    repo.findShelfById.mockResolvedValue({
+      _id: shelfId,
+      rackId,
+      innerWidth: 1000,
+      innerDepth: 150,
+      innerHeight: 100,
+      isStaging: false,
+    });
+    repo.findCellsByShelfId.mockResolvedValue([{ _id: new Types.ObjectId() }]);
+    stockRepo.hasPositiveInventoryOnCells.mockResolvedValue(true);
+
+    await expect(
+      service.saveLayout(
+        {
+          expectedRevision: 5,
+          operations: [
+            {
+              op: LayoutOperation.UPDATE,
+              entity: LayoutEntity.SHELF,
+              id: shelfId.toString(),
+              patch: { innerHeight: 80 },
+            },
+          ],
+        },
+        actorId,
+      ),
+    ).rejects.toMatchObject({ code: 'RACK_TEMPLATE_STOCK_CONFLICT' });
+
+    expect(repo.updateShelf).not.toHaveBeenCalled();
+    expect(repo.incrementLayoutRevision).not.toHaveBeenCalled();
+  });
+
   it('cho phép nhiều tầng nhận tạm trong cùng một rack nhưng chặn trải qua nhiều rack', async () => {
     const otherRackId = new Types.ObjectId();
     repo.getLayoutConfig.mockResolvedValue({
@@ -618,6 +657,7 @@ describe('WarehouseLayoutEditorService', () => {
     repo.getRackTemplate.mockResolvedValue({
       widthM: 4,
       depthM: 1.5,
+      heightM: 3,
       levelCount: 3,
       bayCount: 2,
     });
@@ -724,6 +764,7 @@ describe('WarehouseLayoutEditorService', () => {
     const currentTemplate = {
       widthM: 4,
       depthM: 1.5,
+      heightM: 3,
       levelCount: 3,
       bayCount: 2,
     };
@@ -790,6 +831,7 @@ describe('WarehouseLayoutEditorService', () => {
     repo.getRackTemplate.mockResolvedValue({
       widthM: 4,
       depthM: 1.5,
+      heightM: 3,
       levelCount: 3,
       bayCount: 2,
     });
