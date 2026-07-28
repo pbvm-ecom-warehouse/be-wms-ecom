@@ -612,13 +612,8 @@ export class LocationRepository {
         updatedBy: new Types.ObjectId(actorId),
       };
     });
-    if (!session)
-      return this.cellModel.insertMany(docs) as unknown as Promise<
-        StorageCellDocument[]
-      >;
-    return this.cellModel.insertMany(docs, { session }) as unknown as Promise<
-      StorageCellDocument[]
-    >;
+    if (!session) return this.cellModel.insertMany(docs);
+    return this.cellModel.insertMany(docs, { session });
   }
 
   async syncStorageCellsForShelf(
@@ -765,7 +760,7 @@ export class LocationRepository {
         { $set: { updatedAt: new Date() } },
         { new: true, session },
       )
-      .exec() as Promise<StorageCellDocument | null>;
+      .exec();
   }
   async findCellsAboveBay(
     bayCount: number,
@@ -845,7 +840,13 @@ export class LocationRepository {
     const query = this.rackTemplateModel.findOne();
     if (session) query.session(session);
     const existing = await query.exec();
-    if (existing) return existing;
+    if (existing) {
+      if (existing.$isDefault('heightM')) {
+        existing.set({ heightM: existing.levelCount });
+        await existing.save(session ? { session } : undefined);
+      }
+      return existing;
+    }
     if (!session) return this.rackTemplateModel.create({});
     const [created] = await this.rackTemplateModel.create([{}], { session });
     return created;

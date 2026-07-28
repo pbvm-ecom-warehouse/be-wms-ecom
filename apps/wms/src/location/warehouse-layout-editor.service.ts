@@ -88,7 +88,7 @@ export class WarehouseLayoutEditorService {
 
       const snapshot = await this.loadSnapshot(session);
       const stagingRackIds = new Set(
-        (snapshot.shelves as ShelfDocument[])
+        snapshot.shelves
           .filter((shelf) => shelf.isStaging)
           .map((shelf) => shelf.rackId.toString()),
       );
@@ -274,6 +274,7 @@ export class WarehouseLayoutEditorService {
         {
           widthM: current.widthM,
           depthM: current.depthM,
+          heightM: current.heightM,
           levelCount: current.levelCount,
           bayCount: current.bayCount,
           ...operation.patch,
@@ -399,6 +400,30 @@ export class WarehouseLayoutEditorService {
         }
         const current = await this.repo.findShelfById(id, session);
         if (!current) throw new AppException('SHELF_NOT_FOUND');
+        const shrinksStorageCell =
+          (patch.innerWidth !== undefined &&
+            current.innerWidth !== undefined &&
+            patch.innerWidth < current.innerWidth) ||
+          (patch.innerDepth !== undefined &&
+            current.innerDepth !== undefined &&
+            patch.innerDepth < current.innerDepth) ||
+          (patch.innerHeight !== undefined &&
+            current.innerHeight !== undefined &&
+            patch.innerHeight < current.innerHeight);
+        if (shrinksStorageCell && !current.isStaging) {
+          const cells = await this.repo.findCellsByShelfId(
+            current._id,
+            session,
+          );
+          if (
+            await this.stockRepo.hasPositiveInventoryOnCells(
+              cells.map((cell) => cell._id),
+              session,
+            )
+          ) {
+            throw new AppException('RACK_TEMPLATE_STOCK_CONFLICT');
+          }
+        }
         const updated = await this.repo.updateShelf(
           id,
           patch,
