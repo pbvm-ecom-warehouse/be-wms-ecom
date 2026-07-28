@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import type { NavigationPath } from '../location/navigation.service';
 import { InjectModel } from '@nestjs/mongoose';
 import { ClientSession, Model, PipelineStage, Types } from 'mongoose';
 import {
@@ -24,12 +25,19 @@ import {
 type InsertMovementData = {
   itemId: Types.ObjectId;
   shelfId: Types.ObjectId;
+  cellId?: Types.ObjectId | null;
   lotId: Types.ObjectId | null;
   type: MovementType;
   quantity: number;
   refType: string;
   refId: Types.ObjectId;
   createdBy: Types.ObjectId;
+  packageCount?: number;
+  packageFactor?: number;
+  packageVolumeCm3Snapshot?: number;
+  suggestedCellId?: Types.ObjectId | null;
+  actualCellId?: Types.ObjectId | null;
+  isOverride?: boolean;
 };
 
 export type CreateWarehouseItemData = {
@@ -80,12 +88,19 @@ export type UpdateWarehouseItemData = Partial<
 
 export interface PickSuggestion {
   shelfId: Types.ObjectId;
-  /** Barcode dán trên kệ (Shelf.code) — PICKER quét/đọc để tìm đúng vị trí. */
+  cellId?: Types.ObjectId | null;
+  /** Barcode dán trên kệ/khoang — PICKER quét/đọc để tìm đúng vị trí. */
   shelfCode: string;
+  cellCode?: string | null;
+  rackId?: Types.ObjectId;
+  level?: number;
+  bay?: number;
   lotId: Types.ObjectId | null;
   lotNumber: string | null;
   expiryDate: Date | null;
   quantity: number;
+  packageCount?: number;
+  packageFactor?: number;
 }
 
 export interface LotInventorySummary {
@@ -244,12 +259,13 @@ export class StockRepository {
     shelfId: Types.ObjectId,
     lotId: Types.ObjectId | null,
     session?: ClientSession,
+    cellId: Types.ObjectId | null = null,
   ): Promise<InventoryStockDocument | null> {
     return this.inventoryModel
-      .findOne({ itemId, shelfId, lotId }, null, { session })
+      .findOne({ itemId, shelfId, cellId, lotId }, null, { session })
       .exec();
   }
-
+  /** Upsert InventoryStock: cộng dồn deltaQty vào quantity. */
   /** Upsert InventoryStock: cộng dồn deltaQty vào quantity. */
   upsertInventory(
     itemId: Types.ObjectId,
@@ -257,21 +273,106 @@ export class StockRepository {
     lotId: Types.ObjectId | null,
     deltaQty: number,
     session?: ClientSession,
+    packageMeta?: {
+      cellId?: Types.ObjectId | null;
+      packageCount?: number;
+      packageFactor?: number;
+      packageVolumeCm3Snapshot?: number;
+    },
   ): Promise<InventoryStockDocument | null> {
+    const cellId = packageMeta?.cellId ?? null;
+    const inc: Record<string, number> = { quantity: deltaQty };
+    if (packageMeta?.packageCount !== undefined) {
+      inc['packageCount'] = packageMeta.packageCount;
+    }
     return this.inventoryModel
       .findOneAndUpdate(
-        { itemId, shelfId, lotId },
-        { $inc: { quantity: deltaQty } },
+        { itemId, shelfId, cellId, lotId },
+        {
+          $inc: inc,
+          $set: {
+            ...(packageMeta?.packageFactor !== undefined
+              ? { packageFactor: packageMeta.packageFactor }
+              : {}),
+            ...(packageMeta?.packageVolumeCm3Snapshot !== undefined
+              ? {
+                  packageVolumeCm3Snapshot:
+                    packageMeta.packageVolumeCm3Snapshot,
+                }
+              : {}),
+          },
+        },
         { upsert: true, new: true, session },
       )
       .exec();
   }
+  /** Trừ tồn vị trí có điều kiện để quét đồng thời không thể làm âm tồn/thùng. */
+  decrementInventoryIfAvailable(
+    itemId: Types.ObjectId,
+    shelfId: Types.ObjectId,
+    cellId: Types.ObjectId | null,
+    lotId: Types.ObjectId | null,
+    quantity: number,
+    packageCount: number,
+    session: ClientSession,
+  ): Promise<InventoryStockDocument | null> {
+    return this.inventoryModel
+      .findOneAndUpdate(
+        {
+          itemId,
+          shelfId,
+          cellId,
+          lotId,
+          quantity: { $gte: quantity },
+          packageCount: { $gte: packageCount },
+        },
+        { $inc: { quantity: -quantity, packageCount: -packageCount } },
+        { new: true, session },
+      )
+      .exec();
+  }
 
-  /**
-   * Danh sách InventoryStock (toàn kho nếu không truyền shelfIds, hoặc giới
-   * hạn theo danh sách shelf nếu lọc theo zone) — dùng để auto-generate dòng
-   * khi MANAGER tạo StockCount (UC-06).
-   */
+  /** Xuất kho chỉ được giảm khi cả onHand và reserved còn đủ. */
+  async issueReservedIfAvailable(
+    itemId: Types.ObjectId,
+    quantity: number,
+    session: ClientSession,
+  ): Promise<boolean> {
+    const updated = await this.balanceModel
+      .findOneAndUpdate(
+        { itemId, onHand: { $gte: quantity }, reserved: { $gte: quantity } },
+        { $inc: { onHand: -quantity, reserved: -quantity } },
+        { new: true, session },
+      )
+      .exec();
+    return updated !== null;
+  }
+
+  async findOccupiedVolumeForCell(
+    cellId: Types.ObjectId,
+    session: ClientSession,
+  ): Promise<number> {
+    const rows = await this.inventoryModel
+      .aggregate<{ occupied: number }>([
+        { $match: { cellId, quantity: { $gt: 0 } } },
+        {
+          $group: {
+            _id: null,
+            occupied: {
+              $sum: {
+                $multiply: [
+                  '$packageCount',
+                  { $ifNull: ['$packageVolumeCm3Snapshot', 0] },
+                ],
+              },
+            },
+          },
+        },
+      ])
+      .session(session);
+    return rows[0]?.occupied ?? 0;
+  }
+
   findInventoryByScope(
     shelfIds?: Types.ObjectId[],
   ): Promise<InventoryStockDocument[]> {
@@ -280,6 +381,153 @@ export class StockRepository {
     return this.inventoryModel.find(filter).exec();
   }
 
+  findInventoryById(
+    id: string,
+    session?: ClientSession,
+  ): Promise<InventoryStockDocument | null> {
+    return this.inventoryModel.findById(id, null, { session }).exec();
+  }
+
+  async decrementUnassignedInventory(
+    id: string,
+    quantity: number,
+    packageCount: number,
+    session: ClientSession,
+  ): Promise<InventoryStockDocument | null> {
+    return this.inventoryModel
+      .findOneAndUpdate(
+        {
+          _id: id,
+          cellId: null,
+          quantity: { $gte: quantity },
+        },
+        {
+          $inc: {
+            quantity: -quantity,
+            packageCount: -packageCount,
+          },
+        },
+        { new: true, session },
+      )
+      .exec();
+  }
+
+  async findUnassignedInventoryRows(): Promise<
+    Array<{
+      id: string;
+      itemId: string;
+      sku: string;
+      itemName: string;
+      shelfId: string;
+      shelfCode: string;
+      lotId: string | null;
+      lotNumber: string | null;
+      quantity: number;
+      packageCount: number;
+      packageFactor: number | null;
+      packageVolumeCm3Snapshot: number | null;
+    }>
+  > {
+    const rows = await this.inventoryModel.aggregate<Record<string, unknown>>([
+      { $match: { cellId: null, quantity: { $gt: 0 } } },
+      {
+        $lookup: {
+          from: 'shelves',
+          localField: 'shelfId',
+          foreignField: '_id',
+          as: 'shelf',
+        },
+      },
+      { $unwind: '$shelf' },
+      { $match: { 'shelf.isStaging': false } },
+      {
+        $lookup: {
+          from: 'warehouse_items',
+          localField: 'itemId',
+          foreignField: '_id',
+          as: 'item',
+        },
+      },
+      { $unwind: '$item' },
+      {
+        $lookup: {
+          from: 'lots',
+          localField: 'lotId',
+          foreignField: '_id',
+          as: 'lot',
+        },
+      },
+      { $unwind: { path: '$lot', preserveNullAndEmptyArrays: true } },
+      { $sort: { 'item.sku': 1, 'lot.expiryDate': 1 } },
+      {
+        $project: {
+          _id: 0,
+          id: { $toString: '$_id' },
+          itemId: { $toString: '$itemId' },
+          sku: '$item.sku',
+          itemName: '$item.name',
+          shelfId: { $toString: '$shelfId' },
+          shelfCode: '$shelf.code',
+          lotId: {
+            $cond: [{ $eq: ['$lotId', null] }, null, { $toString: '$lotId' }],
+          },
+          lotNumber: { $ifNull: ['$lot.lotNumber', null] },
+          quantity: 1,
+          packageCount: { $ifNull: ['$packageCount', 0] },
+          packageFactor: { $ifNull: ['$packageFactor', null] },
+          packageVolumeCm3Snapshot: {
+            $ifNull: ['$packageVolumeCm3Snapshot', null],
+          },
+        },
+      },
+    ]);
+    return rows as never;
+  }
+
+  async getInventoryCellProgress(): Promise<{
+    assignedBaseQty: number;
+    unassignedBaseQty: number;
+    unassignedRows: number;
+  }> {
+    const rows = await this.inventoryModel.aggregate<{
+      assignedBaseQty: number;
+      unassignedBaseQty: number;
+      unassignedRows: number;
+    }>([
+      { $match: { quantity: { $gt: 0 } } },
+      {
+        $lookup: {
+          from: 'shelves',
+          localField: 'shelfId',
+          foreignField: '_id',
+          as: 'shelf',
+        },
+      },
+      { $unwind: '$shelf' },
+      { $match: { 'shelf.isStaging': false } },
+      {
+        $group: {
+          _id: null,
+          assignedBaseQty: {
+            $sum: { $cond: [{ $ne: ['$cellId', null] }, '$quantity', 0] },
+          },
+          unassignedBaseQty: {
+            $sum: { $cond: [{ $eq: ['$cellId', null] }, '$quantity', 0] },
+          },
+          unassignedRows: {
+            $sum: { $cond: [{ $eq: ['$cellId', null] }, 1, 0] },
+          },
+        },
+      },
+    ]);
+    return (
+      rows[0] ?? {
+        assignedBaseQty: 0,
+        unassignedBaseQty: 0,
+        unassignedRows: 0,
+      }
+    );
+  }
   findActiveLotByNumber(
     itemId: Types.ObjectId,
     lotNumber: string,
@@ -400,6 +648,132 @@ export class StockRepository {
    * quantity > 0 — nhất quán với findOccupiedVolume, tránh 2 query
    * cùng đọc InventoryStock nhưng khác điều kiện lọc ngầm định.
    */
+  async findOccupiedVolumeByCell(): Promise<Map<string, number>> {
+    const rows = await this.inventoryModel.aggregate<{
+      cellId: string;
+      occupied: number;
+    }>([
+      { $match: { cellId: { $ne: null }, quantity: { $gt: 0 } } },
+      {
+        $group: {
+          _id: '$cellId',
+          occupied: {
+            $sum: {
+              $multiply: [
+                '$packageCount',
+                { $ifNull: ['$packageVolumeCm3Snapshot', 0] },
+              ],
+            },
+          },
+        },
+      },
+      { $project: { _id: 0, cellId: { $toString: '$_id' }, occupied: 1 } },
+    ]);
+    return new Map(rows.map((r) => [r.cellId, r.occupied]));
+  }
+
+  async findCellIdsWithItem(itemId: Types.ObjectId): Promise<Set<string>> {
+    const cellIds = await this.inventoryModel
+      .distinct('cellId', {
+        itemId,
+        cellId: { $ne: null },
+        quantity: { $gt: 0 },
+      })
+      .exec();
+    return new Set(cellIds.map((id: Types.ObjectId) => id.toString()));
+  }
+
+  async findCellIdsWithItemAndLot(
+    itemId: Types.ObjectId,
+    lotId: Types.ObjectId | null,
+  ): Promise<Set<string>> {
+    const cellIds = await this.inventoryModel
+      .distinct('cellId', {
+        itemId,
+        lotId,
+        cellId: { $ne: null },
+        quantity: { $gt: 0 },
+      })
+      .exec();
+    return new Set(cellIds.map((id: Types.ObjectId) => id.toString()));
+  }
+
+  async findInventoryByCellId(cellId: Types.ObjectId): Promise<
+    Array<{
+      id: string;
+      sku: string;
+      itemName: string;
+      unit: string;
+      quantity: number;
+      packageCount: number;
+      packageFactor: number | null;
+      packageVolumeCm3Snapshot: number | null;
+      lotNumber: string | null;
+      expiryDate: Date | null;
+    }>
+  > {
+    const rows = await this.inventoryModel.aggregate<{
+      _id: Types.ObjectId;
+      sku: string;
+      itemName: string;
+      unit: string;
+      quantity: number;
+      packageCount: number;
+      packageFactor: number | null;
+      packageVolumeCm3Snapshot: number | null;
+      lotNumber: string | null;
+      expiryDate: Date | null;
+    }>([
+      { $match: { cellId, quantity: { $gt: 0 } } },
+      {
+        $lookup: {
+          from: 'warehouse_items',
+          localField: 'itemId',
+          foreignField: '_id',
+          as: 'item',
+        },
+      },
+      { $unwind: '$item' },
+      {
+        $lookup: {
+          from: 'lots',
+          localField: 'lotId',
+          foreignField: '_id',
+          as: 'lot',
+        },
+      },
+      { $unwind: { path: '$lot', preserveNullAndEmptyArrays: true } },
+      {
+        $project: {
+          _id: 1,
+          sku: '$item.sku',
+          itemName: '$item.name',
+          unit: '$item.unit',
+          quantity: 1,
+          packageCount: { $ifNull: ['$packageCount', 0] },
+          packageFactor: { $ifNull: ['$packageFactor', null] },
+          packageVolumeCm3Snapshot: {
+            $ifNull: ['$packageVolumeCm3Snapshot', null],
+          },
+          lotNumber: { $ifNull: ['$lot.lotNumber', null] },
+          expiryDate: { $ifNull: ['$lot.expiryDate', null] },
+        },
+      },
+    ]);
+
+    return rows.map((r) => ({
+      id: r._id.toString(),
+      sku: r.sku,
+      itemName: r.itemName,
+      unit: r.unit,
+      quantity: r.quantity,
+      packageCount: r.packageCount,
+      packageFactor: r.packageFactor,
+      packageVolumeCm3Snapshot: r.packageVolumeCm3Snapshot,
+      lotNumber: r.lotNumber,
+      expiryDate: r.expiryDate,
+    }));
+  }
   async findShelfIdsWithItem(itemId: Types.ObjectId): Promise<Set<string>> {
     const shelfIds = await this.inventoryModel
       .distinct('shelfId', { itemId, quantity: { $gt: 0 } })
@@ -482,55 +856,98 @@ export class StockRepository {
         as: 'shelf',
       },
     };
+    const cellLookupStage = {
+      $lookup: {
+        from: 'storage_cells',
+        localField: 'cellId',
+        foreignField: '_id',
+        as: 'cell',
+      },
+    };
     const unwindShelfStage = { $unwind: '$shelf' };
+    const unwindCellStage = { $unwind: '$cell' };
 
     if (!isPerishable) {
       const rows = await this.inventoryModel.aggregate<{
         shelfId: Types.ObjectId;
+        cellId: Types.ObjectId;
         shelfCode: string;
+        cellCode: string;
+        rackId: Types.ObjectId;
+        level: number;
+        bay: number;
         quantity: number;
+        packageCount: number;
+        packageFactor: number;
       }>([
         {
           $match: {
             itemId,
             lotId: null,
+            cellId: { $ne: null },
             quantity: { $gt: 0 },
+            packageCount: { $gt: 0 },
           },
         },
         shelfLookupStage,
         unwindShelfStage,
-        { $sort: { quantity: -1 } },
+        cellLookupStage,
+        unwindCellStage,
+        { $sort: { packageCount: -1 } },
         {
           $project: {
             _id: 0,
             shelfId: 1,
+            cellId: 1,
             shelfCode: '$shelf.code',
+            cellCode: '$cell.code',
+            rackId: '$cell.rackId',
+            level: '$cell.level',
+            bay: '$cell.bay',
             quantity: 1,
+            packageCount: 1,
+            packageFactor: 1,
           },
         },
       ]);
       return rows.map((r) => ({
         shelfId: r.shelfId,
+        cellId: r.cellId,
         shelfCode: r.shelfCode,
+        cellCode: r.cellCode,
+        rackId: r.rackId,
+        level: r.level,
+        bay: r.bay,
         lotId: null,
         lotNumber: null,
         expiryDate: null,
         quantity: r.quantity,
+        packageCount: r.packageCount,
+        packageFactor: r.packageFactor,
       }));
     }
 
     const rows = await this.inventoryModel.aggregate<{
       shelfId: Types.ObjectId;
+      cellId: Types.ObjectId;
       shelfCode: string;
+      cellCode: string;
+      rackId: Types.ObjectId;
+      level: number;
+      bay: number;
       lotId: Types.ObjectId;
       lotNumber: string;
       expiryDate: Date;
       quantity: number;
+      packageCount: number;
+      packageFactor: number;
     }>([
       {
         $match: {
           itemId,
+          cellId: { $ne: null },
           quantity: { $gt: 0 },
+          packageCount: { $gt: 0 },
           lotId: { $ne: null },
         },
       },
@@ -546,30 +963,57 @@ export class StockRepository {
       { $match: { 'lot.status': LotStatus.ACTIVE } },
       shelfLookupStage,
       unwindShelfStage,
+      cellLookupStage,
+      unwindCellStage,
       { $sort: { 'lot.expiryDate': 1 } },
       {
         $project: {
           _id: 0,
           shelfId: 1,
+          cellId: 1,
           shelfCode: '$shelf.code',
+          cellCode: '$cell.code',
+          rackId: '$cell.rackId',
+          level: '$cell.level',
+          bay: '$cell.bay',
           lotId: 1,
           lotNumber: '$lot.lotNumber',
           expiryDate: '$lot.expiryDate',
           quantity: 1,
+          packageCount: 1,
+          packageFactor: 1,
         },
       },
     ]);
 
     return rows.map((r) => ({
       shelfId: r.shelfId,
+      cellId: r.cellId,
       shelfCode: r.shelfCode,
+      cellCode: r.cellCode,
+      rackId: r.rackId,
+      level: r.level,
+      bay: r.bay,
       lotId: r.lotId,
       lotNumber: r.lotNumber,
       expiryDate: r.expiryDate,
       quantity: r.quantity,
+      packageCount: r.packageCount,
+      packageFactor: r.packageFactor,
     }));
   }
-
+  async hasPositiveInventoryOnCells(
+    cellIds: Types.ObjectId[],
+    session?: ClientSession,
+  ): Promise<boolean> {
+    if (cellIds.length === 0) return false;
+    const query = this.inventoryModel
+      .findOne({ cellId: { $in: cellIds }, quantity: { $gt: 0 } })
+      .select('_id')
+      .lean();
+    if (session) query.session(session);
+    return (await query.exec()) !== null;
+  }
   async hasPositiveInventoryOnShelf(
     shelfId: Types.ObjectId,
     session?: ClientSession,

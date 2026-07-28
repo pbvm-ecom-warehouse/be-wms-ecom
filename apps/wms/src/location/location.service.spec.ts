@@ -9,6 +9,8 @@ const makeStockRepo = () => ({
   findInventoryByShelfId: jest.fn(),
   hasPositiveInventoryOnShelf: jest.fn(),
   hasPositiveInventoryOnAnyShelf: jest.fn(),
+  hasPositiveInventoryOnCells: jest.fn(),
+  findInventoryByCellId: jest.fn(),
 });
 
 const makeRepo = () => ({
@@ -32,10 +34,14 @@ const makeRepo = () => ({
   createZone: jest.fn(),
   createRack: jest.fn(),
   createShelf: jest.fn(),
+  createStorageCellsForShelf: jest.fn(),
+  syncStorageCellsForShelf: jest.fn(),
+  softDeleteStorageCellsForShelf: jest.fn(),
   createAisle: jest.fn(),
   softDeleteAllZones: jest.fn(),
   softDeleteAllRacks: jest.fn(),
   softDeleteAllShelves: jest.fn(),
+  softDeleteAllStorageCells: jest.fn(),
   softDeleteAllAisles: jest.fn(),
   softDeleteAllGates: jest.fn(),
   findAllZones: jest.fn(),
@@ -47,6 +53,10 @@ const makeRepo = () => ({
   getLayoutConfig: jest.fn(),
   updateRackTemplate: jest.fn(),
   updateRack: jest.fn(),
+  findCellsAboveBay: jest.fn(),
+  reconcileStorageCellBayCount: jest.fn(),
+  findCellsByRackId: jest.fn(),
+  findCellById: jest.fn(),
 });
 
 describe('LocationService', () => {

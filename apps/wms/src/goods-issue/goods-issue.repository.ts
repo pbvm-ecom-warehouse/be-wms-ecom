@@ -95,7 +95,11 @@ export class GoodsIssueRepository {
   ): Promise<GoodsIssueDocument | null> {
     return this.model
       .findOneAndUpdate(
-        { _id: id, items: { $elemMatch: { itemId } } },
+        {
+          _id: id,
+          status: GoodsIssueStatus.PENDING,
+          items: { $elemMatch: { itemId, remainingQty: { $gte: quantity } } },
+        },
         { $inc: { 'items.$.remainingQty': -quantity } },
         { new: true, session },
       )

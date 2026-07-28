@@ -1,6 +1,6 @@
 import { InjectQueue } from '@nestjs/bullmq';
 import { Injectable, Logger } from '@nestjs/common';
-import { AppException } from '@app/common';
+import { AppException } from '@app/common/errors/app.exception';
 import { EVENTS, QUEUES, type GoodsIssuedPayload } from '@app/events';
 import { Queue } from 'bullmq';
 import { Types } from 'mongoose';
@@ -19,6 +19,7 @@ import { LocationRepository } from '../location/location.repository';
 import { StockTransactionHelper } from '../stock/helpers/with-stock-transaction.helper';
 import { MovementType } from '../stock/schemas/stock-movement.schema';
 import { BarcodeService } from '../stock/barcode/barcode.service';
+import { WarehouseNavigationService } from '../location/navigation.service';
 
 interface OrderReadyItem {
   sku: string;
@@ -36,6 +37,7 @@ export class GoodsIssueService {
     private readonly locationRepo: LocationRepository,
     private readonly stockTransactionHelper: StockTransactionHelper,
     private readonly barcodeSvc: BarcodeService,
+    private readonly navigationService: WarehouseNavigationService,
     @InjectQueue(QUEUES.SHIPMENT) private readonly shipmentQueue: Queue,
     @InjectQueue(QUEUES.SHIPMENT_INTERNAL)
     private readonly shipmentInternalQueue: Queue,
@@ -109,10 +111,53 @@ export class GoodsIssueService {
     const warehouseItem = await this.stockRepo.findItemById(itemId);
     const isPerishable = warehouseItem?.isPerishable ?? false;
 
-    return this.stockRepo.findAvailableStockForPick(
+    const suggestions = await this.stockRepo.findAvailableStockForPick(
       new Types.ObjectId(itemId),
       isPerishable,
     );
+    const navigable = (
+      await Promise.all(
+        suggestions.map(async (suggestion) => {
+          if (
+            !suggestion.rackId ||
+            !suggestion.cellId ||
+            !suggestion.cellCode
+          ) {
+            return null;
+          }
+          try {
+            const path = await this.navigationService.getPath(
+              suggestion.rackId.toString(),
+            );
+            return { ...suggestion, path };
+          } catch (error) {
+            if (
+              error instanceof AppException &&
+              [
+                'NAVIGATION_RACK_NOT_CONNECTED',
+                'NAVIGATION_PATH_NOT_FOUND',
+                'NAVIGATION_GATE_NOT_CONNECTED',
+                'NAVIGATION_GATE_NOT_FOUND',
+              ].includes(error.code)
+            ) {
+              return null;
+            }
+            throw error;
+          }
+        }),
+      )
+    ).filter((value) => value !== null);
+
+    navigable.sort((left, right) => {
+      if (isPerishable) {
+        const expiryDelta =
+          (left.expiryDate?.getTime() ?? Number.MAX_SAFE_INTEGER) -
+          (right.expiryDate?.getTime() ?? Number.MAX_SAFE_INTEGER);
+        if (expiryDelta !== 0) return expiryDelta;
+      }
+      return left.path.distanceM - right.path.distanceM;
+    });
+    return navigable;
   }
 
   /**
@@ -134,66 +179,116 @@ export class GoodsIssueService {
     const item = await this.stockRepo.findItemByIdDocument(itemId.toString());
     if (!item) throw new AppException('GOODS_ISSUE_ITEM_NOT_FOUND');
 
-    const shelf = await this.locationRepo.findShelfByCode(dto.shelfCode);
+    const cell = dto.cellBarcode
+      ? await this.locationRepo.findCellByCode(dto.cellBarcode)
+      : null;
+    if (!cell) throw new AppException('GOODS_ISSUE_CELL_NOT_FOUND');
+    const shelf = await this.locationRepo.findShelfById(
+      cell.shelfId.toString(),
+    );
     if (!shelf) throw new AppException('GOODS_ISSUE_SHELF_NOT_FOUND');
 
     const line = gi.items.find(
       (i) => i.itemId.toString() === item._id.toString(),
     );
     if (!line) throw new AppException('GOODS_ISSUE_ITEM_MISMATCH');
-    if (dto.quantity > line.remainingQty) {
-      throw new AppException('GOODS_ISSUE_QTY_EXCEEDS');
-    }
 
     const lotId = dto.lotId ? new Types.ObjectId(dto.lotId) : null;
     const inventory = await this.stockRepo.findInventory(
       item._id,
       shelf._id,
       lotId,
+      undefined,
+      cell._id,
     );
-    if (!inventory || inventory.quantity < dto.quantity) {
+    if (!inventory) throw new AppException('STOCK_INSUFFICIENT');
+
+    const packageCount = dto.packageCount ?? 0;
+    const quantity =
+      dto.quantity ?? packageCount * (inventory.packageFactor ?? 0);
+    if (quantity <= 0 || packageCount <= 0) {
+      throw new AppException('GOODS_ISSUE_PACKAGE_COUNT_REQUIRED');
+    }
+    if (dto.quantity !== undefined && inventory.packageFactor) {
+      if (dto.quantity !== packageCount * inventory.packageFactor) {
+        throw new AppException('GOODS_ISSUE_PACKAGE_QTY_MISMATCH');
+      }
+    }
+    if (quantity > line.remainingQty) {
+      throw new AppException('GOODS_ISSUE_QTY_EXCEEDS');
+    }
+    if (
+      inventory.quantity < quantity ||
+      inventory.packageCount < packageCount
+    ) {
       throw new AppException('STOCK_INSUFFICIENT');
     }
 
+    const suggestedCellId = dto.suggestedCellId
+      ? new Types.ObjectId(dto.suggestedCellId)
+      : null;
+    const isOverride =
+      suggestedCellId !== null &&
+      suggestedCellId.toString() !== cell._id.toString();
+
     let justConfirmed = false;
     await this.stockTransactionHelper.withStockTransaction(async (session) => {
-      await this.stockRepo.upsertInventory(
-        item._id,
-        shelf._id,
-        lotId,
-        -dto.quantity,
+      const activeCell = await this.locationRepo.lockActiveCellForInventory(
+        cell._id.toString(),
         session,
       );
-      await this.stockRepo.upsertBalance(
+      if (!activeCell) throw new AppException('GOODS_ISSUE_CELL_NOT_FOUND');
+
+      const issueUpdated = await this.repo.decrementRemainingQty(
+        id,
         item._id,
-        -dto.quantity,
-        -dto.quantity,
-        0,
+        quantity,
         session,
       );
+      if (!issueUpdated) throw new AppException('GOODS_ISSUE_QTY_EXCEEDS');
+
+      const inventoryUpdated =
+        await this.stockRepo.decrementInventoryIfAvailable(
+          item._id,
+          shelf._id,
+          cell._id,
+          lotId,
+          quantity,
+          packageCount,
+          session,
+        );
+      if (!inventoryUpdated) throw new AppException('STOCK_INSUFFICIENT');
+
+      const balanceUpdated = await this.stockRepo.issueReservedIfAvailable(
+        item._id,
+        quantity,
+        session,
+      );
+      if (!balanceUpdated) throw new AppException('STOCK_INSUFFICIENT');
+
       await this.stockRepo.insertMovement(
         {
           itemId: item._id,
           shelfId: shelf._id,
+          cellId: cell._id,
           lotId,
           type: MovementType.ISSUE,
-          quantity: -dto.quantity,
+          quantity: -quantity,
           refType: 'goods_issue',
           refId: gi._id,
           createdBy: new Types.ObjectId(actorId),
+          packageCount: -packageCount,
+          packageFactor: inventory.packageFactor,
+          packageVolumeCm3Snapshot: inventory.packageVolumeCm3Snapshot,
+          suggestedCellId,
+          actualCellId: cell._id,
+          isOverride,
         },
-        session,
-      );
-      await this.repo.decrementRemainingQty(
-        id,
-        item._id,
-        dto.quantity,
         session,
       );
       justConfirmed = await this.repo.markConfirmedIfAllDone(id, session);
     });
 
-    // S4-04: kiểm tra ngưỡng thấp tồn — sau khi transaction commit.
     await this.stockService.checkAndEmitStockLow(item._id);
 
     const updated = await this.repo.findById(id);
@@ -205,7 +300,6 @@ export class GoodsIssueService {
 
     return updated;
   }
-
   private async emitGoodsIssued(
     orderId: string,
     goodsIssueId: string,

@@ -1,5 +1,9 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { HydratedDocument, Types } from 'mongoose';
+import {
+  PackageSpec,
+  PackageSpecSchema,
+} from '../../stock/schemas/package-spec.schema';
 
 export enum PutAwayTaskStatus {
   PENDING = 'PENDING',
@@ -28,6 +32,15 @@ export class PutAwayItem {
   /** Còn lại chưa xếp — giảm dần mỗi lần RECEIVER quét xác nhận thành công */
   @Prop({ type: Number, required: true, min: 0 })
   remainingQty!: number;
+
+  @Prop({ type: Number, required: true, min: 0, default: 0 })
+  packageCount!: number;
+
+  @Prop({ type: Number, required: true, min: 0, default: 0 })
+  remainingPackageCount!: number;
+
+  @Prop({ type: PackageSpecSchema })
+  packageSpec?: PackageSpec;
 }
 const PutAwayItemSchema = SchemaFactory.createForClass(PutAwayItem);
 
@@ -39,6 +52,10 @@ const PutAwayItemSchema = SchemaFactory.createForClass(PutAwayItem);
 export class PutAwayTask {
   @Prop({ type: Types.ObjectId, required: true })
   grnId!: Types.ObjectId;
+
+  /** Nguồn nhận tạm được chốt lúc duyệt GRN; đổi cấu hình layout sau đó không làm hỏng task. */
+  @Prop({ type: Types.ObjectId, default: null })
+  sourceShelfId?: Types.ObjectId | null;
 
   @Prop({ enum: PutAwayTaskStatus, default: PutAwayTaskStatus.PENDING })
   status!: PutAwayTaskStatus;

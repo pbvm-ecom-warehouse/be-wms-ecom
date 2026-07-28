@@ -33,6 +33,9 @@ export class StockMovement {
   shelfId!: Types.ObjectId;
 
   @Prop({ type: SchemaTypes.ObjectId, default: null })
+  cellId!: Types.ObjectId | null;
+
+  @Prop({ type: SchemaTypes.ObjectId, default: null })
   lotId!: Types.ObjectId | null;
 
   @Prop({ enum: MovementType, required: true })
@@ -41,6 +44,24 @@ export class StockMovement {
   /** Số lượng có dấu: dương = nhập vào, âm = xuất ra */
   @Prop({ required: true })
   quantity!: number;
+
+  @Prop({ type: Number, default: 0 })
+  packageCount!: number;
+
+  @Prop({ type: Number })
+  packageFactor?: number;
+
+  @Prop({ type: Number })
+  packageVolumeCm3Snapshot?: number;
+
+  @Prop({ type: SchemaTypes.ObjectId, default: null })
+  suggestedCellId?: Types.ObjectId | null;
+
+  @Prop({ type: SchemaTypes.ObjectId, default: null })
+  actualCellId?: Types.ObjectId | null;
+
+  @Prop({ type: Boolean, default: false })
+  isOverride!: boolean;
 
   /** Loại chứng từ nguồn (vd 'grn', 'goods_issue', 'stock_count') */
   @Prop({ required: true })

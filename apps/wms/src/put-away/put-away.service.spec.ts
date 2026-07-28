@@ -1,341 +1,235 @@
 import { Types } from 'mongoose';
 import { PutAwayService } from './put-away.service';
 
-const makeRepo = () => ({
-  createTask: jest.fn(),
-  findTaskById: jest.fn(),
-  findTasks: jest.fn(),
-  decrementRemainingQty: jest.fn(),
-  markCompletedIfAllDone: jest.fn(),
-});
+const packageSpec = {
+  unit: 'thùng',
+  factor: 10,
+  depthCm: 10,
+  widthCm: 10,
+  heightCm: 10,
+  volumeCm3: 1000,
+};
 
-const makeStockRepo = () => ({
-  findItemByIdDocument: jest.fn(),
-  upsertInventory: jest.fn(),
-  insertMovement: jest.fn(),
-});
-
-const makeBarcodeService = () => ({
-  findItemIdByCode: jest.fn(),
-});
-
-// findShelfByCode giờ gọi thẳng LocationRepository (trả về document hoặc null,
-// không tự throw) — PutAwayService tự throw PUTAWAY_SHELF_NOT_FOUND khi null.
-const makeLocationRepo = () => ({
-  findShelfByCode: jest.fn(),
-  lockActiveShelfForInventory: jest.fn(),
-});
-
-const makeLocationService = () => ({
-  findStagingShelf: jest.fn(),
-});
-
-const makeTxHelper = () => ({
-  withStockTransaction: jest.fn((fn: (session: unknown) => unknown) => fn({})),
-});
-
-describe('PutAwayService', () => {
-  let svc: PutAwayService;
-  let repo: ReturnType<typeof makeRepo>;
-  let stockRepo: ReturnType<typeof makeStockRepo>;
-  let locationRepo: ReturnType<typeof makeLocationRepo>;
-  let locationService: ReturnType<typeof makeLocationService>;
-  let txHelper: ReturnType<typeof makeTxHelper>;
-  let barcodeSvc: ReturnType<typeof makeBarcodeService>;
-
+describe('PutAwayService theo khoang', () => {
   const actorId = new Types.ObjectId().toString();
-  const grnId = new Types.ObjectId();
   const itemId = new Types.ObjectId();
+  const shelfId = new Types.ObjectId();
+  const stagingShelfId = new Types.ObjectId();
+  const taskSourceShelfId = new Types.ObjectId();
+  const cellId = new Types.ObjectId();
+  const taskId = new Types.ObjectId().toString();
+
+  const repo = {
+    findTaskById: jest.fn(),
+    decrementRemainingQty: jest.fn(),
+    markCompletedIfAllDone: jest.fn(),
+    createTask: jest.fn(),
+    findTasks: jest.fn(),
+  };
+  const stockRepo = {
+    findItemByIdDocument: jest.fn(),
+    findOccupiedVolumeForCell: jest.fn(),
+    decrementInventoryIfAvailable: jest.fn(),
+    upsertInventory: jest.fn(),
+    insertMovement: jest.fn(),
+  };
+  const locationRepo = {
+    findCellByCode: jest.fn(),
+    findShelfById: jest.fn(),
+    findShelfByCode: jest.fn(),
+    lockActiveCellForInventory: jest.fn(),
+    lockActiveShelfForInventory: jest.fn(),
+  };
+  const locationService = { findStagingShelf: jest.fn() };
+  const tx = {
+    withStockTransaction: jest.fn((fn: (session: object) => unknown) => fn({})),
+  };
+  const barcode = { findItemIdByCode: jest.fn() };
+
+  let service: PutAwayService;
+
+  const task = () => ({
+    _id: new Types.ObjectId(taskId),
+    items: [
+      {
+        itemId,
+        lotId: null,
+        remainingQty: 50,
+        remainingPackageCount: 5,
+        packageSpec,
+      },
+    ],
+  });
+  const cell = () => ({
+    _id: cellId,
+    shelfId,
+    rackId: new Types.ObjectId(),
+    innerDepth: 100,
+    innerWidth: 100,
+    innerHeight: 100,
+    fillFactor: 1,
+  });
+  const shelf = () => ({ _id: shelfId, isStaging: false });
 
   beforeEach(() => {
-    repo = makeRepo();
-    stockRepo = makeStockRepo();
-    locationRepo = makeLocationRepo();
-    locationService = makeLocationService();
-    txHelper = makeTxHelper();
-    barcodeSvc = makeBarcodeService();
-    svc = new PutAwayService(
+    jest.clearAllMocks();
+    service = new PutAwayService(
       repo as never,
       stockRepo as never,
       locationRepo as never,
       locationService as never,
-      txHelper as never,
-      barcodeSvc as never,
+      tx as never,
+      barcode as never,
     );
+    repo.findTaskById.mockResolvedValue(task());
+    barcode.findItemIdByCode.mockResolvedValue(itemId);
+    stockRepo.findItemByIdDocument.mockResolvedValue({
+      _id: itemId,
+      isPerishable: false,
+    });
+    locationRepo.findCellByCode.mockResolvedValue(cell());
+    locationRepo.findShelfById.mockResolvedValue(shelf());
+    locationRepo.lockActiveCellForInventory.mockResolvedValue(cell());
+    locationRepo.lockActiveShelfForInventory.mockResolvedValue(shelf());
+    locationService.findStagingShelf.mockResolvedValue({ _id: stagingShelfId });
+    stockRepo.findOccupiedVolumeForCell.mockResolvedValue(0);
+    stockRepo.decrementInventoryIfAvailable.mockResolvedValue({ quantity: 30 });
+    repo.decrementRemainingQty.mockResolvedValue(task());
+    repo.findTaskById.mockResolvedValueOnce(task()).mockResolvedValue(task());
   });
 
-  describe('createTaskFromGrn', () => {
-    it('gọi repo.createTask với đúng session truyền vào, map lines đúng field', async () => {
-      const session = {} as never;
-      repo.createTask.mockResolvedValue({ _id: 'task1' });
+  it('chặn barcode hàng không thuộc hệ thống', async () => {
+    barcode.findItemIdByCode.mockResolvedValue(null);
 
-      await svc.createTaskFromGrn(
-        grnId,
-        [{ itemId: itemId.toString(), lotId: null, quantity: 20 }],
+    await expect(
+      service.confirmLine(
+        taskId,
+        { itemBarcode: 'WRONG', cellBarcode: 'R1-T1-B1', packageCount: 1 },
         actorId,
-        session,
-      );
-
-      expect(repo.createTask).toHaveBeenCalledWith(
-        grnId,
-        [{ itemId, lotId: null, quantity: 20 }],
-        actorId,
-        session,
-      );
-    });
+      ),
+    ).rejects.toMatchObject({ code: 'PUTAWAY_ITEM_NOT_FOUND' });
   });
 
-  describe('confirmLine', () => {
-    const taskId = 'task1';
-    const shelfId = new Types.ObjectId();
-    const stagingShelfId = new Types.ObjectId();
+  it('bắt buộc quét barcode khoang thật', async () => {
+    locationRepo.findCellByCode.mockResolvedValue(null);
 
-    it('revalidate shelf đích còn active bên trong transaction trước khi ghi tồn', async () => {
-      const transactionSession = {};
-      txHelper.withStockTransaction.mockImplementation(
-        (work: (session: unknown) => unknown) => work(transactionSession),
-      );
-      repo.findTaskById
-        .mockResolvedValueOnce(baseTask())
-        .mockResolvedValueOnce(baseTask());
-      barcodeSvc.findItemIdByCode.mockResolvedValue(itemId);
-      stockRepo.findItemByIdDocument.mockResolvedValue({ _id: itemId });
-      locationRepo.findShelfByCode.mockResolvedValue({
-        _id: shelfId,
-        isStaging: false,
-      });
-      locationRepo.lockActiveShelfForInventory.mockResolvedValue(null);
-      locationService.findStagingShelf.mockResolvedValue({
-        _id: stagingShelfId,
-      });
-
-      await expect(
-        svc.confirmLine(
-          taskId,
-          { itemBarcode: 'X', shelfCode: 'A1', quantity: 5 },
-          actorId,
-        ),
-      ).rejects.toMatchObject({ code: 'PUTAWAY_SHELF_NOT_FOUND' });
-
-      expect(locationRepo.lockActiveShelfForInventory).toHaveBeenCalledWith(
-        shelfId.toString(),
-        transactionSession,
-      );
-      expect(stockRepo.upsertInventory).not.toHaveBeenCalled();
-      expect(stockRepo.insertMovement).not.toHaveBeenCalled();
-    });
-
-    const baseTask = () => ({
-      _id: taskId,
-      items: [{ itemId, lotId: null, quantity: 20, remainingQty: 20 }],
-    });
-
-    it('throw PUTAWAY_TASK_NOT_FOUND khi task không tồn tại', async () => {
-      repo.findTaskById.mockResolvedValue(null);
-      await expect(
-        svc.confirmLine(
-          taskId,
-          { itemBarcode: 'X', shelfCode: 'A1', quantity: 5 },
-          actorId,
-        ),
-      ).rejects.toMatchObject({ code: 'PUTAWAY_TASK_NOT_FOUND' });
-    });
-
-    it('throw PUTAWAY_ITEM_NOT_FOUND khi barcode không khớp item nào', async () => {
-      repo.findTaskById.mockResolvedValue(baseTask());
-      barcodeSvc.findItemIdByCode.mockResolvedValue(null);
-      stockRepo.findItemByIdDocument.mockResolvedValue(null);
-      await expect(
-        svc.confirmLine(
-          taskId,
-          { itemBarcode: 'UNKNOWN', shelfCode: 'A1', quantity: 5 },
-          actorId,
-        ),
-      ).rejects.toMatchObject({ code: 'PUTAWAY_ITEM_NOT_FOUND' });
-    });
-
-    it('throw PUTAWAY_SHELF_NOT_FOUND khi shelf code không khớp shelf nào', async () => {
-      // Gap reviewer chỉ ra: nhánh shelf-not-found trước đây rơi vào SHELF_NOT_FOUND
-      // (generic, cross-cutting) do gọi qua LocationService.findShelfByCode. Đúng
-      // spec (dòng 77), phải throw PUTAWAY_SHELF_NOT_FOUND (domain riêng của put-away).
-      repo.findTaskById.mockResolvedValue(baseTask());
-      barcodeSvc.findItemIdByCode.mockResolvedValue(itemId);
-      stockRepo.findItemByIdDocument.mockResolvedValue({ _id: itemId });
-      locationRepo.findShelfByCode.mockResolvedValue(null);
-      await expect(
-        svc.confirmLine(
-          taskId,
-          { itemBarcode: 'X', shelfCode: 'UNKNOWN', quantity: 5 },
-          actorId,
-        ),
-      ).rejects.toMatchObject({ code: 'PUTAWAY_SHELF_NOT_FOUND' });
-    });
-
-    it('throw PUTAWAY_SHELF_IS_STAGING khi quét đúng shelf staging', async () => {
-      repo.findTaskById.mockResolvedValue(baseTask());
-      barcodeSvc.findItemIdByCode.mockResolvedValue(itemId);
-      stockRepo.findItemByIdDocument.mockResolvedValue({ _id: itemId });
-      locationRepo.findShelfByCode.mockResolvedValue({
-        _id: shelfId,
-        isStaging: true,
-      });
-      await expect(
-        svc.confirmLine(
-          taskId,
-          { itemBarcode: 'X', shelfCode: 'STAGING', quantity: 5 },
-          actorId,
-        ),
-      ).rejects.toMatchObject({ code: 'PUTAWAY_SHELF_IS_STAGING' });
-    });
-
-    it('throw PUTAWAY_ITEM_MISMATCH sớm khi item.isPerishable nhưng dto không gửi lotId — kể cả khi (vô tình) có dòng task lotId null trùng khớp', async () => {
-      // Finding mức thấp ở final review: trước đây thiếu lotId với item isPerishable
-      // thường vẫn bị chặn đúng vì rơi vào nhánh ITEM_MISMATCH khi tìm `line` — NHƯNG
-      // đó là hệ quả gián tiếp (do lotId thật của task khác null), không phải validate
-      // tường minh. Nếu (giả thuyết) task có 1 dòng lotId=null cho item đó — dữ liệu lẽ
-      // ra không nên xảy ra nhưng minh hoạ rằng match-theo-lotId=null vẫn có thể khớp
-      // "trùng lặp giả" — thì code CŨ sẽ cho qua vì line match được (cả 2 đều null),
-      // dẫn tới ghi nhận put-away cho hàng perishable mà không có lotId. Check mới validate
-      // NGAY sau khi có `item`, trước khi dò `line`, nên luôn chặn đúng bất kể task.items
-      // chứa gì.
-      const taskWithNullLotLine = {
-        _id: taskId,
-        items: [{ itemId, lotId: null, quantity: 20, remainingQty: 20 }],
-      };
-      repo.findTaskById.mockResolvedValue(taskWithNullLotLine);
-      barcodeSvc.findItemIdByCode.mockResolvedValue(itemId);
-      stockRepo.findItemByIdDocument.mockResolvedValue({
-        _id: itemId,
-        isPerishable: true,
-      });
-      locationRepo.findShelfByCode.mockResolvedValue({
-        _id: shelfId,
-        isStaging: false,
-      });
-      await expect(
-        svc.confirmLine(
-          taskId,
-          { itemBarcode: 'X', shelfCode: 'A1', quantity: 5 }, // không có lotId
-          actorId,
-        ),
-      ).rejects.toMatchObject({ code: 'PUTAWAY_ITEM_MISMATCH' });
-    });
-
-    it('throw PUTAWAY_ITEM_MISMATCH khi item không thuộc task (lotId khác)', async () => {
-      repo.findTaskById.mockResolvedValue(baseTask());
-      barcodeSvc.findItemIdByCode.mockResolvedValue(itemId);
-      stockRepo.findItemByIdDocument.mockResolvedValue({ _id: itemId });
-      locationRepo.findShelfByCode.mockResolvedValue({
-        _id: shelfId,
-        isStaging: false,
-      });
-      await expect(
-        svc.confirmLine(
-          taskId,
-          {
-            itemBarcode: 'X',
-            shelfCode: 'A1',
-            quantity: 5,
-            lotId: new Types.ObjectId().toString(),
-          },
-          actorId,
-        ),
-      ).rejects.toMatchObject({ code: 'PUTAWAY_ITEM_MISMATCH' });
-    });
-
-    it('throw PUTAWAY_QTY_EXCEEDS khi quantity > remainingQty', async () => {
-      repo.findTaskById.mockResolvedValue(baseTask());
-      barcodeSvc.findItemIdByCode.mockResolvedValue(itemId);
-      stockRepo.findItemByIdDocument.mockResolvedValue({ _id: itemId });
-      locationRepo.findShelfByCode.mockResolvedValue({
-        _id: shelfId,
-        isStaging: false,
-      });
-      await expect(
-        svc.confirmLine(
-          taskId,
-          { itemBarcode: 'X', shelfCode: 'A1', quantity: 999 },
-          actorId,
-        ),
-      ).rejects.toMatchObject({ code: 'PUTAWAY_QTY_EXCEEDS' });
-    });
-
-    it('ghi 2 InventoryStock deltas + 2 movement PUTAWAY lệch dấu khi hợp lệ, không đụng StockBalance', async () => {
-      repo.findTaskById
-        .mockResolvedValueOnce(baseTask())
-        .mockResolvedValueOnce({ ...baseTask(), status: 'COMPLETED' });
-      barcodeSvc.findItemIdByCode.mockResolvedValue(itemId);
-      stockRepo.findItemByIdDocument.mockResolvedValue({ _id: itemId });
-      locationRepo.findShelfByCode.mockResolvedValue({
-        _id: shelfId,
-        isStaging: false,
-      });
-      locationRepo.lockActiveShelfForInventory.mockResolvedValue({
-        _id: shelfId,
-        isStaging: false,
-      });
-      locationService.findStagingShelf.mockResolvedValue({
-        _id: stagingShelfId,
-      });
-
-      await svc.confirmLine(
+    await expect(
+      service.confirmLine(
         taskId,
-        { itemBarcode: 'X', shelfCode: 'A1', quantity: 12 },
+        { itemBarcode: 'SKU-1', cellBarcode: 'WRONG', packageCount: 1 },
         actorId,
-      );
+      ),
+    ).rejects.toMatchObject({ code: 'PUTAWAY_CELL_NOT_FOUND' });
+  });
 
-      expect(stockRepo.upsertInventory).toHaveBeenNthCalledWith(
-        1,
-        itemId,
-        stagingShelfId,
-        null,
-        -12,
-        expect.anything(),
-      );
-      expect(stockRepo.upsertInventory).toHaveBeenNthCalledWith(
-        2,
-        itemId,
-        shelfId,
-        null,
-        12,
-        expect.anything(),
-      );
-      expect(stockRepo.insertMovement).toHaveBeenCalledTimes(2);
-      expect(stockRepo.insertMovement).toHaveBeenNthCalledWith(
-        1,
-        expect.objectContaining({
-          shelfId: stagingShelfId,
-          type: 'PUTAWAY',
-          quantity: -12,
-          refType: 'put_away_task',
-        }),
-        expect.anything(),
-      );
-      expect(stockRepo.insertMovement).toHaveBeenNthCalledWith(
-        2,
-        expect.objectContaining({
-          shelfId,
-          type: 'PUTAWAY',
-          quantity: 12,
-          refType: 'put_away_task',
-        }),
-        expect.anything(),
-      );
-      expect(repo.decrementRemainingQty).toHaveBeenCalledWith(
+  it('chặn số thùng vượt phần còn phải cất', async () => {
+    await expect(
+      service.confirmLine(
         taskId,
-        itemId,
-        null,
-        12,
-        expect.anything(),
-      );
-      expect(repo.markCompletedIfAllDone).toHaveBeenCalledWith(
+        { itemBarcode: 'SKU-1', cellBarcode: 'R1-T1-B1', packageCount: 6 },
+        actorId,
+      ),
+    ).rejects.toMatchObject({ code: 'PUTAWAY_QTY_EXCEEDS' });
+  });
+
+  it('chặn khoang không còn đủ thể tích kể cả khi receiver override gợi ý', async () => {
+    stockRepo.findOccupiedVolumeForCell.mockResolvedValue(999_500);
+
+    await expect(
+      service.confirmLine(
         taskId,
-        expect.anything(),
-      );
-      // Bất biến UC-03: onHand không đổi — StockRepository.upsertBalance KHÔNG được gọi
-      expect(
-        (stockRepo as unknown as { upsertBalance?: jest.Mock }).upsertBalance,
-      ).toBeUndefined();
-    });
+        { itemBarcode: 'SKU-1', cellBarcode: 'R1-T1-B1', packageCount: 1 },
+        actorId,
+      ),
+    ).rejects.toMatchObject({ code: 'PUTAWAY_CELL_CAPACITY_EXCEEDED' });
+  });
+
+  it('chuyển staging sang đúng cell, giữ onHand và ghi audit override', async () => {
+    const suggestedCellId = new Types.ObjectId().toString();
+
+    await service.confirmLine(
+      taskId,
+      {
+        itemBarcode: 'SKU-1',
+        cellBarcode: 'R1-T1-B1',
+        packageCount: 2,
+        suggestedCellId,
+      },
+      actorId,
+    );
+
+    expect(stockRepo.decrementInventoryIfAvailable).toHaveBeenCalledWith(
+      itemId,
+      stagingShelfId,
+      null,
+      null,
+      20,
+      2,
+      expect.anything(),
+    );
+    expect(stockRepo.upsertInventory).toHaveBeenCalledWith(
+      itemId,
+      shelfId,
+      null,
+      20,
+      expect.anything(),
+      expect.objectContaining({
+        cellId,
+        packageCount: 2,
+        packageFactor: 10,
+        packageVolumeCm3Snapshot: 1000,
+      }),
+    );
+    expect(stockRepo.insertMovement).toHaveBeenCalledTimes(2);
+    expect(stockRepo.insertMovement).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        cellId,
+        suggestedCellId: new Types.ObjectId(suggestedCellId),
+        actualCellId: cellId,
+        isOverride: true,
+        quantity: 20,
+      }),
+      expect.anything(),
+    );
+    expect(repo.decrementRemainingQty).toHaveBeenCalledWith(
+      taskId,
+      itemId,
+      null,
+      20,
+      expect.anything(),
+      2,
+    );
+    expect(
+      (stockRepo as Record<string, unknown>).upsertBalance,
+    ).toBeUndefined();
+  });
+  it('dùng nguồn nhận tạm đã snapshot trong task thay vì cấu hình staging hiện tại', async () => {
+    repo.findTaskById
+      .mockReset()
+      .mockResolvedValue({ ...task(), sourceShelfId: taskSourceShelfId });
+    locationService.findStagingShelf.mockRejectedValue(
+      new Error('staging hiện tại không còn được cấu hình'),
+    );
+
+    await service.confirmLine(
+      taskId,
+      {
+        itemBarcode: 'SKU-1',
+        cellBarcode: 'R1-T1-B1',
+        packageCount: 1,
+      },
+      actorId,
+    );
+
+    expect(locationService.findStagingShelf).not.toHaveBeenCalled();
+    expect(stockRepo.decrementInventoryIfAvailable).toHaveBeenCalledWith(
+      itemId,
+      taskSourceShelfId,
+      null,
+      null,
+      10,
+      1,
+      expect.anything(),
+    );
   });
 });
