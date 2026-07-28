@@ -13,6 +13,7 @@ import {
 } from 'class-validator';
 import { Types } from 'mongoose';
 import { GoodsIssueStatus } from '../schemas/goods-issue.schema';
+import { NavigationPathDto } from '../../put-away-suggestion/dto/put-away-suggestion.dto';
 
 export class ConfirmGoodsIssueLineDto {
   @ApiProperty({ example: 'CUP-PLA-500-RED', description: 'Barcode quét SKU' })
@@ -20,15 +21,34 @@ export class ConfirmGoodsIssueLineDto {
   @MinLength(1)
   itemBarcode!: string;
 
-  @ApiProperty({ example: 'A1-2', description: 'Barcode quét vị trí shelf' })
+  @ApiPropertyOptional({ example: 'A1-T1', description: 'Legacy barcode shelf' })
+  @IsOptional()
   @IsString()
   @MinLength(1)
-  shelfCode!: string;
+  shelfCode?: string;
 
-  @ApiProperty({ example: 20, description: 'Số lượng xuất từ shelf này' })
+  @ApiPropertyOptional({ example: 'A1-T1-B1', description: 'Barcode khoang lấy hàng' })
+  @IsOptional()
+  @IsString()
+  @MinLength(1)
+  cellBarcode?: string;
+
+  @ApiPropertyOptional({ description: 'Khoang hệ thống đã gợi ý để audit override' })
+  @IsOptional()
+  @IsMongoId()
+  suggestedCellId?: string;
+
+  @ApiPropertyOptional({ example: 20, description: 'Legacy số lượng base unit' })
+  @IsOptional()
   @IsNumber()
   @Min(1)
-  quantity!: number;
+  quantity?: number;
+
+  @ApiPropertyOptional({ example: 2, description: 'Số thùng nguyên cần xuất' })
+  @IsOptional()
+  @IsNumber()
+  @Min(1)
+  packageCount?: number;
 
   @ApiPropertyOptional({
     description: 'Lô hàng — bắt buộc nếu item isPerishable',
@@ -77,6 +97,14 @@ export class GoodsIssueItemResponseDto {
   quantity!: number;
 
   @Expose()
+  @ApiPropertyOptional()
+  packageCount?: number;
+
+  @Expose()
+  @ApiPropertyOptional()
+  packageFactor?: number;
+
+  @Expose()
   @ApiProperty()
   remainingQty!: number;
 }
@@ -120,10 +148,41 @@ export class PickSuggestionResponseDto {
   shelfId!: string;
 
   @Expose()
+  @Transform(({ obj }: { obj: { cellId?: Types.ObjectId | null } }) =>
+    obj.cellId ? obj.cellId.toString() : null,
+  )
+  @ApiPropertyOptional()
+  cellId?: string | null;
+
+  @Expose()
   @ApiProperty({
     description: 'Barcode dán trên kệ — PICKER quét/đọc để tìm vị trí',
   })
   shelfCode!: string;
+
+  @Expose()
+  @ApiPropertyOptional()
+  cellCode?: string | null;
+
+  @Expose()
+  @Transform(({ obj }: { obj: { rackId?: Types.ObjectId | null } }) =>
+    obj.rackId ? obj.rackId.toString() : null,
+  )
+  @ApiPropertyOptional()
+  rackId?: string | null;
+
+  @Expose()
+  @ApiPropertyOptional()
+  level?: number;
+
+  @Expose()
+  @ApiPropertyOptional()
+  bay?: number;
+
+  @Expose()
+  @Type(() => NavigationPathDto)
+  @ApiPropertyOptional({ type: NavigationPathDto })
+  path?: NavigationPathDto;
 
   @Expose()
   @Transform(({ obj }: { obj: { lotId?: Types.ObjectId | null } }) =>
@@ -143,4 +202,12 @@ export class PickSuggestionResponseDto {
   @Expose()
   @ApiProperty()
   quantity!: number;
+
+  @Expose()
+  @ApiPropertyOptional()
+  packageCount?: number;
+
+  @Expose()
+  @ApiPropertyOptional()
+  packageFactor?: number;
 }

@@ -11,6 +11,15 @@ export interface CreatePutAwayLineInput {
   itemId: Types.ObjectId;
   lotId: Types.ObjectId | null;
   quantity: number;
+  packageCount?: number;
+  packageSpec?: {
+    unit: string;
+    factor: number;
+    depthCm: number;
+    widthCm: number;
+    heightCm: number;
+    volumeCm3: number;
+  };
 }
 
 export interface QueryPutAwayTaskInput {
@@ -32,17 +41,22 @@ export class PutAwayRepository {
     lines: CreatePutAwayLineInput[],
     actorId: string,
     session: ClientSession,
+    sourceShelfId: Types.ObjectId,
   ): Promise<PutAwayTaskDocument> {
     const [doc] = await this.model.create(
       [
         {
           grnId,
+          sourceShelfId,
           status: PutAwayTaskStatus.PENDING,
           items: lines.map((l) => ({
             itemId: l.itemId,
             lotId: l.lotId,
             quantity: l.quantity,
             remainingQty: l.quantity,
+            packageCount: l.packageCount ?? 0,
+            remainingPackageCount: l.packageCount ?? 0,
+            packageSpec: l.packageSpec,
           })),
           createdBy: new Types.ObjectId(actorId),
         },
@@ -95,11 +109,28 @@ export class PutAwayRepository {
     lotId: Types.ObjectId | null,
     quantity: number,
     session: ClientSession,
+    packageCount = 0,
   ): Promise<PutAwayTaskDocument | null> {
     return this.model
       .findOneAndUpdate(
-        { _id: taskId, items: { $elemMatch: { itemId, lotId } } },
-        { $inc: { 'items.$.remainingQty': -quantity } },
+        {
+          _id: taskId,
+          status: PutAwayTaskStatus.PENDING,
+          items: {
+            $elemMatch: {
+              itemId,
+              lotId,
+              remainingQty: { $gte: quantity },
+              remainingPackageCount: { $gte: packageCount },
+            },
+          },
+        },
+        {
+          $inc: {
+            'items.$.remainingQty': -quantity,
+            'items.$.remainingPackageCount': -packageCount,
+          },
+        },
         { new: true, session },
       )
       .exec();
@@ -114,7 +145,9 @@ export class PutAwayRepository {
       session,
     });
     if (!task) return;
-    const allDone = task.items.every((i) => i.remainingQty === 0);
+    const allDone = task.items.every(
+      (i) => i.remainingQty === 0 && i.remainingPackageCount === 0,
+    );
     if (allDone && task.status !== PutAwayTaskStatus.COMPLETED) {
       task.status = PutAwayTaskStatus.COMPLETED;
       await task.save({ session });

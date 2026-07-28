@@ -5,6 +5,11 @@ import { Zone, ZoneDocument } from './schemas/zone.schema';
 import { Rack, RackDocument } from './schemas/rack.schema';
 import { Shelf, ShelfDocument } from './schemas/shelf.schema';
 import {
+  StorageCell,
+  StorageCellDocument,
+  StorageCellStatus,
+} from './schemas/storage-cell.schema';
+import {
   RackTemplate,
   RackTemplateDocument,
 } from './schemas/rack-template.schema';
@@ -30,6 +35,8 @@ export class LocationRepository {
     @InjectModel(Zone.name) private readonly zoneModel: Model<ZoneDocument>,
     @InjectModel(Rack.name) private readonly rackModel: Model<RackDocument>,
     @InjectModel(Shelf.name) private readonly shelfModel: Model<ShelfDocument>,
+    @InjectModel(StorageCell.name)
+    private readonly cellModel: Model<StorageCellDocument>,
     @InjectModel(RackTemplate.name)
     private readonly rackTemplateModel: Model<RackTemplateDocument>,
     @InjectModel(Aisle.name) private readonly aisleModel: Model<AisleDocument>,
@@ -519,7 +526,10 @@ export class LocationRepository {
 
   /** Tìm shelf staging (khu nhận hàng tạm) duy nhất toàn hệ thống — dùng khi GRN CONFIRMED cộng tồn. */
   async findStagingShelf(): Promise<ShelfDocument | null> {
-    return this.shelfModel.findOne({ isStaging: true, deletedAt: null }).exec();
+    return this.shelfModel
+      .findOne({ isStaging: true, deletedAt: null })
+      .sort({ level: 1 })
+      .exec();
   }
 
   async updateShelf(
@@ -574,6 +584,258 @@ export class LocationRepository {
     return result.modifiedCount;
   }
 
+  // ─── StorageCell ─────────────────────────────────────────────────────────
+
+  async createStorageCellsForShelf(
+    shelf: ShelfDocument,
+    bayCount: number,
+    actorId: string,
+    session?: ClientSession,
+  ): Promise<StorageCellDocument[]> {
+    if (shelf.isStaging) return [];
+    const widthPerBay = (shelf.innerWidth ?? bayCount) / bayCount;
+    const docs = Array.from({ length: bayCount }, (_, index) => {
+      const bay = index + 1;
+      const code = `${shelf.code}-B${bay}`;
+      return {
+        rackId: shelf.rackId,
+        shelfId: shelf._id,
+        level: shelf.level,
+        bay,
+        code,
+        barcode: code,
+        innerDepth: shelf.innerDepth ?? 1,
+        innerWidth: widthPerBay,
+        innerHeight: shelf.innerHeight ?? 1,
+        fillFactor: shelf.fillFactor ?? null,
+        createdBy: new Types.ObjectId(actorId),
+        updatedBy: new Types.ObjectId(actorId),
+      };
+    });
+    if (!session)
+      return this.cellModel.insertMany(docs) as unknown as Promise<
+        StorageCellDocument[]
+      >;
+    return this.cellModel.insertMany(docs, { session }) as unknown as Promise<
+      StorageCellDocument[]
+    >;
+  }
+
+  async syncStorageCellsForShelf(
+    shelf: ShelfDocument,
+    bayCount: number,
+    actorId: string,
+    session?: ClientSession,
+  ): Promise<void> {
+    if (shelf.isStaging) return;
+    const cells = await this.findCellsByShelfId(shelf._id, session);
+    const widthPerBay = (shelf.innerWidth ?? bayCount) / bayCount;
+    for (const cell of cells) {
+      const code = `${shelf.code}-B${cell.bay}`;
+      await this.cellModel
+        .updateOne(
+          { _id: cell._id, deletedAt: null },
+          {
+            $set: {
+              rackId: shelf.rackId,
+              level: shelf.level,
+              code,
+              barcode: code,
+              innerDepth: shelf.innerDepth ?? 1,
+              innerWidth: widthPerBay,
+              innerHeight: shelf.innerHeight ?? 1,
+              fillFactor: shelf.fillFactor ?? null,
+              updatedBy: new Types.ObjectId(actorId),
+            },
+          },
+          session ? { session } : undefined,
+        )
+        .exec();
+    }
+  }
+
+  async softDeleteStorageCellsForShelf(
+    shelfId: Types.ObjectId,
+    actorId: string,
+    session?: ClientSession,
+  ): Promise<void> {
+    await this.cellModel
+      .updateMany(
+        { shelfId, deletedAt: null },
+        {
+          $set: {
+            deletedAt: new Date(),
+            updatedBy: new Types.ObjectId(actorId),
+          },
+        },
+        session ? { session } : undefined,
+      )
+      .exec();
+  }
+
+  async softDeleteAllStorageCells(
+    actorId: string,
+    session?: ClientSession,
+  ): Promise<void> {
+    await this.cellModel
+      .updateMany(
+        { deletedAt: null },
+        {
+          $set: {
+            deletedAt: new Date(),
+            updatedBy: new Types.ObjectId(actorId),
+          },
+        },
+        session ? { session } : undefined,
+      )
+      .exec();
+  }
+
+  async findCells(session?: ClientSession): Promise<StorageCellDocument[]> {
+    // Lọc phòng thủ theo shelf: cell cũ có thể còn sót lại sau khi một tầng
+    // được chuyển thành nhận tạm. Kệ lưu trữ vẫn luôn là candidate ngay cả
+    // khi toàn kho chưa cấu hình bất kỳ staging shelf nào.
+    const storageShelves = await this.withSession(
+      this.shelfModel
+        .find({ isStaging: false, ...SOFT_DELETE_FILTER })
+        .select('_id'),
+      session,
+    ).exec();
+    const shelfIds = storageShelves.map((shelf) => shelf._id);
+    if (shelfIds.length === 0) return [];
+    return this.withSession(
+      this.cellModel
+        .find({
+          shelfId: { $in: shelfIds },
+          deletedAt: null,
+          status: StorageCellStatus.ACTIVE,
+        } as Record<string, unknown>)
+        .sort({ code: 1 }),
+      session,
+    ).exec();
+  }
+  async findCellsByShelfId(
+    shelfId: Types.ObjectId,
+    session?: ClientSession,
+  ): Promise<StorageCellDocument[]> {
+    return this.withSession(
+      this.cellModel.find({ shelfId, deletedAt: null }).sort({ bay: 1 }),
+      session,
+    ).exec();
+  }
+
+  async findCellsByRackId(rackId: string): Promise<StorageCellDocument[]> {
+    return this.cellModel
+      .find({ rackId: new Types.ObjectId(rackId), deletedAt: null })
+      .sort({ level: 1, bay: 1 })
+      .exec();
+  }
+
+  async findCellByCode(
+    code: string,
+    session?: ClientSession,
+  ): Promise<StorageCellDocument | null> {
+    return this.withSession(
+      this.cellModel.findOne({ code, deletedAt: null }),
+      session,
+    ).exec();
+  }
+
+  async findCellById(
+    id: string,
+    session?: ClientSession,
+  ): Promise<StorageCellDocument | null> {
+    return this.withSession(
+      this.cellModel.findOne({ _id: id, deletedAt: null }),
+      session,
+    ).exec();
+  }
+
+  async lockActiveCellForInventory(
+    id: string,
+    session: ClientSession,
+  ): Promise<StorageCellDocument | null> {
+    return this.cellModel
+      .findOneAndUpdate(
+        {
+          _id: id,
+          deletedAt: null,
+          status: StorageCellStatus.ACTIVE,
+        } as Record<string, unknown>,
+        { $set: { updatedAt: new Date() } },
+        { new: true, session },
+      )
+      .exec() as Promise<StorageCellDocument | null>;
+  }
+  async findCellsAboveBay(
+    bayCount: number,
+    session?: ClientSession,
+  ): Promise<StorageCellDocument[]> {
+    return this.withSession(
+      this.cellModel.find({ bay: { $gt: bayCount }, deletedAt: null }),
+      session,
+    ).exec();
+  }
+
+  async reconcileStorageCellBayCount(
+    bayCount: number,
+    actorId: string,
+    session?: ClientSession,
+  ): Promise<void> {
+    const shelves = await this.findAllShelves(session);
+    for (const shelf of shelves) {
+      if (shelf.isStaging) continue;
+      const existing = await this.findCellsByShelfId(shelf._id, session);
+      const active = existing.filter((cell) => cell.deletedAt == null);
+      const widthPerBay = (shelf.innerWidth ?? bayCount) / bayCount;
+      await this.cellModel.updateMany(
+        { shelfId: shelf._id, bay: { $lte: bayCount }, deletedAt: null },
+        {
+          $set: {
+            innerWidth: widthPerBay,
+            updatedBy: new Types.ObjectId(actorId),
+          },
+        },
+        session ? { session } : undefined,
+      );
+      const existingBays = new Set(active.map((cell) => cell.bay));
+      const missingBays = Array.from(
+        { length: bayCount },
+        (_, index) => index + 1,
+      ).filter((bay) => !existingBays.has(bay));
+      if (missingBays.length > 0) {
+        const docs = missingBays.map((bay) => {
+          const code = `${shelf.code}-B${bay}`;
+          return {
+            rackId: shelf.rackId,
+            shelfId: shelf._id,
+            level: shelf.level,
+            bay,
+            code,
+            barcode: code,
+            innerDepth: shelf.innerDepth ?? 1,
+            innerWidth: widthPerBay,
+            innerHeight: shelf.innerHeight ?? 1,
+            fillFactor: shelf.fillFactor ?? null,
+            createdBy: new Types.ObjectId(actorId),
+            updatedBy: new Types.ObjectId(actorId),
+          };
+        });
+        if (session) await this.cellModel.insertMany(docs, { session });
+        else await this.cellModel.insertMany(docs);
+      }
+      await this.cellModel.updateMany(
+        { shelfId: shelf._id, bay: { $gt: bayCount }, deletedAt: null },
+        {
+          $set: {
+            deletedAt: new Date(),
+            updatedBy: new Types.ObjectId(actorId),
+          },
+        },
+        session ? { session } : undefined,
+      );
+    }
+  }
   // ─── RackTemplate (singleton) ────────────────────────────────────────────
 
   /** Lazy init: tạo bản ghi mặc định nếu collection rỗng — tránh cần seed script riêng. */

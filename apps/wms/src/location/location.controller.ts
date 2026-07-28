@@ -65,6 +65,7 @@ import {
 import { SaveWarehouseLayoutDto } from './dto/layout-change.dto';
 import { WarehouseLayoutEditorService } from './warehouse-layout-editor.service';
 import { ShelfContentResponseDto } from './dto/shelf-content.dto';
+import { WarehouseNavigationService } from './navigation.service';
 
 const TO_INSTANCE_OPTS = { excludeExtraneousValues: true } as const;
 
@@ -88,12 +89,13 @@ export class LocationController {
   constructor(
     private readonly svc: LocationService,
     private readonly editorService: WarehouseLayoutEditorService,
+    private readonly navigationService: WarehouseNavigationService,
   ) {}
 
   // ─── Layout tổng hợp (đặt đầu tiên, route cố định không xung đột) ────────
 
   @Get('layout')
-  @Roles(WmsRole.MANAGER, WmsRole.ADMIN)
+  @Roles(WmsRole.MANAGER, WmsRole.ADMIN, WmsRole.RECEIVER, WmsRole.PICKER)
   @ApiOperation({
     summary:
       'Snapshot sơ đồ kho 2D (canvas+zone+rack+shelf+aisle+gate) — [MANAGER, ADMIN]',
@@ -104,6 +106,12 @@ export class LocationController {
     return this.toLayoutResponse(layout);
   }
 
+  @Get('navigation')
+  @Roles(WmsRole.MANAGER, WmsRole.ADMIN, WmsRole.RECEIVER, WmsRole.PICKER)
+  @ApiOperation({ summary: 'Đường đi từ GATE-01 tới rack đích' })
+  getNavigation(@Query('targetRackId') targetRackId: string) {
+    return this.navigationService.getPath(targetRackId);
+  }
   @Patch('layout')
   @Roles(WmsRole.MANAGER)
   @ApiOperation({
@@ -428,6 +436,15 @@ export class LocationController {
 
   // ─── Rack param routes ────────────────────────────────────────────────────
 
+  @Get('racks/:id/cells')
+  @Roles(WmsRole.MANAGER, WmsRole.ADMIN, WmsRole.RECEIVER, WmsRole.PICKER)
+  @ApiOperation({
+    summary:
+      'Danh sách khoang và tồn thật của một rack — [MANAGER, ADMIN, RECEIVER, PICKER]',
+  })
+  async getRackCells(@Param('id') id: string) {
+    return this.svc.getRackCells(id);
+  }
   @Get('racks/:id')
   @Roles(WmsRole.MANAGER)
   @ApiOperation({ summary: 'Chi tiết rack — [MANAGER]' })
@@ -464,6 +481,19 @@ export class LocationController {
 
   // ─── Shelf param routes ───────────────────────────────────────────────────
 
+  @Get('cells/:id/contents')
+  @Roles(WmsRole.MANAGER, WmsRole.ADMIN, WmsRole.RECEIVER, WmsRole.PICKER)
+  @ApiOperation({
+    summary:
+      'Tồn kho thật tại 1 khoang (cell) — [MANAGER, ADMIN, RECEIVER, PICKER]',
+  })
+  @ApiOkResponse({ type: [ShelfContentResponseDto] })
+  async getCellContents(
+    @Param('id') id: string,
+  ): Promise<ShelfContentResponseDto[]> {
+    const rows = await this.svc.getCellContents(id);
+    return plainToInstance(ShelfContentResponseDto, rows, TO_INSTANCE_OPTS);
+  }
   @Get('shelves/:id')
   @Roles(WmsRole.MANAGER)
   @ApiOperation({ summary: 'Chi tiết shelf — [MANAGER]' })

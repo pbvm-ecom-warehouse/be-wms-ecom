@@ -32,7 +32,13 @@ export class PutAwaySuggestionController {
   async suggest(
     @Query() query: QueryPutAwaySuggestionDto,
   ): Promise<PutAwaySuggestionResponseDto> {
-    const result = await this.svc.suggest(query.sku, query.qty);
+    const result = await this.svc.suggest(query.sku, query.qty, {
+      lotId: query.lotId,
+      packageVolumeCm3: query.packageVolumeCm3,
+      packageDepthCm: query.packageDepthCm,
+      packageWidthCm: query.packageWidthCm,
+      packageHeightCm: query.packageHeightCm,
+    });
     return plainToInstance(PutAwaySuggestionResponseDto, result, TO_OPTS);
   }
 }

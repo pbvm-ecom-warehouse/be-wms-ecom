@@ -18,6 +18,59 @@ import { Types } from 'mongoose';
 import { PurchaseOrderStatus } from '../schemas/purchase-order.schema';
 import { ItemType } from '../../stock/schemas/warehouse-item.schema';
 
+export class PackageSpecDto {
+  @ApiProperty({ example: 'thùng' })
+  @IsString()
+  @MinLength(1)
+  unit!: string;
+
+  @ApiProperty({ example: 24, description: 'Số đơn vị cơ sở trong 1 thùng' })
+  @IsNumber()
+  @Min(1)
+  factor!: number;
+
+  @ApiProperty({ example: 40 })
+  @IsNumber()
+  @Min(1)
+  depthCm!: number;
+
+  @ApiProperty({ example: 30 })
+  @IsNumber()
+  @Min(1)
+  widthCm!: number;
+
+  @ApiProperty({ example: 25 })
+  @IsNumber()
+  @Min(1)
+  heightCm!: number;
+}
+
+export class PackageSpecResponseDto {
+  @Expose()
+  @ApiProperty()
+  unit!: string;
+
+  @Expose()
+  @ApiProperty()
+  factor!: number;
+
+  @Expose()
+  @ApiProperty()
+  depthCm!: number;
+
+  @Expose()
+  @ApiProperty()
+  widthCm!: number;
+
+  @Expose()
+  @ApiProperty()
+  heightCm!: number;
+
+  @Expose()
+  @ApiProperty()
+  volumeCm3!: number;
+}
+
 export class CreatePurchaseOrderItemDto {
   @ApiProperty({
     description: 'WarehouseItem._id (ObjectId)',
@@ -49,6 +102,16 @@ export class CreatePurchaseOrderItemDto {
   @IsNumber()
   @Min(0)
   unitPrice?: number;
+
+  @ApiPropertyOptional({
+    type: PackageSpecDto,
+    description:
+      'Quy cách thùng dùng cho luồng nhận/cất/xuất nguyên thùng. Nếu bỏ trống, server suy ra từ unit/factor và kích thước WarehouseItem.',
+  })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => PackageSpecDto)
+  packageSpec?: PackageSpecDto;
 }
 
 export class CreatePurchaseOrderDto {
@@ -165,6 +228,11 @@ export class PurchaseOrderItemResponseDto {
   @Expose()
   @ApiProperty()
   unitPrice!: number;
+
+  @Expose()
+  @Type(() => PackageSpecResponseDto)
+  @ApiPropertyOptional({ type: PackageSpecResponseDto })
+  packageSpec?: PackageSpecResponseDto;
 }
 
 /** Thông tin NCC rút gọn gắn vào PO response — không lộ contactName/phone/email/address/taxCode. */
@@ -271,6 +339,11 @@ export class ReceivingPurchaseOrderItemResponseDto {
   @Expose()
   @ApiProperty()
   remainingQty!: number;
+
+  @Expose()
+  @Type(() => PackageSpecResponseDto)
+  @ApiPropertyOptional({ type: PackageSpecResponseDto })
+  packageSpec?: PackageSpecResponseDto;
 }
 
 /**

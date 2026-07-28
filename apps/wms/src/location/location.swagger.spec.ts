@@ -4,6 +4,7 @@ import { JwtAuthGuard, RolesGuard } from '@app/auth';
 import { LocationController } from './location.controller';
 import { LocationService } from './location.service';
 import { WarehouseLayoutEditorService } from './warehouse-layout-editor.service';
+import { WarehouseNavigationService } from './navigation.service';
 
 describe('LocationController Swagger layout contract', () => {
   it('publishes request, success, conflict and geometry schemas', async () => {
@@ -12,6 +13,7 @@ describe('LocationController Swagger layout contract', () => {
       providers: [
         { provide: LocationService, useValue: {} },
         { provide: WarehouseLayoutEditorService, useValue: {} },
+        { provide: WarehouseNavigationService, useValue: {} },
       ],
     })
       .overrideGuard(JwtAuthGuard)

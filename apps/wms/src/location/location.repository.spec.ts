@@ -6,6 +6,7 @@ import { LocationRepository } from './location.repository';
 import { Zone } from './schemas/zone.schema';
 import { Rack } from './schemas/rack.schema';
 import { Shelf } from './schemas/shelf.schema';
+import { StorageCell } from './schemas/storage-cell.schema';
 import { RackTemplate } from './schemas/rack-template.schema';
 import { Aisle } from './schemas/aisle.schema';
 import { Gate } from './schemas/gate.schema';
@@ -30,6 +31,7 @@ describe('LocationRepository', () => {
   let zoneModel: ReturnType<typeof makeModel>;
   let rackModel: ReturnType<typeof makeModel>;
   let shelfModel: ReturnType<typeof makeModel>;
+  let cellModel: ReturnType<typeof makeModel>;
   let rackTemplateModel: ReturnType<typeof makeModel>;
   let aisleModel: ReturnType<typeof makeModel>;
   let gateModel: ReturnType<typeof makeModel>;
@@ -43,6 +45,7 @@ describe('LocationRepository', () => {
     zoneModel = makeModel();
     rackModel = makeModel();
     shelfModel = makeModel();
+    cellModel = makeModel();
     rackTemplateModel = makeModel();
     aisleModel = makeModel();
     gateModel = makeModel();
@@ -59,6 +62,7 @@ describe('LocationRepository', () => {
         { provide: getModelToken(Zone.name), useValue: zoneModel },
         { provide: getModelToken(Rack.name), useValue: rackModel },
         { provide: getModelToken(Shelf.name), useValue: shelfModel },
+        { provide: getModelToken(StorageCell.name), useValue: cellModel },
         {
           provide: getModelToken(RackTemplate.name),
           useValue: rackTemplateModel,
@@ -206,6 +210,25 @@ describe('LocationRepository', () => {
     });
   });
 
+  describe('findCells', () => {
+    it('chỉ trả khoang của tầng lưu trữ, không phụ thuộc việc có staging hay không', async () => {
+      const storageShelfId = new Types.ObjectId();
+      shelfModel.exec.mockResolvedValue([{ _id: storageShelfId }]);
+      cellModel.exec.mockResolvedValue([{ _id: new Types.ObjectId() }]);
+
+      await repo.findCells();
+
+      expect(shelfModel.find).toHaveBeenCalledWith({
+        isStaging: false,
+        deletedAt: null,
+      });
+      expect(cellModel.find).toHaveBeenCalledWith({
+        shelfId: { $in: [storageShelfId] },
+        deletedAt: null,
+        status: 'ACTIVE',
+      });
+    });
+  });
   describe('findShelfIdsByZone', () => {
     it('trả về shelfId của mọi shelf thuộc mọi rack trong zone', async () => {
       const zId = new Types.ObjectId().toString();

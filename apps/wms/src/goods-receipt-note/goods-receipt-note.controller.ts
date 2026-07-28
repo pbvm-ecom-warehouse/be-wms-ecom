@@ -38,6 +38,8 @@ import {
   CreateGoodsReceiptNoteDto,
   GoodsReceiptNoteResponseDto,
   QueryGoodsReceiptNoteDto,
+  RejectGoodsReceiptNoteDto,
+  SubmitGoodsReceiptNoteDto,
   UpdateGoodsReceiptNoteItemsDto,
 } from './dto/goods-receipt-note.dto';
 
@@ -92,6 +94,22 @@ export class GoodsReceiptNoteController {
     await this.svc.deleteGoodsReceiptNote(id);
   }
 
+  @Post(':id/submit')
+  @Roles(WmsRole.RECEIVER, WmsRole.ADMIN)
+  @ApiOperation({
+    summary:
+      'Gửi phiếu nhập kho chờ duyệt — chưa cộng tồn, chưa sinh put-away task — [RECEIVER, ADMIN]',
+  })
+  @ApiOkResponse({ type: GoodsReceiptNoteResponseDto })
+  async submitGoodsReceiptNote(
+    @Param('id') id: string,
+    @Body() _dto: SubmitGoodsReceiptNoteDto,
+    @CurrentUser('sub') actorId: string,
+  ): Promise<GoodsReceiptNoteResponseDto> {
+    const doc = await this.svc.submitGoodsReceiptNote(id, actorId);
+    const [plain] = await this.svc.attachDisplayInfo([doc]);
+    return plainToInstance(GoodsReceiptNoteResponseDto, plain, TO_OPTS);
+  }
   @Post(':id/confirm')
   @Roles(WmsRole.RECEIVER, WmsRole.ADMIN)
   @ApiOperation({
@@ -121,6 +139,19 @@ export class GoodsReceiptNoteController {
     return plainToInstance(GoodsReceiptNoteResponseDto, plain, TO_OPTS);
   }
 
+  @Post(':id/reject')
+  @Roles(WmsRole.MANAGER, WmsRole.ADMIN)
+  @ApiOperation({ summary: 'Từ chối phiếu nhập kho, trả về Receiver sửa và gửi lại — [MANAGER, ADMIN]' })
+  @ApiOkResponse({ type: GoodsReceiptNoteResponseDto })
+  async rejectGoodsReceiptNote(
+    @Param('id') id: string,
+    @Body() dto: RejectGoodsReceiptNoteDto,
+    @CurrentUser('sub') actorId: string,
+  ): Promise<GoodsReceiptNoteResponseDto> {
+    const doc = await this.svc.rejectGoodsReceiptNote(id, actorId, dto.reason);
+    const [plain] = await this.svc.attachDisplayInfo([doc]);
+    return plainToInstance(GoodsReceiptNoteResponseDto, plain, TO_OPTS);
+  }
   @Post(':id/images')
   @Roles(WmsRole.RECEIVER, WmsRole.ADMIN)
   @UseInterceptors(FileInterceptor('file'))

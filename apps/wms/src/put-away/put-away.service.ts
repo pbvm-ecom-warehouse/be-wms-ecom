@@ -18,15 +18,26 @@ export interface CreatePutAwayLineFromGrnInput {
   itemId: string;
   lotId: Types.ObjectId | null;
   quantity: number;
+  packageCount?: number;
+  packageSpec?: {
+    unit: string;
+    factor: number;
+    depthCm: number;
+    widthCm: number;
+    heightCm: number;
+    volumeCm3: number;
+  };
 }
 
 export interface ConfirmPutAwayLineInput {
   itemBarcode: string;
-  shelfCode: string;
-  quantity: number;
+  shelfCode?: string;
+  cellBarcode?: string;
+  quantity?: number;
+  packageCount?: number;
+  suggestedCellId?: string;
   lotId?: string;
 }
-
 @Injectable()
 export class PutAwayService {
   constructor(
@@ -44,6 +55,7 @@ export class PutAwayService {
     lines: CreatePutAwayLineFromGrnInput[],
     actorId: string,
     session: ClientSession,
+    sourceShelfId: Types.ObjectId,
   ): Promise<PutAwayTaskDocument> {
     return this.repo.createTask(
       grnId,
@@ -51,9 +63,12 @@ export class PutAwayService {
         itemId: new Types.ObjectId(l.itemId),
         lotId: l.lotId,
         quantity: l.quantity,
+        packageCount: l.packageCount,
+        packageSpec: l.packageSpec,
       })),
       actorId,
       session,
+      sourceShelfId,
     );
   }
 
@@ -76,19 +91,16 @@ export class PutAwayService {
     const item = await this.stockRepo.findItemByIdDocument(itemId.toString());
     if (!item) throw new AppException('PUTAWAY_ITEM_NOT_FOUND');
 
-    // Gọi thẳng LocationRepository (không qua LocationService.findShelfByCode) vì
-    // shelf-not-found ở luồng put-away phải throw code domain riêng PUTAWAY_SHELF_NOT_FOUND,
-    // không phải SHELF_NOT_FOUND cross-cutting của module location (xem spec S2-04 dòng 77).
-    const shelf = await this.locationRepo.findShelfByCode(dto.shelfCode);
+    const cell = dto.cellBarcode
+      ? await this.locationRepo.findCellByCode(dto.cellBarcode)
+      : null;
+    if (!cell) throw new AppException('PUTAWAY_CELL_NOT_FOUND');
+    const shelf = await this.locationRepo.findShelfById(
+      cell.shelfId.toString(),
+    );
     if (!shelf) throw new AppException('PUTAWAY_SHELF_NOT_FOUND');
     if (shelf.isStaging) throw new AppException('PUTAWAY_SHELF_IS_STAGING');
 
-    // Validate tường minh: item isPerishable bắt buộc phải quét kèm lotId.
-    // Không có check này, thiếu lotId thường VẪN bị chặn gián tiếp (vì lotId thật
-    // của dòng task khác null nên không match ở bước tìm `line` bên dưới) — nhưng
-    // đó là hệ quả tình cờ của dữ liệu, không phải validate rõ ràng. Chặn sớm ở
-    // đây để không phụ thuộc vào việc task.items có tồn tại dòng lotId=null trùng
-    // khớp hay không (dùng chung code lỗi PUTAWAY_ITEM_MISMATCH, không cần code mới).
     if (item.isPerishable && !dto.lotId) {
       throw new AppException('PUTAWAY_ITEM_MISMATCH');
     }
@@ -100,15 +112,49 @@ export class PutAwayService {
         (i.lotId?.toString() ?? null) === (lotId?.toString() ?? null),
     );
     if (!line) throw new AppException('PUTAWAY_ITEM_MISMATCH');
-    if (dto.quantity > line.remainingQty) {
+
+    const packageCount = dto.packageCount ?? 0;
+    const packageSpec = line.packageSpec;
+    if (!packageSpec) throw new AppException('PUTAWAY_PACKAGE_SPEC_REQUIRED');
+    const expectedQuantity = packageCount * packageSpec.factor;
+    const quantity = dto.quantity ?? expectedQuantity;
+    if (quantity <= 0 || packageCount <= 0) {
+      throw new AppException('PUTAWAY_PACKAGE_COUNT_REQUIRED');
+    }
+    if (dto.quantity !== undefined && dto.quantity !== expectedQuantity) {
+      throw new AppException('PUTAWAY_PACKAGE_QTY_MISMATCH');
+    }
+    if (
+      packageSpec.depthCm > cell.innerDepth ||
+      packageSpec.widthCm > cell.innerWidth ||
+      packageSpec.heightCm > cell.innerHeight
+    ) {
+      throw new AppException('PUTAWAY_CELL_DIMENSION_MISMATCH');
+    }
+    if (
+      quantity > line.remainingQty ||
+      packageCount > line.remainingPackageCount
+    ) {
       throw new AppException('PUTAWAY_QTY_EXCEEDS');
     }
 
-    const stagingShelf = await this.locationService.findStagingShelf();
+    const sourceShelfId =
+      task.sourceShelfId ?? (await this.locationService.findStagingShelf())._id;
+    const suggestedCellId = dto.suggestedCellId
+      ? new Types.ObjectId(dto.suggestedCellId)
+      : null;
+    const isOverride =
+      suggestedCellId !== null &&
+      suggestedCellId.toString() !== cell._id.toString();
 
     await this.stockTransactionHelper.withStockTransaction(async (session) => {
+      const activeCell = await this.locationRepo.lockActiveCellForInventory(
+        cell._id.toString(),
+        session,
+      );
+      if (!activeCell) throw new AppException('PUTAWAY_CELL_NOT_FOUND');
       const activeShelf = await this.locationRepo.lockActiveShelfForInventory(
-        shelf._id.toString(),
+        activeCell.shelfId.toString(),
         session,
       );
       if (!activeShelf) throw new AppException('PUTAWAY_SHELF_NOT_FOUND');
@@ -116,32 +162,54 @@ export class PutAwayService {
         throw new AppException('PUTAWAY_SHELF_IS_STAGING');
       }
 
-      // Trừ ở staging, cộng ở shelf thật — tổng InventoryStock của item không đổi,
-      // chỉ đổi phân bổ theo shelf. StockBalance.onHand không bị đụng tới.
-      await this.stockRepo.upsertInventory(
-        item._id,
-        stagingShelf._id,
-        lotId,
-        -dto.quantity,
+      const occupiedVolume = await this.stockRepo.findOccupiedVolumeForCell(
+        activeCell._id,
         session,
       );
+      const usableVolume =
+        activeCell.innerDepth *
+        activeCell.innerWidth *
+        activeCell.innerHeight *
+        (activeCell.fillFactor ?? 0.75);
+      const incomingVolume = packageCount * packageSpec.volumeCm3;
+      if (occupiedVolume + incomingVolume > usableVolume) {
+        throw new AppException('PUTAWAY_CELL_CAPACITY_EXCEEDED');
+      }
+
+      const stagingUpdated = await this.stockRepo.decrementInventoryIfAvailable(
+        item._id,
+        sourceShelfId,
+        null,
+        lotId,
+        quantity,
+        packageCount,
+        session,
+      );
+      if (!stagingUpdated) throw new AppException('STOCK_INSUFFICIENT');
       await this.stockRepo.upsertInventory(
         item._id,
         activeShelf._id,
         lotId,
-        dto.quantity,
+        quantity,
         session,
+        {
+          cellId: activeCell._id,
+          packageCount,
+          packageFactor: line.packageSpec?.factor,
+          packageVolumeCm3Snapshot: line.packageSpec?.volumeCm3,
+        },
       );
       await this.stockRepo.insertMovement(
         {
           itemId: item._id,
-          shelfId: stagingShelf._id,
+          shelfId: sourceShelfId,
           lotId,
           type: MovementType.PUTAWAY,
-          quantity: -dto.quantity,
+          quantity: -quantity,
           refType: 'put_away_task',
           refId: task._id,
           createdBy: new Types.ObjectId(actorId),
+          packageCount: -packageCount,
         },
         session,
       );
@@ -149,22 +217,31 @@ export class PutAwayService {
         {
           itemId: item._id,
           shelfId: activeShelf._id,
+          cellId: activeCell._id,
           lotId,
           type: MovementType.PUTAWAY,
-          quantity: dto.quantity,
+          quantity,
           refType: 'put_away_task',
           refId: task._id,
           createdBy: new Types.ObjectId(actorId),
+          packageCount,
+          packageFactor: line.packageSpec?.factor,
+          packageVolumeCm3Snapshot: line.packageSpec?.volumeCm3,
+          suggestedCellId,
+          actualCellId: activeCell._id,
+          isOverride,
         },
         session,
       );
-      await this.repo.decrementRemainingQty(
+      const taskUpdated = await this.repo.decrementRemainingQty(
         taskId,
         item._id,
         lotId,
-        dto.quantity,
+        quantity,
         session,
+        packageCount,
       );
+      if (!taskUpdated) throw new AppException('PUTAWAY_QTY_EXCEEDS');
       await this.repo.markCompletedIfAllDone(taskId, session);
     });
 
@@ -172,7 +249,6 @@ export class PutAwayService {
     if (!updated) throw new AppException('PUTAWAY_TASK_NOT_FOUND');
     return updated;
   }
-
   async getTask(id: string): Promise<PutAwayTaskDocument> {
     const doc = await this.repo.findTaskById(id);
     if (!doc) throw new AppException('PUTAWAY_TASK_NOT_FOUND');

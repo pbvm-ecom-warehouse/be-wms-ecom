@@ -18,6 +18,16 @@ export interface ResolvedGoodsReceiptNoteItem {
   lotNumber?: string;
   expiryDate?: Date;
   note?: string;
+  packageCount: number;
+  wholePackageOnly: boolean;
+  packageSpec?: {
+    unit: string;
+    factor: number;
+    depthCm: number;
+    widthCm: number;
+    heightCm: number;
+    volumeCm3: number;
+  };
 }
 
 @Injectable()
@@ -78,41 +88,73 @@ export class GoodsReceiptNoteRepository {
       .exec();
   }
 
-  /** DRAFT → CONFIRMED trong transaction cộng tồn — session bắt buộc để atomic với stock. */
-  async updateStatusConfirmed(
-    id: string,
-    actorId: string,
-    session: ClientSession,
-  ): Promise<void> {
-    await this.model
-      .findOneAndUpdate(
-        { _id: id },
-        {
-          status: GoodsReceiptNoteStatus.CONFIRMED,
-          confirmedBy: new Types.ObjectId(actorId),
-        },
-        { session },
-      )
-      .exec();
-  }
-
-  /** CONFIRMED → APPROVED — thuần audit, không cần transaction Mongo. */
-  async updateStatusApproved(
+  /** DRAFT/REJECTED → PENDING_APPROVAL: Receiver đã gửi ảnh và số thùng để duyệt. */
+  async updateStatusSubmitted(
     id: string,
     actorId: string,
   ): Promise<GoodsReceiptNoteDocument | null> {
     return this.model
       .findOneAndUpdate(
-        { _id: id },
         {
-          status: GoodsReceiptNoteStatus.APPROVED,
-          approvedBy: new Types.ObjectId(actorId),
+          _id: id,
+          status: {
+            $in: [
+              GoodsReceiptNoteStatus.DRAFT,
+              GoodsReceiptNoteStatus.REJECTED,
+            ],
+          },
+        },
+        {
+          status: GoodsReceiptNoteStatus.PENDING_APPROVAL,
+          submittedBy: new Types.ObjectId(actorId),
+          submittedAt: new Date(),
+          rejectedBy: undefined,
+          rejectedAt: undefined,
+          rejectionReason: undefined,
         },
         { new: true },
       )
       .exec();
   }
 
+  /** PENDING_APPROVAL → APPROVED trong transaction cộng tồn — session bắt buộc để atomic với stock. */
+  async updateStatusApproved(
+    id: string,
+    actorId: string,
+    session: ClientSession,
+  ): Promise<GoodsReceiptNoteDocument | null> {
+    return this.model
+      .findOneAndUpdate(
+        { _id: id, status: GoodsReceiptNoteStatus.PENDING_APPROVAL },
+        {
+          status: GoodsReceiptNoteStatus.APPROVED,
+          confirmedBy: new Types.ObjectId(actorId),
+          approvedBy: new Types.ObjectId(actorId),
+          approvedAt: new Date(),
+        },
+        { new: true, session },
+      )
+      .exec();
+  }
+
+  async updateStatusRejected(
+    id: string,
+    actorId: string,
+    reason: string,
+  ): Promise<GoodsReceiptNoteDocument | null> {
+    return this.model
+      .findOneAndUpdate(
+        { _id: id, status: GoodsReceiptNoteStatus.PENDING_APPROVAL },
+        {
+          status: GoodsReceiptNoteStatus.REJECTED,
+          rejectedBy: new Types.ObjectId(actorId),
+          rejectedAt: new Date(),
+          rejectionReason: reason,
+        },
+        { new: true },
+      )
+      .exec();
+  }
   /** Thêm 1 URL ảnh minh chứng vào GRN (cấp phiếu) — không giới hạn ở đây, service kiểm tra status. */
   async pushImage(
     id: string,
@@ -132,7 +174,15 @@ export class GoodsReceiptNoteRepository {
   ): Promise<GoodsReceiptNoteDocument | null> {
     return this.model
       .findOneAndUpdate(
-        { _id: id, status: GoodsReceiptNoteStatus.DRAFT },
+        {
+          _id: id,
+          status: {
+            $in: [
+              GoodsReceiptNoteStatus.DRAFT,
+              GoodsReceiptNoteStatus.REJECTED,
+            ],
+          },
+        },
         // itemId giữ string — Mongoose tự cast theo schema, cùng cách createGoodsReceiptNote làm.
         { items: resolvedItems as unknown as GoodsReceiptNote['items'] },
         { new: true },

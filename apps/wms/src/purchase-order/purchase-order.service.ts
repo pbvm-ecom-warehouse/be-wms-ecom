@@ -1,6 +1,6 @@
 // apps/wms/src/purchase-order/purchase-order.service.ts
 import { Injectable, Logger } from '@nestjs/common';
-import { AppException } from '@app/common';
+import { AppException } from '@app/common/errors/app.exception';
 import { Types, type ClientSession } from 'mongoose';
 import {
   PurchaseOrderRepository,
@@ -106,6 +106,7 @@ export class PurchaseOrderService {
           maxLeadTimeDays = maxOf(maxLeadTimeDays, supplierItem.leadTimeDays);
         }
       }
+      const packageSpec = this.resolvePackageSpec(item, warehouseItem);
       resolvedItems.push({
         itemId: item.itemId,
         // sku luôn denormalize từ WarehouseItem đã tra ở trên — không tin sku client tự gửi.
@@ -113,6 +114,7 @@ export class PurchaseOrderService {
         expectedQty: item.expectedQty,
         unit: item.unit,
         unitPrice,
+        packageSpec,
       });
     }
 
@@ -181,6 +183,51 @@ export class PurchaseOrderService {
     ) {
       throw new AppException('PO_QTY_BELOW_MOQ');
     }
+  }
+
+  private resolvePackageSpec(
+    item: {
+      unit: string;
+      packageSpec?: {
+        unit: string;
+        factor: number;
+        depthCm: number;
+        widthCm: number;
+        heightCm: number;
+      };
+    },
+    warehouseItem: {
+      unit: string;
+      altUnits?: { unit: string; factor: number }[];
+      depth?: number;
+      width?: number;
+      height?: number;
+    },
+  ) {
+    if (item.packageSpec) {
+      const { depthCm, widthCm, heightCm } = item.packageSpec;
+      return {
+        ...item.packageSpec,
+        volumeCm3: depthCm * widthCm * heightCm,
+      };
+    }
+
+    if (!warehouseItem.depth || !warehouseItem.width || !warehouseItem.height) {
+      return undefined;
+    }
+    const factor =
+      warehouseItem.altUnits?.find((u) => u.unit === item.unit)?.factor ??
+      (item.unit === warehouseItem.unit ? 1 : undefined);
+    if (!factor) return undefined;
+    return {
+      unit: item.unit,
+      factor,
+      depthCm: warehouseItem.depth,
+      widthCm: warehouseItem.width,
+      heightCm: warehouseItem.height,
+      volumeCm3:
+        warehouseItem.depth * warehouseItem.width * warehouseItem.height,
+    };
   }
 
   async listPurchaseOrders(
@@ -253,6 +300,7 @@ export class PurchaseOrderService {
             expectedQty: item.expectedQty,
             receivedQty: item.receivedQty,
             remainingQty: item.expectedQty - item.receivedQty,
+            packageSpec: item.packageSpec,
           })),
       })),
       total,
