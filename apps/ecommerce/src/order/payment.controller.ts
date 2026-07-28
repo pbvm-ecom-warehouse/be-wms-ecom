@@ -77,7 +77,8 @@ export class PaymentController {
     const orderCodeNum = query['orderCode']
       ? parseInt(query['orderCode'], 10)
       : 0;
-    const orderCodeStr = orderCodeNum ? numberToOrderCode(orderCodeNum) : '';
+    const baseCodeNum = Math.floor(orderCodeNum / 10);
+    const orderCodeStr = baseCodeNum ? numberToOrderCode(baseCodeNum) : '';
 
     if (success) {
       const redirectUrl = this.svc.getSuccessRedirectUrl(orderCodeStr);
@@ -97,7 +98,8 @@ export class PaymentController {
     const orderCodeNum = query['orderCode']
       ? parseInt(query['orderCode'], 10)
       : 0;
-    const orderCodeStr = orderCodeNum ? numberToOrderCode(orderCodeNum) : '';
+    const baseCodeNum = Math.floor(orderCodeNum / 10);
+    const orderCodeStr = baseCodeNum ? numberToOrderCode(baseCodeNum) : '';
 
     const redirectUrl = this.svc.getCancelRedirectUrl(orderCodeStr);
     return res.redirect(redirectUrl);

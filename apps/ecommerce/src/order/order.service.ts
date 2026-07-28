@@ -149,6 +149,7 @@ export class OrderService {
     if (order.hasPrintItems) {
       if (paidRatio >= 0.99) {
         nextPaymentStatus = PaymentStatus.PAID;
+        nextOrderStatus = OrderStatus.CONFIRMED;
         nextFulfillmentStatus = FulfillmentStatus.ISSUED;
       } else if (paidRatio >= 0.59) {
         nextPaymentStatus = PaymentStatus.PROGRESS_PAID;
@@ -160,6 +161,7 @@ export class OrderService {
     } else {
       if (paidRatio >= 0.99) {
         nextPaymentStatus = PaymentStatus.PAID;
+        nextOrderStatus = OrderStatus.CONFIRMED;
         nextFulfillmentStatus = FulfillmentStatus.ISSUED;
       } else if (paidRatio >= 0.49) {
         nextPaymentStatus = PaymentStatus.DEPOSIT_PAID;

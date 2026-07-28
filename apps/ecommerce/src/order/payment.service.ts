@@ -54,12 +54,51 @@ export class PaymentService {
     if (!order) {
       throw new AppException('ORDER_NOT_FOUND');
     }
-    if (order.paymentMethod !== PaymentMethod.ONLINE) {
-      throw new AppException('ORDER_NOT_ONLINE_PAYMENT');
+
+    // Xác định đợt thanh toán hiện tại và số tiền
+    let phase = 1;
+    let paymentAmount = 0;
+
+    if (order.hasPrintItems) {
+      // Đơn ly in:
+      if (order.paymentStatus === PaymentStatus.UNPAID) {
+        phase = 1;
+        paymentAmount = order.total * 0.3;
+      } else if (order.paymentStatus === PaymentStatus.DEPOSIT_PAID) {
+        phase = 2;
+        paymentAmount = order.total * 0.3;
+      } else if (order.paymentStatus === PaymentStatus.PROGRESS_PAID) {
+        if (order.paymentMethod === PaymentMethod.COD) {
+          throw new AppException(
+            'VALIDATION_FAILED',
+            'Đơn hàng COD không cần thanh toán online đợt 3',
+          );
+        }
+        phase = 3;
+        paymentAmount = order.total * 0.4;
+      } else {
+        throw new AppException(
+          'VALIDATION_FAILED',
+          'Đơn hàng đã thanh toán đủ',
+        );
+      }
+    } else {
+      // Đơn thường (không in):
+      if (order.paymentStatus === PaymentStatus.UNPAID) {
+        phase = 1;
+        paymentAmount =
+          order.paymentMethod === PaymentMethod.ONLINE
+            ? order.total
+            : order.total * 0.5;
+      } else {
+        throw new AppException(
+          'VALIDATION_FAILED',
+          'Đơn hàng đã thanh toán đủ',
+        );
+      }
     }
-    if (order.paymentStatus === PaymentStatus.PAID) {
-      throw new AppException('ORDER_ALREADY_PAID');
-    }
+
+    paymentAmount = Math.round(paymentAmount);
 
     const returnUrl = this.config.get<string>('PAYOS_RETURN_URL');
     const cancelUrl = this.config.get<string>('PAYOS_CANCEL_URL');
@@ -71,25 +110,27 @@ export class PaymentService {
       );
     }
 
-    const orderCode = orderCodeToNumber(order.code);
-    const description = `Thanh toan ${order.code}`.slice(0, 25);
+    // Tránh lỗi trùng orderCode của PayOS bằng cách thêm hậu tố đợt thanh toán
+    const baseCodeNum = orderCodeToNumber(order.code);
+    const orderCode = baseCodeNum * 10 + phase;
+    const description = `Thanh toan ${order.code} D${phase}`.slice(0, 25);
 
     try {
       const paymentLinkRes = await this.payos.paymentRequests.create({
         orderCode,
-        amount: order.total,
+        amount: paymentAmount,
         description,
         returnUrl,
         cancelUrl,
       });
 
       this.logger.log(
-        `Tạo PayOS link thành công cho đơn ${order.code} -> orderCode=${orderCode}`,
+        `Tạo PayOS link thành công cho đơn ${order.code} đợt ${phase} -> orderCode=${orderCode}, amount=${paymentAmount}`,
       );
       return paymentLinkRes.checkoutUrl;
     } catch (err) {
       this.logger.error(
-        `Lỗi khi tạo PayOS payment link cho đơn ${order.code}:`,
+        `Lỗi khi tạo PayOS payment link cho đơn ${order.code} đợt ${phase}:`,
         err,
       );
       const message = err instanceof Error ? err.message : 'unknown error';
@@ -116,8 +157,9 @@ export class PaymentService {
         `Xác thực webhook PayOS thành công cho orderCode: ${webhookData.orderCode}`,
       );
 
-      // Chuyển orderCode số nguyên về dạng mã đơn hàng chuỗi ORD-...
-      const orderCodeStr = numberToOrderCode(webhookData.orderCode);
+      // Giải mã mã số đơn hàng gốc bằng cách bỏ đi chữ số cuối cùng (số đợt thanh toán)
+      const baseOrderCodeNum = Math.floor(webhookData.orderCode / 10);
+      const orderCodeStr = numberToOrderCode(baseOrderCodeNum);
       const order = await this.orderRepo.findByCode(orderCodeStr);
       if (!order) {
         this.logger.error(
@@ -171,25 +213,23 @@ export class PaymentService {
     const order = await this.orderRepo.findById(orderId);
     if (!order) return;
 
-    const orderCode = orderCodeToNumber(order.code);
-
-    try {
-      // Kiểm tra xem link thanh toán có đang hoạt động không
-      const paymentLink = await this.payos.paymentRequests.get(orderCode);
-
-      // Chỉ hủy khi link thanh toán vẫn ở trạng thái PENDING
-      if (paymentLink.status === 'PENDING') {
-        await this.payos.paymentRequests.cancel(orderCode, reason.slice(0, 25));
-        this.logger.log(
-          `Đã hủy link thanh toán PayOS của đơn ${order.code} (orderCode=${orderCode})`,
-        );
+    // Hủy link thanh toán của cả 3 đợt có thể xảy ra
+    for (const phase of [1, 2, 3]) {
+      const orderCode = orderCodeToNumber(order.code) * 10 + phase;
+      try {
+        const paymentLink = await this.payos.paymentRequests.get(orderCode);
+        if (paymentLink.status === 'PENDING') {
+          await this.payos.paymentRequests.cancel(
+            orderCode,
+            reason.slice(0, 25),
+          );
+          this.logger.log(
+            `Đã hủy link thanh toán PayOS của đơn ${order.code} đợt ${phase} (orderCode=${orderCode})`,
+          );
+        }
+      } catch (err) {
+        // Bỏ qua nếu lỗi (ví dụ link thanh toán đợt này chưa từng được tạo)
       }
-    } catch (err) {
-      // Nếu link thanh toán chưa được tạo hoặc đã hủy rồi, có thể bỏ qua hoặc log warn
-      const message = err instanceof Error ? err.message : 'unknown error';
-      this.logger.warn(
-        `Không thể hủy link thanh toán PayOS của đơn ${order.code}: ${message}`,
-      );
     }
   }
 
