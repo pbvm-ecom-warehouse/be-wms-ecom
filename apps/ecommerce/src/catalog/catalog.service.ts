@@ -167,6 +167,20 @@ export class CatalogService {
     return { message: 'Đã xóa danh mục thành công' };
   }
 
+  async listDeletedCategories() {
+    return this.repo.listDeletedCategories();
+  }
+
+  async restoreCategory(id: string) {
+    if (!Types.ObjectId.isValid(id)) {
+      throw new AppException('VALIDATION_FAILED', 'ID danh mục không hợp lệ');
+    }
+
+    const restored = await this.repo.restoreCategory(id);
+    if (!restored) throw new AppException('CATALOG_CATEGORY_NOT_FOUND');
+    return restored;
+  }
+
   // ── PRODUCT ───────────────────────────────────────────────────────────────
 
   async createProduct(dto: CreateProductDto) {

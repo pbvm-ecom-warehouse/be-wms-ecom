@@ -155,6 +155,19 @@ export class CatalogRepository {
       .lean();
   }
 
+  async listDeletedCategories() {
+    return this.categoryModel
+      .find({ deletedAt: { $ne: null } })
+      .sort({ position: 1 })
+      .lean();
+  }
+
+  async restoreCategory(id: string) {
+    return this.categoryModel
+      .findByIdAndUpdate(id, { deletedAt: null }, { new: true })
+      .lean();
+  }
+
   // ── PRODUCT ───────────────────────────────────────────────────────────────
 
   async createProduct(data: Partial<Product>) {

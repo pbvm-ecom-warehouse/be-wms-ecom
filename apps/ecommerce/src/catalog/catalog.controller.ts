@@ -178,6 +178,27 @@ export class CatalogAdminController {
     });
   }
 
+  @Get('categories/deleted')
+  @ApiOperation({ summary: '[Admin] Xem các danh mục đã bị xóa mềm' })
+  @ApiOkResponse({ type: [CategoryResponseDto] })
+  async getDeletedCategories() {
+    const list = await this.svc.listDeletedCategories();
+    return plainToInstance(CategoryResponseDto, list, {
+      excludeExtraneousValues: true,
+    });
+  }
+
+  @Patch('categories/:id/restore')
+  @ApiOperation({ summary: '[Admin] Khôi phục danh mục bị xóa mềm' })
+  @ApiParam({ name: 'id', description: 'ID danh mục' })
+  @ApiOkResponse({ type: CategoryResponseDto })
+  async restoreCategory(@Param('id') id: string) {
+    const category = await this.svc.restoreCategory(id);
+    return plainToInstance(CategoryResponseDto, category, {
+      excludeExtraneousValues: true,
+    });
+  }
+
   // ── Products ──────────────────────────────────────────────────────────────
 
   @Post('products')
