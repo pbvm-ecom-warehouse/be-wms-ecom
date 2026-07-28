@@ -4,7 +4,7 @@ import {
   OmitType,
   PartialType,
 } from '@nestjs/swagger';
-import { Transform, Type } from 'class-transformer';
+import { plainToInstance, Transform, Type } from 'class-transformer';
 import {
   ArrayMinSize,
   IsArray,
@@ -55,6 +55,13 @@ export class AltUnitDto {
   factor!: number;
 }
 
+function parseAltUnitsIfString({ value }: { value: unknown }): unknown {
+  const parsed = parseJsonArrayIfString({ value });
+  return Array.isArray(parsed)
+    ? parsed.map((item) => plainToInstance(AltUnitDto, item))
+    : parsed;
+}
+
 /**
  * SKU/barcode/attributes KHÔNG nhận từ client (issue #25) — BE tự resolve
  * template + option rồi sinh. type chỉ nhận 3 giá trị public (CUP_PRINTED bị
@@ -88,14 +95,18 @@ export class CreateWarehouseItemDto {
   @MinLength(1)
   name!: string;
 
-  @ApiProperty({ example: 'cái' })
+  @ApiProperty({
+    example: 'thùng',
+    description:
+      'Đơn vị tồn kho của mặt hàng mới; service chuẩn hóa cố định thành "thùng".',
+  })
   @IsString()
   @MinLength(1)
   unit!: string;
 
   @ApiPropertyOptional({ type: [AltUnitDto] })
   @IsOptional()
-  @Transform(parseJsonArrayIfString)
+  @Transform(parseAltUnitsIfString)
   @IsArray()
   @ValidateNested({ each: true })
   @Type(() => AltUnitDto)
