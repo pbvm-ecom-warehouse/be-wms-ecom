@@ -204,6 +204,29 @@ export class PurchaseOrderService {
       height?: number;
     },
   ) {
+    // Với master data chuẩn mới, 1 quantity luôn là 1 thùng. Không nhận
+    // packageSpec từ PO để tránh altUnits (vd 24 cái/thùng) bị dùng nhầm làm
+    // hệ số tồn kho và biến 20 thùng thành 480 cái.
+    if (warehouseItem.unit === 'thùng') {
+      if (
+        !warehouseItem.depth ||
+        !warehouseItem.width ||
+        !warehouseItem.height
+      ) {
+        return undefined;
+      }
+      return {
+        unit: 'thùng',
+        factor: 1,
+        depthCm: warehouseItem.depth,
+        widthCm: warehouseItem.width,
+        heightCm: warehouseItem.height,
+        volumeCm3:
+          warehouseItem.depth * warehouseItem.width * warehouseItem.height,
+      };
+    }
+
+    // Nhánh tương thích cho master/chứng từ cũ chưa quản lý tồn theo thùng.
     if (item.packageSpec) {
       const { depthCm, widthCm, heightCm } = item.packageSpec;
       return {

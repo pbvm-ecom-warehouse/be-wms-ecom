@@ -36,11 +36,11 @@ export class CreateGoodsReceiptNoteItemDto {
   @ApiPropertyOptional({
     example: 5,
     description:
-      'Số thùng thực nhận; nếu bỏ trống server tính từ actualQty/packageSpec.factor.',
+      'Số thùng nguyên thực nhận; nếu bỏ trống server tính từ actualQty/packageSpec.factor cho chứng từ legacy.',
   })
   @IsOptional()
-  @IsNumber()
-  @Min(0)
+  @IsInt()
+  @Min(1)
   packageCount?: number;
 
   @ApiPropertyOptional({

@@ -124,6 +124,39 @@ describe('StockService', () => {
       expect(result).toBe(createdDoc);
     });
 
+    it('luôn lưu đơn vị cơ sở là thùng nhưng vẫn giữ đơn vị phụ', async () => {
+      skuTemplateSvc.resolveAndBuildSku.mockResolvedValue({
+        sku: 'MAT-SYRUP-PEACH-750ML',
+        attributeSnapshot: [],
+      });
+      barcodeSvc.generateAndReservePrimaryBarcode.mockResolvedValue(
+        '2000000000015',
+      );
+      repo.createItem.mockResolvedValue({
+        _id: new Types.ObjectId(),
+        sku: 'MAT-SYRUP-PEACH-750ML',
+        unit: 'thùng',
+      });
+
+      await svc.createWarehouseItem(
+        {
+          ...dto,
+          unit: 'cái',
+          altUnits: [{ unit: 'cái', factor: 24 }],
+        } as never,
+        actorId,
+      );
+
+      expect(repo.createItem).toHaveBeenCalledWith(
+        expect.objectContaining({
+          unit: 'thùng',
+          altUnits: [{ unit: 'cái', factor: 24 }],
+        }),
+        new Types.ObjectId(actorId),
+        expect.anything(),
+      );
+    });
+
     it('map lỗi 11000 trên sku (race hiếm) thành STOCK_ITEM_SKU_CONFLICT, không throw 500 thô', async () => {
       skuTemplateSvc.resolveAndBuildSku.mockResolvedValue({
         sku: 'MAT-SYRUP-PEACH-750ML',
