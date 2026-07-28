@@ -8,7 +8,6 @@ describe('GoodsReceiptNote schema', () => {
     expect(Object.values(GoodsReceiptNoteStatus)).toEqual([
       'DRAFT',
       'PENDING_APPROVAL',
-      'CONFIRMED',
       'APPROVED',
       'REJECTED',
     ]);
@@ -21,7 +20,6 @@ describe('GoodsReceiptNote schema', () => {
     expect(paths['status']).toBeDefined();
     expect(paths['items']).toBeDefined();
     expect(paths['createdBy']).toBeDefined();
-    expect(paths['confirmedBy']).toBeDefined();
     expect(paths['approvedBy']).toBeDefined();
     expect(paths['images']).toBeDefined();
   });

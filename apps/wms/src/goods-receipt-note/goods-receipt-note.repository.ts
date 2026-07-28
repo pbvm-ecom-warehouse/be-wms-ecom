@@ -118,7 +118,6 @@ export class GoodsReceiptNoteRepository {
         { _id: id, status: GoodsReceiptNoteStatus.PENDING_APPROVAL },
         {
           status: GoodsReceiptNoteStatus.APPROVED,
-          confirmedBy: new Types.ObjectId(actorId),
           approvedBy: new Types.ObjectId(actorId),
           approvedAt: new Date(),
         },

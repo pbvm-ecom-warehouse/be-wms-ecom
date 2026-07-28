@@ -277,7 +277,7 @@ export class LocationService {
     });
   }
 
-  /** GRN CONFIRMED cần shelf staging duy nhất — không có thì chặn confirm. */
+  /** GRN APPROVED cần shelf staging duy nhất — không có thì chặn approve. */
   async findStagingShelf(): Promise<ShelfDocument> {
     const shelf = await this.repo.findStagingShelf();
     if (!shelf) throw new AppException('GRN_STAGING_SHELF_NOT_FOUND');

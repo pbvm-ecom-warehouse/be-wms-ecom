@@ -70,7 +70,6 @@ describe('GoodsReceiptNoteRepository - vòng đời duyệt', () => {
       { _id: 'grn1', status: GoodsReceiptNoteStatus.PENDING_APPROVAL },
       expect.objectContaining({
         status: GoodsReceiptNoteStatus.APPROVED,
-        confirmedBy: new Types.ObjectId(actorId),
         approvedBy: new Types.ObjectId(actorId),
         approvedAt: expect.any(Date),
       }),

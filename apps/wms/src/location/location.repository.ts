@@ -524,7 +524,7 @@ export class LocationRepository {
     return shelvesByRack.flat().map((s) => s._id);
   }
 
-  /** Tìm shelf staging (khu nhận hàng tạm) duy nhất toàn hệ thống — dùng khi GRN CONFIRMED cộng tồn. */
+  /** Tìm shelf staging (khu nhận hàng tạm) duy nhất toàn hệ thống — dùng khi GRN APPROVED cộng tồn. */
   async findStagingShelf(): Promise<ShelfDocument | null> {
     return this.shelfModel
       .findOne({ isStaging: true, deletedAt: null })

@@ -177,7 +177,7 @@ export class GoodsReceiptNoteItemResponseDto {
   @ApiPropertyOptional()
   unitPrice?: number;
 
-  /** Tổng đã nhận của PO tính đến hiện tại (mọi GRN đã CONFIRMED) — không phải riêng GRN này. */
+  /** Tổng đã nhận của PO tính đến hiện tại (mọi GRN đã APPROVED) — không phải riêng GRN này. */
   @Expose()
   @ApiPropertyOptional()
   receivedQty?: number;

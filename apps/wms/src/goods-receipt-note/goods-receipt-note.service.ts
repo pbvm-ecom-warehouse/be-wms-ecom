@@ -122,10 +122,10 @@ export class GoodsReceiptNoteService {
         throw new AppException('GRN_ITEM_NOT_IN_PO');
       }
 
-      // Chặn ngay lúc tạo/sửa (không đợi tới confirm) nếu dòng PO này đã nhận đủ hoặc
+      // Chặn ngay lúc tạo/sửa (không đợi tới approve) nếu dòng PO này đã nhận đủ hoặc
       // actualQty client gửi vượt phần còn thiếu — tránh tạo/sửa GRN DRAFT "vô nghĩa"
-      // chắc chắn sẽ bị GRN_QTY_EXCEEDS_PO chặn lại lúc confirm, đỡ tốn công RECEIVER
-      // nhập lô/hạn dùng/ảnh minh chứng cho một phiếu không thể xác nhận được.
+      // chắc chắn sẽ bị GRN_QTY_EXCEEDS_PO chặn lại lúc approve, đỡ tốn công RECEIVER
+      // nhập lô/hạn dùng/ảnh minh chứng cho một phiếu không thể duyệt được.
       const remainingQty = poItem.expectedQty - poItem.receivedQty;
       if (remainingQty <= 0 || item.actualQty > remainingQty) {
         throw new AppException('GRN_QTY_EXCEEDS_PO');
@@ -158,7 +158,7 @@ export class GoodsReceiptNoteService {
 
   /**
    * Sửa toàn bộ items của 1 GRN còn DRAFT — thay thế hoàn toàn (không merge),
-   * chạy lại đúng validate như lúc tạo. Chỉ cho phép khi DRAFT vì sau CONFIRMED
+   * chạy lại đúng validate như lúc tạo. Chỉ cho phép khi DRAFT/REJECTED vì sau APPROVED
    * đã cộng tồn kho thật, sửa items sẽ làm lệch số liệu đã ghi sổ.
    */
   async updateGoodsReceiptNoteItems(
@@ -186,7 +186,7 @@ export class GoodsReceiptNoteService {
 
   /**
    * Xóa vật lý 1 GRN còn DRAFT — chưa cộng tồn kho/PO nên xóa cứng an toàn,
-   * khác với chứng từ đã CONFIRMED/APPROVED (hủy bằng status, không soft-delete).
+   * khác với chứng từ đã APPROVED (hủy bằng status, không soft-delete).
    */
   async deleteGoodsReceiptNote(id: string): Promise<void> {
     const grn = await this.repo.findGoodsReceiptNoteById(id);
@@ -213,14 +213,6 @@ export class GoodsReceiptNoteService {
     const submitted = await this.repo.updateStatusSubmitted(id, actorId);
     if (!submitted) throw new AppException('GRN_INVALID_STATUS_TRANSITION');
     return submitted;
-  }
-
-  /** Deprecated: giữ alias để client cũ không gãy, nhưng không còn cộng tồn. */
-  async confirmGoodsReceiptNote(
-    id: string,
-    actorId: string,
-  ): Promise<GoodsReceiptNoteDocument> {
-    return this.submitGoodsReceiptNote(id, actorId);
   }
 
   async approveGoodsReceiptNote(
@@ -586,7 +578,7 @@ export class GoodsReceiptNoteService {
         items: doc.items.map((item) => {
           const warehouseItem = itemById.get(item.itemId.toString());
           // receivedQty/remainingQty lấy TẠI THỜI ĐIỂM trả response (không phải
-          // lúc tạo GRN) — phản ánh tổng đã nhận từ MỌI GRN đã CONFIRMED của PO
+          // lúc tạo GRN) — phản ánh tổng đã nhận từ MỌI GRN đã APPROVED của PO
           // này, để FE đối chiếu còn thiếu bao nhiêu so với PO.
           const poItem = po?.items.find(
             (i) => i.itemId.toString() === item.itemId.toString(),
@@ -617,7 +609,7 @@ export class GoodsReceiptNoteService {
   /**
    * PO chỉ chặn tạo mới nếu NCC không ACTIVE (assertSupplierActive lúc createPurchaseOrder);
    * PO đã đặt/đang giao dở vẫn cho nhận hàng tiếp để tránh tồn kho treo hoặc tranh chấp hợp
-   * đồng đã ký (issue #34 — quyết định nghiệp vụ: cảnh báo, không chặn confirm GRN).
+   * đồng đã ký (issue #34 — quyết định nghiệp vụ: cảnh báo, không chặn approve GRN).
    */
   private async warnIfSupplierNotActive(
     supplierId: string,

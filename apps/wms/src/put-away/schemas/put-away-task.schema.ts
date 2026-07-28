@@ -49,7 +49,7 @@ const PutAwayItemSchema = SchemaFactory.createForClass(PutAwayItem);
 
 /**
  * Lệnh sắp xếp (UC-03). Chứng từ giao dịch — hủy bằng status, KHÔNG soft-delete.
- * Sinh tự động khi GoodsReceiptNote CONFIRMED.
+ * Sinh tự động khi GoodsReceiptNote APPROVED.
  */
 @Schema({ collection: 'put_away_tasks', timestamps: true })
 export class PutAwayTask {

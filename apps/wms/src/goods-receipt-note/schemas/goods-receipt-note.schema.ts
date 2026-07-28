@@ -4,7 +4,6 @@ import { HydratedDocument, Types } from 'mongoose';
 export enum GoodsReceiptNoteStatus {
   DRAFT = 'DRAFT',
   PENDING_APPROVAL = 'PENDING_APPROVAL',
-  CONFIRMED = 'CONFIRMED',
   APPROVED = 'APPROVED',
   REJECTED = 'REJECTED',
 }
@@ -72,9 +71,6 @@ export class GoodsReceiptNote {
 
   @Prop({ type: Types.ObjectId, required: true })
   createdBy!: Types.ObjectId;
-
-  @Prop({ type: Types.ObjectId })
-  confirmedBy?: Types.ObjectId;
 
   @Prop({ type: Date })
   submittedAt?: Date;

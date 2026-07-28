@@ -110,22 +110,6 @@ export class GoodsReceiptNoteController {
     const [plain] = await this.svc.attachDisplayInfo([doc]);
     return plainToInstance(GoodsReceiptNoteResponseDto, plain, TO_OPTS);
   }
-  @Post(':id/confirm')
-  @Roles(WmsRole.RECEIVER, WmsRole.ADMIN)
-  @ApiOperation({
-    summary:
-      'Xác nhận nhận hàng — cộng tồn 2 lớp + cập nhật PO — [RECEIVER, ADMIN]',
-  })
-  @ApiOkResponse({ type: GoodsReceiptNoteResponseDto })
-  async confirmGoodsReceiptNote(
-    @Param('id') id: string,
-    @CurrentUser('sub') actorId: string,
-  ): Promise<GoodsReceiptNoteResponseDto> {
-    const doc = await this.svc.confirmGoodsReceiptNote(id, actorId);
-    const [plain] = await this.svc.attachDisplayInfo([doc]);
-    return plainToInstance(GoodsReceiptNoteResponseDto, plain, TO_OPTS);
-  }
-
   @Post(':id/approve')
   @Roles(WmsRole.MANAGER, WmsRole.ADMIN)
   @ApiOperation({ summary: 'Duyệt phiếu nhập kho (audit) — [MANAGER, ADMIN]' })
