@@ -28,16 +28,38 @@ export class StockCountItem {
   @Prop({ type: Types.ObjectId, default: null })
   lotId!: Types.ObjectId | null;
 
-  /** Tồn hệ thống — copy từ InventoryStock.quantity lúc tạo phiếu */
-  @Prop({ type: Number, required: true, min: 0 })
+  /** Tồn hệ thống (số thùng) — copy từ InventoryStock.quantity lúc tạo phiếu */
+  @Prop({
+    type: Number,
+    required: true,
+    min: 0,
+    validate: {
+      validator: Number.isInteger,
+      message: 'systemQty phải là số nguyên',
+    },
+  })
   systemQty!: number;
 
-  /** null = COUNTER chưa đếm dòng này */
-  @Prop({ type: Number, default: null })
+  /** null = COUNTER chưa đếm dòng này. Số thùng — luôn là số nguyên khi có giá trị. */
+  @Prop({
+    type: Number,
+    default: null,
+    validate: {
+      validator: (v: number | null) => v === null || Number.isInteger(v),
+      message: 'actualQty phải là số nguyên',
+    },
+  })
   actualQty!: number | null;
 
   /** = actualQty - systemQty, tính khi COUNTER nhập. null nếu chưa đếm */
-  @Prop({ type: Number, default: null })
+  @Prop({
+    type: Number,
+    default: null,
+    validate: {
+      validator: (v: number | null) => v === null || Number.isInteger(v),
+      message: 'delta phải là số nguyên',
+    },
+  })
   delta!: number | null;
 
   /** Lý do lệch (hư hỏng/mất mát/nhập nhầm...) — COUNTER ghi khi nhập, tuỳ chọn */

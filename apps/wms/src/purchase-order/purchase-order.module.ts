@@ -1,5 +1,5 @@
 // apps/wms/src/purchase-order/purchase-order.module.ts
-import { Module } from '@nestjs/common';
+import { forwardRef, Module } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
 import {
   PurchaseOrder,
@@ -17,7 +17,9 @@ import { StockModule } from '../stock/stock.module';
       { name: PurchaseOrder.name, schema: PurchaseOrderSchema },
     ]),
     SupplierModule, // assertSupplierActive + getSupplierItemByItemAndSupplier
-    StockModule, // findItemById — validate itemId tồn tại khi tạo PO
+    // forwardRef: StockService cần hasAnyPurchaseOrderForItem để khóa depth/width/height,
+    // trong khi PurchaseOrderService cần StockRepository.findItemById — 2 chiều phụ thuộc lẫn nhau.
+    forwardRef(() => StockModule),
   ],
   providers: [PurchaseOrderRepository, PurchaseOrderService],
   controllers: [PurchaseOrderController],

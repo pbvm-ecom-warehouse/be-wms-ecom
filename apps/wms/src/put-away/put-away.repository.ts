@@ -11,7 +11,6 @@ export interface CreatePutAwayLineInput {
   itemId: Types.ObjectId;
   lotId: Types.ObjectId | null;
   quantity: number;
-  packageCount?: number;
   packageSpec?: {
     unit: string;
     factor: number;
@@ -54,8 +53,6 @@ export class PutAwayRepository {
             lotId: l.lotId,
             quantity: l.quantity,
             remainingQty: l.quantity,
-            packageCount: l.packageCount ?? 0,
-            remainingPackageCount: l.packageCount ?? 0,
             packageSpec: l.packageSpec,
           })),
           createdBy: new Types.ObjectId(actorId),
@@ -109,7 +106,6 @@ export class PutAwayRepository {
     lotId: Types.ObjectId | null,
     quantity: number,
     session: ClientSession,
-    packageCount = 0,
   ): Promise<PutAwayTaskDocument | null> {
     return this.model
       .findOneAndUpdate(
@@ -121,14 +117,12 @@ export class PutAwayRepository {
               itemId,
               lotId,
               remainingQty: { $gte: quantity },
-              remainingPackageCount: { $gte: packageCount },
             },
           },
         },
         {
           $inc: {
             'items.$.remainingQty': -quantity,
-            'items.$.remainingPackageCount': -packageCount,
           },
         },
         { new: true, session },
@@ -145,9 +139,7 @@ export class PutAwayRepository {
       session,
     });
     if (!task) return;
-    const allDone = task.items.every(
-      (i) => i.remainingQty === 0 && i.remainingPackageCount === 0,
-    );
+    const allDone = task.items.every((i) => i.remainingQty === 0);
     if (allDone && task.status !== PutAwayTaskStatus.COMPLETED) {
       task.status = PutAwayTaskStatus.COMPLETED;
       await task.save({ session });

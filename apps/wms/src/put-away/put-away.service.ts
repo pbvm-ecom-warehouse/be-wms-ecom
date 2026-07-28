@@ -18,7 +18,6 @@ export interface CreatePutAwayLineFromGrnInput {
   itemId: string;
   lotId: Types.ObjectId | null;
   quantity: number;
-  packageCount?: number;
   packageSpec?: {
     unit: string;
     factor: number;
@@ -34,7 +33,6 @@ export interface ConfirmPutAwayLineInput {
   shelfCode?: string;
   cellBarcode?: string;
   quantity?: number;
-  packageCount?: number;
   suggestedCellId?: string;
   lotId?: string;
 }
@@ -63,7 +61,6 @@ export class PutAwayService {
         itemId: new Types.ObjectId(l.itemId),
         lotId: l.lotId,
         quantity: l.quantity,
-        packageCount: l.packageCount,
         packageSpec: l.packageSpec,
       })),
       actorId,
@@ -113,16 +110,13 @@ export class PutAwayService {
     );
     if (!line) throw new AppException('PUTAWAY_ITEM_MISMATCH');
 
-    const packageCount = dto.packageCount ?? 0;
     const packageSpec = line.packageSpec;
     if (!packageSpec) throw new AppException('PUTAWAY_PACKAGE_SPEC_REQUIRED');
-    const expectedQuantity = packageCount * packageSpec.factor;
-    const quantity = dto.quantity ?? expectedQuantity;
-    if (quantity <= 0 || packageCount <= 0) {
+    // quantity = số thùng nguyên cần cất — không còn nhân factor (quyết định:
+    // quantity luôn là thùng, factor chỉ để hiển thị).
+    const quantity = dto.quantity ?? 0;
+    if (quantity <= 0) {
       throw new AppException('PUTAWAY_PACKAGE_COUNT_REQUIRED');
-    }
-    if (dto.quantity !== undefined && dto.quantity !== expectedQuantity) {
-      throw new AppException('PUTAWAY_PACKAGE_QTY_MISMATCH');
     }
     if (
       packageSpec.depthCm > cell.innerDepth ||
@@ -131,10 +125,7 @@ export class PutAwayService {
     ) {
       throw new AppException('PUTAWAY_CELL_DIMENSION_MISMATCH');
     }
-    if (
-      quantity > line.remainingQty ||
-      packageCount > line.remainingPackageCount
-    ) {
+    if (quantity > line.remainingQty) {
       throw new AppException('PUTAWAY_QTY_EXCEEDS');
     }
 
@@ -171,7 +162,7 @@ export class PutAwayService {
         activeCell.innerWidth *
         activeCell.innerHeight *
         (activeCell.fillFactor ?? 0.75);
-      const incomingVolume = packageCount * packageSpec.volumeCm3;
+      const incomingVolume = quantity * packageSpec.volumeCm3;
       if (occupiedVolume + incomingVolume > usableVolume) {
         throw new AppException('PUTAWAY_CELL_CAPACITY_EXCEEDED');
       }
@@ -182,7 +173,6 @@ export class PutAwayService {
         null,
         lotId,
         quantity,
-        packageCount,
         session,
       );
       if (!stagingUpdated) throw new AppException('STOCK_INSUFFICIENT');
@@ -194,7 +184,6 @@ export class PutAwayService {
         session,
         {
           cellId: activeCell._id,
-          packageCount,
           packageFactor: line.packageSpec?.factor,
           packageVolumeCm3Snapshot: line.packageSpec?.volumeCm3,
         },
@@ -209,7 +198,6 @@ export class PutAwayService {
           refType: 'put_away_task',
           refId: task._id,
           createdBy: new Types.ObjectId(actorId),
-          packageCount: -packageCount,
         },
         session,
       );
@@ -224,7 +212,6 @@ export class PutAwayService {
           refType: 'put_away_task',
           refId: task._id,
           createdBy: new Types.ObjectId(actorId),
-          packageCount,
           packageFactor: line.packageSpec?.factor,
           packageVolumeCm3Snapshot: line.packageSpec?.volumeCm3,
           suggestedCellId,
@@ -239,7 +226,6 @@ export class PutAwayService {
         lotId,
         quantity,
         session,
-        packageCount,
       );
       if (!taskUpdated) throw new AppException('PUTAWAY_QTY_EXCEEDS');
       await this.repo.markCompletedIfAllDone(taskId, session);

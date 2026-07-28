@@ -4,8 +4,9 @@ import {
   OmitType,
   PartialType,
 } from '@nestjs/swagger';
-import { plainToInstance, Transform, Type } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 import {
+  ArrayMaxSize,
   ArrayMinSize,
   IsArray,
   IsBoolean,
@@ -55,13 +56,6 @@ export class AltUnitDto {
   factor!: number;
 }
 
-function parseAltUnitsIfString({ value }: { value: unknown }): unknown {
-  const parsed = parseJsonArrayIfString({ value });
-  return Array.isArray(parsed)
-    ? parsed.map((item) => plainToInstance(AltUnitDto, item))
-    : parsed;
-}
-
 /**
  * SKU/barcode/attributes KHÔNG nhận từ client (issue #25) — BE tự resolve
  * template + option rồi sinh. type chỉ nhận 3 giá trị public (CUP_PRINTED bị
@@ -97,20 +91,24 @@ export class CreateWarehouseItemDto {
 
   @ApiProperty({
     example: 'thùng',
-    description:
-      'Đơn vị tồn kho của mặt hàng mới; service chuẩn hóa cố định thành "thùng".',
+    description: 'Đơn vị chính — dùng để nhập kho (GRN) và mua hàng (PO).',
   })
   @IsString()
   @MinLength(1)
   unit!: string;
 
-  @ApiPropertyOptional({ type: [AltUnitDto] })
-  @IsOptional()
-  @Transform(parseAltUnitsIfString)
+  @ApiProperty({
+    type: [AltUnitDto],
+    description:
+      'Đơn vị chính (unit) luôn là thùng dùng để nhập/mua — bắt buộc khai đúng 1 đơn vị lẻ để quy đổi.',
+  })
+  @Transform(parseJsonArrayIfString)
   @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(1)
   @ValidateNested({ each: true })
   @Type(() => AltUnitDto)
-  altUnits?: AltUnitDto[];
+  altUnits!: AltUnitDto[];
 
   @ApiPropertyOptional({ example: false })
   @IsOptional()

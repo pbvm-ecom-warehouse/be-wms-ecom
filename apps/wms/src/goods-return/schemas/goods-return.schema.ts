@@ -28,7 +28,15 @@ export class GoodsReturnItem {
   @Prop({ required: true })
   sku!: string;
 
-  @Prop({ type: Number, required: true, min: 1 })
+  @Prop({
+    type: Number,
+    required: true,
+    min: 1,
+    validate: {
+      validator: Number.isInteger,
+      message: 'quantity phải là số nguyên',
+    },
+  })
   quantity!: number;
 
   /** null cho tới khi inspect — RECEIVER phân loại GOOD/DAMAGED */

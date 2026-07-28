@@ -3,7 +3,19 @@ import { GoodsReceiptNoteService } from './goods-receipt-note.service';
 import { GoodsReceiptNoteStatus } from './schemas/goods-receipt-note.schema';
 import { PurchaseOrderStatus } from '../purchase-order/schemas/purchase-order.schema';
 
-const packageSpec = {
+// WarehouseItem giả lập unit chính = "thùng" (factor 10 với "cái", chỉ để
+// hiển thị) + kích thước cả thùng — GRN service tự resolve packageSpec từ
+// đây (không snapshot), và actualQty luôn là số thùng nguyên (không quy đổi
+// qua factor nữa).
+const warehouseItem = {
+  isPerishable: false,
+  unit: 'thùng',
+  altUnits: [{ unit: 'cái', factor: 10 }],
+  depth: 40,
+  width: 30,
+  height: 20,
+};
+const resolvedPackageSpec = {
   unit: 'thùng',
   factor: 10,
   depthCm: 40,
@@ -72,10 +84,9 @@ describe('GoodsReceiptNoteService - duyệt trước khi ghi tồn', () => {
       {
         itemId: new Types.ObjectId(itemId),
         sku: 'SKU-1',
-        unit: 'cái',
+        unit: 'thùng',
         expectedQty: 100,
         receivedQty: 0,
-        packageSpec,
       },
     ],
   });
@@ -89,10 +100,7 @@ describe('GoodsReceiptNoteService - duyệt trước khi ghi tồn', () => {
       {
         itemId: new Types.ObjectId(itemId),
         sku: 'SKU-1',
-        unit: 'cái',
-        actualQty: 20,
-        packageCount: 2,
-        packageSpec,
+        actualQty: 2,
       },
     ],
   });
@@ -112,10 +120,7 @@ describe('GoodsReceiptNoteService - duyệt trước khi ghi tồn', () => {
     );
     repo.countByGrnNumberPrefix.mockResolvedValue(0);
     poService.getPurchaseOrder.mockResolvedValue(purchaseOrder());
-    stockRepo.findItemById.mockResolvedValue({
-      isPerishable: false,
-      altUnits: [],
-    });
+    stockRepo.findItemById.mockResolvedValue(warehouseItem);
     locationService.findStagingShelf.mockResolvedValue({ _id: stagingShelfId });
     supplierService.getSupplier.mockResolvedValue({
       name: 'NCC Test',
@@ -126,7 +131,7 @@ describe('GoodsReceiptNoteService - duyệt trước khi ghi tồn', () => {
     });
   });
 
-  it('snapshot quy cách thùng từ PO khi tạo GRN', async () => {
+  it('tạo GRN với actualQty là số thùng nguyên, không còn packageCount/unit riêng', async () => {
     repo.createGoodsReceiptNote.mockResolvedValue({
       status: GoodsReceiptNoteStatus.DRAFT,
     });
@@ -134,7 +139,7 @@ describe('GoodsReceiptNoteService - duyệt trước khi ghi tồn', () => {
     await service.createGoodsReceiptNote(
       {
         purchaseOrderId,
-        items: [{ itemId, actualQty: 20, packageCount: 2 }],
+        items: [{ itemId, actualQty: 2 }],
       },
       actorId,
     );
@@ -145,9 +150,7 @@ describe('GoodsReceiptNoteService - duyệt trước khi ghi tồn', () => {
       [
         expect.objectContaining({
           itemId,
-          actualQty: 20,
-          packageCount: 2,
-          packageSpec,
+          actualQty: 2,
           wholePackageOnly: true,
         }),
       ],
@@ -168,21 +171,37 @@ describe('GoodsReceiptNoteService - duyệt trước khi ghi tồn', () => {
     expect(repo.updateStatusSubmitted).not.toHaveBeenCalled();
   });
 
-  it('submit bắt buộc quy cách và số thùng khớp số lượng cơ sở', async () => {
+  it('submit throw GRN_PACKAGE_SPEC_REQUIRED nếu item thiếu depth/width/height', async () => {
+    stockRepo.findItemById.mockResolvedValue({
+      isPerishable: false,
+      altUnits: [{ unit: 'cái', factor: 10 }],
+      // thiếu depth/width/height
+    });
+    repo.findGoodsReceiptNoteById.mockResolvedValue({
+      ...pendingGrn(),
+      status: GoodsReceiptNoteStatus.DRAFT,
+    });
+
+    await expect(
+      service.submitGoodsReceiptNote(grnId.toString(), actorId),
+    ).rejects.toMatchObject({ code: 'GRN_PACKAGE_SPEC_REQUIRED' });
+  });
+
+  it('submit throw GRN_PACKAGE_COUNT_REQUIRED nếu actualQty <= 0', async () => {
     repo.findGoodsReceiptNoteById.mockResolvedValue({
       ...pendingGrn(),
       status: GoodsReceiptNoteStatus.DRAFT,
       items: [
         {
           ...pendingGrn().items[0],
-          packageCount: 3,
+          actualQty: 0,
         },
       ],
     });
 
     await expect(
       service.submitGoodsReceiptNote(grnId.toString(), actorId),
-    ).rejects.toMatchObject({ code: 'GRN_PACKAGE_QTY_MISMATCH' });
+    ).rejects.toMatchObject({ code: 'GRN_PACKAGE_COUNT_REQUIRED' });
   });
 
   it('Receiver có thể sửa phiếu REJECTED và gửi duyệt lại', async () => {
@@ -205,7 +224,7 @@ describe('GoodsReceiptNoteService - duyệt trước khi ghi tồn', () => {
     });
 
     await service.updateGoodsReceiptNoteItems(grnId.toString(), [
-      { itemId, actualQty: 20, packageCount: 2 },
+      { itemId, actualQty: 2 },
     ]);
     const submitted = await service.submitGoodsReceiptNote(
       grnId.toString(),
@@ -239,9 +258,10 @@ describe('GoodsReceiptNoteService - duyệt trước khi ghi tồn', () => {
       approverId,
       expect.anything(),
     );
+    // baseQty = actualQty trực tiếp (2), không còn nhân factor.
     expect(stockRepo.upsertBalance).toHaveBeenCalledWith(
       new Types.ObjectId(itemId),
-      20,
+      2,
       0,
       0,
       expect.anything(),
@@ -250,10 +270,9 @@ describe('GoodsReceiptNoteService - duyệt trước khi ghi tồn', () => {
       new Types.ObjectId(itemId),
       stagingShelfId,
       null,
-      20,
+      2,
       expect.anything(),
       expect.objectContaining({
-        packageCount: 2,
         packageFactor: 10,
         packageVolumeCm3Snapshot: 24000,
       }),
@@ -261,8 +280,7 @@ describe('GoodsReceiptNoteService - duyệt trước khi ghi tồn', () => {
     expect(stockRepo.insertMovement).toHaveBeenCalledWith(
       expect.objectContaining({
         type: 'RECEIVE',
-        quantity: 20,
-        packageCount: 2,
+        quantity: 2,
         createdBy: new Types.ObjectId(approverId),
       }),
       expect.anything(),
@@ -272,9 +290,8 @@ describe('GoodsReceiptNoteService - duyệt trước khi ghi tồn', () => {
       [
         expect.objectContaining({
           itemId,
-          quantity: 20,
-          packageCount: 2,
-          packageSpec,
+          quantity: 2,
+          packageSpec: resolvedPackageSpec,
         }),
       ],
       approverId,

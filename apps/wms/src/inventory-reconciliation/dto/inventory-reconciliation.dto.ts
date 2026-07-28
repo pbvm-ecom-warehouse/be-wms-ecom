@@ -19,17 +19,14 @@ export class AssignInventoryCellDto {
   @MinLength(1)
   cellBarcode!: string;
 
-  @ApiProperty({ example: 3 })
+  @ApiProperty({
+    example: 3,
+    description: 'Số thùng — luôn là số nguyên, không quy đổi.',
+  })
   @Type(() => Number)
   @IsInt()
   @Min(1)
-  packageCount!: number;
-
-  @ApiProperty({ example: 12 })
-  @Type(() => Number)
-  @IsInt()
-  @Min(1)
-  packageFactor!: number;
+  quantity!: number;
 
   @ApiProperty({ example: 40 })
   @Type(() => Number)

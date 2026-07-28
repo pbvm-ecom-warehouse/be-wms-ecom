@@ -35,6 +35,10 @@ const makeCloudinaryService = () => ({
   uploadImage: jest.fn(),
 });
 
+const makePurchaseOrderService = () => ({
+  hasAnyPurchaseOrderForItem: jest.fn(),
+});
+
 describe('StockService', () => {
   let svc: StockService;
   let repo: ReturnType<typeof makeRepo>;
@@ -44,6 +48,7 @@ describe('StockService', () => {
   let barcodeSvc: ReturnType<typeof makeBarcodeService>;
   let txHelper: ReturnType<typeof makeTransactionHelper>;
   let cloudinary: ReturnType<typeof makeCloudinaryService>;
+  let purchaseOrderService: ReturnType<typeof makePurchaseOrderService>;
 
   beforeEach(() => {
     repo = makeRepo();
@@ -53,6 +58,8 @@ describe('StockService', () => {
     barcodeSvc = makeBarcodeService();
     txHelper = makeTransactionHelper();
     cloudinary = makeCloudinaryService();
+    purchaseOrderService = makePurchaseOrderService();
+    purchaseOrderService.hasAnyPurchaseOrderForItem.mockResolvedValue(false);
     svc = new StockService(
       repo as never,
       queue as never,
@@ -61,6 +68,7 @@ describe('StockService', () => {
       barcodeSvc as never,
       txHelper as never,
       cloudinary as never,
+      purchaseOrderService as never,
     );
   });
 
@@ -122,39 +130,6 @@ describe('StockService', () => {
         expect.anything(),
       );
       expect(result).toBe(createdDoc);
-    });
-
-    it('luôn lưu đơn vị cơ sở là thùng nhưng vẫn giữ đơn vị phụ', async () => {
-      skuTemplateSvc.resolveAndBuildSku.mockResolvedValue({
-        sku: 'MAT-SYRUP-PEACH-750ML',
-        attributeSnapshot: [],
-      });
-      barcodeSvc.generateAndReservePrimaryBarcode.mockResolvedValue(
-        '2000000000015',
-      );
-      repo.createItem.mockResolvedValue({
-        _id: new Types.ObjectId(),
-        sku: 'MAT-SYRUP-PEACH-750ML',
-        unit: 'thùng',
-      });
-
-      await svc.createWarehouseItem(
-        {
-          ...dto,
-          unit: 'cái',
-          altUnits: [{ unit: 'cái', factor: 24 }],
-        } as never,
-        actorId,
-      );
-
-      expect(repo.createItem).toHaveBeenCalledWith(
-        expect.objectContaining({
-          unit: 'thùng',
-          altUnits: [{ unit: 'cái', factor: 24 }],
-        }),
-        new Types.ObjectId(actorId),
-        expect.anything(),
-      );
     });
 
     it('map lỗi 11000 trên sku (race hiếm) thành STOCK_ITEM_SKU_CONFLICT, không throw 500 thô', async () => {
@@ -297,6 +272,43 @@ describe('StockService', () => {
       await expect(
         svc.updateWarehouseItem('missing', { name: 'X' }, actorId),
       ).rejects.toMatchObject({ code: 'STOCK_ITEM_NOT_FOUND' });
+    });
+
+    it('cho phép sửa depth/width/height khi item chưa có PO nào', async () => {
+      purchaseOrderService.hasAnyPurchaseOrderForItem.mockResolvedValue(false);
+      const mockDoc = { _id: new Types.ObjectId(), depth: 10 };
+      repo.updateItem.mockResolvedValue(mockDoc);
+
+      const result = await svc.updateWarehouseItem(
+        'item1',
+        { depth: 10 },
+        actorId,
+      );
+
+      expect(
+        purchaseOrderService.hasAnyPurchaseOrderForItem,
+      ).toHaveBeenCalledWith('item1');
+      expect(result).toBe(mockDoc);
+    });
+
+    it('throw STOCK_ITEM_DIMENSIONS_LOCKED khi sửa depth/width/height sau khi item đã có PO', async () => {
+      purchaseOrderService.hasAnyPurchaseOrderForItem.mockResolvedValue(true);
+
+      await expect(
+        svc.updateWarehouseItem('item1', { width: 20 }, actorId),
+      ).rejects.toMatchObject({ code: 'STOCK_ITEM_DIMENSIONS_LOCKED' });
+      expect(repo.updateItem).not.toHaveBeenCalled();
+    });
+
+    it('không check PO khi update không đụng depth/width/height', async () => {
+      const mockDoc = { _id: new Types.ObjectId(), name: 'Tên mới' };
+      repo.updateItem.mockResolvedValue(mockDoc);
+
+      await svc.updateWarehouseItem('item1', { name: 'Tên mới' }, actorId);
+
+      expect(
+        purchaseOrderService.hasAnyPurchaseOrderForItem,
+      ).not.toHaveBeenCalled();
     });
   });
 

@@ -33,7 +33,7 @@ describe('PutAwayRepository', () => {
 
     await repo.createTask(
       grnId,
-      [{ itemId, lotId: null, quantity: 20, packageCount: 2, packageSpec }],
+      [{ itemId, lotId: null, quantity: 2, packageSpec }],
       actorId,
       session,
       sourceShelfId,
@@ -49,10 +49,8 @@ describe('PutAwayRepository', () => {
             {
               itemId,
               lotId: null,
-              quantity: 20,
-              remainingQty: 20,
-              packageCount: 2,
-              remainingPackageCount: 2,
+              quantity: 2,
+              remainingQty: 2,
               packageSpec,
             },
           ],
@@ -63,7 +61,7 @@ describe('PutAwayRepository', () => {
     );
   });
 
-  it('giảm đúng item+lô và chặn vượt cả baseQty lẫn packageCount trong một query', async () => {
+  it('giảm đúng item+lô, chặn vượt remainingQty trong một query', async () => {
     const taskId = new Types.ObjectId().toString();
     const itemId = new Types.ObjectId();
     const lotId = new Types.ObjectId();
@@ -71,7 +69,7 @@ describe('PutAwayRepository', () => {
     const exec = jest.fn().mockResolvedValue({ _id: taskId });
     model.findOneAndUpdate.mockReturnValue({ exec });
 
-    await repo.decrementRemainingQty(taskId, itemId, lotId, 20, session, 2);
+    await repo.decrementRemainingQty(taskId, itemId, lotId, 2, session);
 
     expect(model.findOneAndUpdate).toHaveBeenCalledWith(
       {
@@ -81,29 +79,24 @@ describe('PutAwayRepository', () => {
           $elemMatch: {
             itemId,
             lotId,
-            remainingQty: { $gte: 20 },
-            remainingPackageCount: { $gte: 2 },
+            remainingQty: { $gte: 2 },
           },
         },
       },
       {
         $inc: {
-          'items.$.remainingQty': -20,
-          'items.$.remainingPackageCount': -2,
+          'items.$.remainingQty': -2,
         },
       },
       { new: true, session },
     );
   });
 
-  it('chỉ COMPLETED khi cả số lượng cơ sở và số thùng đều về 0', async () => {
+  it('COMPLETED khi mọi dòng đã hết remainingQty', async () => {
     const session = {} as never;
     const doc = {
       status: PutAwayTaskStatus.PENDING,
-      items: [
-        { remainingQty: 0, remainingPackageCount: 0 },
-        { remainingQty: 0, remainingPackageCount: 0 },
-      ],
+      items: [{ remainingQty: 0 }, { remainingQty: 0 }],
       save: jest.fn(),
     };
     model.findOne.mockResolvedValue(doc);
@@ -114,10 +107,10 @@ describe('PutAwayRepository', () => {
     expect(doc.save).toHaveBeenCalledWith({ session });
   });
 
-  it('không COMPLETED nếu vẫn còn thùng dù remainingQty đã 0', async () => {
+  it('không COMPLETED nếu còn dòng chưa xếp hết (remainingQty > 0)', async () => {
     const doc = {
       status: PutAwayTaskStatus.PENDING,
-      items: [{ remainingQty: 0, remainingPackageCount: 1 }],
+      items: [{ remainingQty: 0 }, { remainingQty: 1 }],
       save: jest.fn(),
     };
     model.findOne.mockResolvedValue(doc);

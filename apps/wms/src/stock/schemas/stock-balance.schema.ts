@@ -15,13 +15,35 @@ export class StockBalance {
   @Prop({ type: SchemaTypes.ObjectId, required: true })
   itemId!: Types.ObjectId;
 
-  @Prop({ required: true, default: 0 })
+  /** Số thùng — luôn là số nguyên (quyết định: quantity luôn là thùng, không quy đổi). */
+  @Prop({
+    required: true,
+    default: 0,
+    validate: {
+      validator: Number.isInteger,
+      message: 'onHand phải là số nguyên',
+    },
+  })
   onHand!: number;
 
-  @Prop({ required: true, default: 0 })
+  @Prop({
+    required: true,
+    default: 0,
+    validate: {
+      validator: Number.isInteger,
+      message: 'reserved phải là số nguyên',
+    },
+  })
   reserved!: number;
 
-  @Prop({ required: true, default: 0 })
+  @Prop({
+    required: true,
+    default: 0,
+    validate: {
+      validator: Number.isInteger,
+      message: 'expired phải là số nguyên',
+    },
+  })
   expired!: number;
 
   /** Ngưỡng cảnh báo hàng sắp hết — bắn event stock.low khi available < minQuantity */

@@ -1,9 +1,5 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { HydratedDocument, Types } from 'mongoose';
-import {
-  PackageSpec,
-  PackageSpecSchema,
-} from '../../stock/schemas/package-spec.schema';
 
 export enum PurchaseOrderStatus {
   DRAFT = 'DRAFT',
@@ -28,7 +24,7 @@ export class PurchaseOrderItem {
   @Prop({ type: Number, required: true, min: 0 })
   expectedQty!: number;
 
-  /** Đơn vị đặt — có thể là đơn vị phụ (vd "thùng") của WarehouseItem */
+  /** Luôn khớp WarehouseItem.unit (đơn vị cơ sở — "thùng") — service chặn nếu lệch. */
   @Prop({ required: true })
   unit!: string;
 
@@ -39,10 +35,6 @@ export class PurchaseOrderItem {
   /** Tích lũy từ mọi GRN đã CONFIRMED tham chiếu PO này — đơn vị cơ sở (base unit) */
   @Prop({ type: Number, default: 0, min: 0 })
   receivedQty!: number;
-
-  /** Quy cách thùng chốt trên PO để GRN snapshot lại khi gửi duyệt. */
-  @Prop({ type: PackageSpecSchema })
-  packageSpec?: PackageSpec;
 }
 const PurchaseOrderItemSchema = SchemaFactory.createForClass(PurchaseOrderItem);
 

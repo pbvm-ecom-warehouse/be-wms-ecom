@@ -6,7 +6,6 @@ import {
   IsEnum,
   IsInt,
   IsMongoId,
-  IsNumber,
   IsOptional,
   IsString,
   Max,
@@ -35,8 +34,11 @@ export class CreateScrapNoteItemDto {
   @IsMongoId()
   shelfId!: string;
 
-  @ApiProperty({ example: 10, description: 'Số lượng đề xuất hủy' })
-  @IsNumber()
+  @ApiProperty({
+    example: 10,
+    description: 'Số thùng đề xuất hủy — luôn là số nguyên.',
+  })
+  @IsInt()
   @Min(1)
   quantity!: number;
 

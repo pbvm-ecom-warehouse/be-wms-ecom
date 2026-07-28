@@ -39,7 +39,9 @@ export class InventoryReconciliationService {
   }
 
   async assign(dto: AssignInventoryCellDto, actorId: string) {
-    const quantity = dto.packageCount * dto.packageFactor;
+    // quantity = số thùng nguyên do client gửi trực tiếp — không còn quy đổi
+    // qua factor (quyết định: quantity luôn là thùng, factor chỉ để hiển thị).
+    const quantity = dto.quantity;
     await this.txHelper.withStockTransaction(async (session) => {
       const source = await this.stockRepo.findInventoryById(
         dto.inventoryId,
@@ -50,12 +52,6 @@ export class InventoryReconciliationService {
       }
       if (source.quantity < quantity) {
         throw new AppException('UNASSIGNED_INVENTORY_QTY_EXCEEDS');
-      }
-      if (
-        source.packageFactor !== undefined &&
-        source.packageFactor !== dto.packageFactor
-      ) {
-        throw new AppException('PACKAGE_FACTOR_MISMATCH');
       }
 
       const cell = await this.locationRepo.findCellByCode(
@@ -84,21 +80,13 @@ export class InventoryReconciliationService {
         activeCell.innerWidth *
         activeCell.innerHeight *
         (activeCell.fillFactor ?? 0.75);
-      if (
-        occupiedVolume + dto.packageCount * dto.packageVolumeCm3 >
-        usableVolume
-      ) {
+      if (occupiedVolume + quantity * dto.packageVolumeCm3 > usableVolume) {
         throw new AppException('STORAGE_CELL_CAPACITY_EXCEEDED');
       }
 
-      const sourcePackageDelta = Math.min(
-        source.packageCount ?? 0,
-        dto.packageCount,
-      );
       const updatedSource = await this.stockRepo.decrementUnassignedInventory(
         dto.inventoryId,
         quantity,
-        sourcePackageDelta,
         session,
       );
       if (!updatedSource) {
@@ -112,8 +100,7 @@ export class InventoryReconciliationService {
         session,
         {
           cellId: activeCell._id,
-          packageCount: dto.packageCount,
-          packageFactor: dto.packageFactor,
+          packageFactor: source.packageFactor,
           packageVolumeCm3Snapshot: dto.packageVolumeCm3,
         },
       );
@@ -127,8 +114,7 @@ export class InventoryReconciliationService {
             cellId: activeCell._id,
             lotId: source.lotId,
             quantity,
-            packageCount: dto.packageCount,
-            packageFactor: dto.packageFactor,
+            packageFactor: source.packageFactor,
             packageVolumeCm3Snapshot: dto.packageVolumeCm3,
             assignedBy: new Types.ObjectId(actorId),
           },

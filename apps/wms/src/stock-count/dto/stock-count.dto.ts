@@ -4,7 +4,6 @@ import {
   IsEnum,
   IsInt,
   IsMongoId,
-  IsNumber,
   IsOptional,
   IsString,
   Max,
@@ -38,8 +37,11 @@ export class CountStockCountItemDto {
   @IsMongoId()
   lotId?: string;
 
-  @ApiProperty({ example: 45, description: 'Số lượng đếm được thực tế' })
-  @IsNumber()
+  @ApiProperty({
+    example: 45,
+    description: 'Số thùng đếm được thực tế — luôn là số nguyên.',
+  })
+  @IsInt()
   @Min(0)
   actualQty!: number;
 
@@ -68,9 +70,12 @@ export class CountStockCountItemFormDto {
   @IsMongoId()
   lotId?: string;
 
-  @ApiProperty({ example: 45, description: 'Số lượng đếm được thực tế' })
+  @ApiProperty({
+    example: 45,
+    description: 'Số thùng đếm được thực tế — luôn là số nguyên.',
+  })
   @Type(() => Number)
-  @IsNumber()
+  @IsInt()
   @Min(0)
   actualQty!: number;
 

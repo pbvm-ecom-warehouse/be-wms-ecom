@@ -7,7 +7,6 @@ import {
   IsEnum,
   IsInt,
   IsMongoId,
-  IsNumber,
   IsOptional,
   IsString,
   Max,
@@ -18,7 +17,6 @@ import {
 import { Types } from 'mongoose';
 import { GoodsReceiptNoteStatus } from '../schemas/goods-receipt-note.schema';
 import { ItemType } from '../../stock/schemas/warehouse-item.schema';
-import { PackageSpecResponseDto } from '../../purchase-order/dto/purchase-order.dto';
 
 export class CreateGoodsReceiptNoteItemDto {
   @ApiProperty({
@@ -28,31 +26,14 @@ export class CreateGoodsReceiptNoteItemDto {
   @IsMongoId()
   itemId!: string;
 
-  @ApiProperty({ example: 100, description: 'Số lượng thực nhận' })
-  @IsNumber()
-  @Min(0)
-  actualQty!: number;
-
-  @ApiPropertyOptional({
+  @ApiProperty({
     example: 5,
     description:
-      'Số thùng nguyên thực nhận; nếu bỏ trống server tính từ actualQty/packageSpec.factor cho chứng từ legacy.',
+      'Số thùng thực nhận — luôn là số nguyên, theo đơn vị cơ sở (thùng).',
   })
-  @IsOptional()
   @IsInt()
-  @Min(1)
-  packageCount?: number;
-
-  @ApiPropertyOptional({
-    example: 'cái',
-    description:
-      'Đơn vị thực nhận — có thể khác unit đặt trong PO (vd PO đặt "thùng" nhưng đếm ra "cái"). ' +
-      'Bỏ trống thì lấy theo unit của dòng PO tương ứng.',
-  })
-  @IsOptional()
-  @IsString()
-  @MinLength(1)
-  unit?: string;
+  @Min(0)
+  actualQty!: number;
 
   @ApiPropertyOptional({
     example: 'L240601',
@@ -206,13 +187,10 @@ export class GoodsReceiptNoteItemResponseDto {
   @ApiPropertyOptional()
   remainingQty?: number;
 
+  /** Số thùng thực nhận — luôn là số nguyên, luôn theo đơn vị cơ sở (thùng) của item. */
   @Expose()
   @ApiProperty()
   actualQty!: number;
-
-  @Expose()
-  @ApiProperty()
-  unit!: string;
 
   @Expose()
   @ApiPropertyOptional()
@@ -226,14 +204,18 @@ export class GoodsReceiptNoteItemResponseDto {
   @ApiPropertyOptional()
   note?: string;
 
+  /** Kích thước 1 thùng — đọc "live" từ WarehouseItem tại thời điểm trả response (không snapshot). */
   @Expose()
-  @ApiProperty()
-  packageCount!: number;
+  @ApiPropertyOptional({ description: 'Chiều sâu (cm) — từ WarehouseItem' })
+  itemDepth?: number;
 
   @Expose()
-  @Type(() => PackageSpecResponseDto)
-  @ApiPropertyOptional({ type: PackageSpecResponseDto })
-  packageSpec?: PackageSpecResponseDto;
+  @ApiPropertyOptional({ description: 'Chiều rộng (cm) — từ WarehouseItem' })
+  itemWidth?: number;
+
+  @Expose()
+  @ApiPropertyOptional({ description: 'Chiều cao (cm) — từ WarehouseItem' })
+  itemHeight?: number;
 
   @Expose()
   @ApiProperty()

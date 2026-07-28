@@ -25,20 +25,23 @@ export class PutAwayItem {
   @Prop({ type: Types.ObjectId, default: null })
   lotId!: Types.ObjectId | null;
 
-  /** Số lượng cần xếp ban đầu — copy từ baseQty của dòng GRN tương ứng */
-  @Prop({ type: Number, required: true, min: 0 })
+  /** Số thùng cần xếp ban đầu — copy từ baseQty của dòng GRN tương ứng. Luôn là số nguyên (số thùng). */
+  @Prop({
+    type: Number,
+    required: true,
+    min: 0,
+    validate: {
+      validator: Number.isInteger,
+      message: 'quantity phải là số nguyên',
+    },
+  })
   quantity!: number;
 
   /** Còn lại chưa xếp — giảm dần mỗi lần RECEIVER quét xác nhận thành công */
   @Prop({ type: Number, required: true, min: 0 })
   remainingQty!: number;
 
-  @Prop({ type: Number, required: true, min: 0, default: 0 })
-  packageCount!: number;
-
-  @Prop({ type: Number, required: true, min: 0, default: 0 })
-  remainingPackageCount!: number;
-
+  /** Kích thước 1 thùng — chỉ dùng để so khớp ô kệ, factor bên trong chỉ để hiển thị. */
   @Prop({ type: PackageSpecSchema })
   packageSpec?: PackageSpec;
 }

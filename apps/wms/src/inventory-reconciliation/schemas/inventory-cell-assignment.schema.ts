@@ -25,14 +25,13 @@ export class InventoryCellAssignment {
   @Prop({ type: SchemaTypes.ObjectId, default: null })
   lotId!: Types.ObjectId | null;
 
+  /** Số thùng — luôn là số nguyên. */
   @Prop({ required: true })
   quantity!: number;
 
-  @Prop({ required: true })
-  packageCount!: number;
-
-  @Prop({ required: true })
-  packageFactor!: number;
+  /** Chỉ để hiển thị tham khảo — không dùng để tính toán số lượng. */
+  @Prop()
+  packageFactor?: number;
 
   @Prop({ required: true })
   packageVolumeCm3Snapshot!: number;

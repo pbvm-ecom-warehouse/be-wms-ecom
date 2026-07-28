@@ -1,9 +1,5 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { HydratedDocument, Types } from 'mongoose';
-import {
-  PackageSpec,
-  PackageSpecSchema,
-} from '../../stock/schemas/package-spec.schema';
 
 export enum GoodsReceiptNoteStatus {
   DRAFT = 'DRAFT',
@@ -28,12 +24,17 @@ export class GoodsReceiptNoteItem {
   @Prop({ type: Number, required: true, min: 0 })
   expectedQty!: number;
 
-  /** Số thực nhận, theo đơn vị `unit` (có thể là đơn vị phụ) */
-  @Prop({ type: Number, required: true, min: 0 })
+  /** Số thùng thực nhận — luôn là số nguyên, luôn theo đơn vị cơ sở (thùng) của item. */
+  @Prop({
+    type: Number,
+    required: true,
+    min: 0,
+    validate: {
+      validator: Number.isInteger,
+      message: 'actualQty phải là số nguyên',
+    },
+  })
   actualQty!: number;
-
-  @Prop({ required: true })
-  unit!: string;
 
   /** Bắt buộc nếu WarehouseItem.isPerishable */
   @Prop()
@@ -45,14 +46,6 @@ export class GoodsReceiptNoteItem {
   /** Ghi chú khi lệch PO (thiếu/thừa) */
   @Prop()
   note?: string;
-
-  /** Snapshot quy cách thùng từ PO/master data tại thời điểm tạo/sửa GRN. */
-  @Prop({ type: PackageSpecSchema })
-  packageSpec?: PackageSpec;
-
-  /** Số thùng thực nhận; riêng luồng mới chỉ cho cất/xuất nguyên thùng. */
-  @Prop({ type: Number, default: 0, min: 0 })
-  packageCount!: number;
 
   @Prop({ default: true })
   wholePackageOnly!: boolean;
