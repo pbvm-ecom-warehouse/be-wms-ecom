@@ -213,6 +213,13 @@ export class CatalogService {
     }
     return this.repo.listProducts(query);
   }
+
+  async listActiveProducts(query: ProductQueryDto) {
+    if (query.categoryId && !Types.ObjectId.isValid(query.categoryId)) {
+      throw new AppException('VALIDATION_FAILED', 'ID danh mục không hợp lệ');
+    }
+    return this.repo.listActiveProducts(query);
+  }
   async listInactiveVariants() {
     return this.repo.listInactiveVariants();
   }

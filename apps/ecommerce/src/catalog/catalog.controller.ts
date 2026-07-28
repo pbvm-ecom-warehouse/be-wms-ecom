@@ -90,6 +90,16 @@ export class CatalogPublicController {
     });
   }
 
+  @Get('products/active')
+  @ApiOperation({ summary: 'Danh sách sản phẩm ACTIVE đang bán' })
+  @ApiOkResponse({ type: [ProductResponseDto] })
+  async listActiveProducts(@Query() query: ProductQueryDto) {
+    const list = await this.svc.listActiveProducts(query);
+    return plainToInstance(ProductResponseDto, list, {
+      excludeExtraneousValues: true,
+    });
+  }
+
   @Get('products/:slug')
   @ApiOperation({ summary: 'Chi tiết sản phẩm kèm các biến thể (variants)' })
   @ApiParam({ name: 'slug', example: 'ly-nhua-in-custom' })
