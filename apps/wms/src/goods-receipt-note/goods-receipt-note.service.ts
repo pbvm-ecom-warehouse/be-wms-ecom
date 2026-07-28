@@ -559,23 +559,20 @@ export class GoodsReceiptNoteService {
         (sum, item) => sum + item.actualQty,
         0,
       );
-      const totalVolumeCm3 = doc.items.reduce((sum, item) => {
-        const warehouseItem = itemById.get(item.itemId.toString());
-        const volumeCm3 =
-          warehouseItem?.depth && warehouseItem?.width && warehouseItem?.height
-            ? warehouseItem.depth * warehouseItem.width * warehouseItem.height
-            : 0;
-        return sum + item.actualQty * volumeCm3;
-      }, 0);
+      // plain.items đã qua doc.toObject() — dùng làm nguồn spread thay vì doc.items
+      // trực tiếp: doc.items[i] là Mongoose EmbeddedDocument, field thật nằm sau getter/
+      // `_doc` chứ không phải own-enumerable property, nên `{...doc.items[i]}` chỉ copy
+      // được các key nội bộ Mongoose (`_doc`, `$__`...) và làm mất actualQty/lotNumber/
+      // expiryDate trong response — plain.items[i] là plain object nên spread đúng.
+      const plainItems = plain.items as Record<string, unknown>[];
       return {
         ...plain,
         totalPackageCount,
-        totalVolumeCm3,
         purchaseOrderNumber: po?.poNumber,
         supplierName: po
           ? supplierNameById.get(po.supplierId.toString())
           : undefined,
-        items: doc.items.map((item) => {
+        items: doc.items.map((item, index) => {
           const warehouseItem = itemById.get(item.itemId.toString());
           // receivedQty/remainingQty lấy TẠI THỜI ĐIỂM trả response (không phải
           // lúc tạo GRN) — phản ánh tổng đã nhận từ MỌI GRN đã APPROVED của PO
@@ -584,7 +581,7 @@ export class GoodsReceiptNoteService {
             (i) => i.itemId.toString() === item.itemId.toString(),
           );
           return {
-            ...(item as unknown as Record<string, unknown>),
+            ...plainItems[index],
             itemName: warehouseItem?.name,
             barcode: warehouseItem?.barcode,
             category: warehouseItem?.category,

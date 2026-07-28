@@ -285,10 +285,6 @@ export class GoodsReceiptNoteResponseDto {
   totalPackageCount?: number;
 
   @Expose()
-  @ApiPropertyOptional()
-  totalVolumeCm3?: number;
-
-  @Expose()
   @ApiProperty()
   createdAt!: Date;
 
