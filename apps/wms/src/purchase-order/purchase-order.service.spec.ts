@@ -57,6 +57,67 @@ describe('PurchaseOrderService', () => {
       items: [{ itemId, expectedQty: 10, unit: 'cái' }],
     };
 
+    it('đếm PO theo thùng và không dùng factor của đơn vị phụ', async () => {
+      stockRepo.findItemById.mockResolvedValue({
+        _id: itemId,
+        sku: 'SKU-CARTON',
+        deletedAt: null,
+        unit: 'thùng',
+        altUnits: [{ unit: 'cái', factor: 24 }],
+        depth: 40,
+        width: 30,
+        height: 25,
+      });
+      supplierSvc.getSupplierItemByItemAndSupplier.mockResolvedValue({
+        purchasePrice: 100000,
+        isActive: true,
+        supplierId,
+      });
+      repo.createPurchaseOrder.mockResolvedValue({ poNumber: 'PO-CARTON' });
+
+      await svc.createPurchaseOrder(
+        {
+          supplierId,
+          items: [
+            {
+              itemId,
+              expectedQty: 20,
+              unit: 'thùng',
+              unitPrice: 100000,
+              packageSpec: {
+                unit: 'cái',
+                factor: 24,
+                depthCm: 1,
+                widthCm: 1,
+                heightCm: 1,
+              },
+            },
+          ],
+        },
+        actorId,
+      );
+
+      expect(repo.createPurchaseOrder).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.any(String),
+        [
+          expect.objectContaining({
+            expectedQty: 20,
+            unit: 'thùng',
+            packageSpec: {
+              unit: 'thùng',
+              factor: 1,
+              depthCm: 40,
+              widthCm: 30,
+              heightCm: 25,
+              volumeCm3: 30000,
+            },
+          }),
+        ],
+        actorId,
+      );
+    });
+
     it('throw SUPPLIER_NOT_ACTIVE khi NCC blacklist/inactive', async () => {
       supplierSvc.assertSupplierActive.mockRejectedValue({
         code: 'SUPPLIER_NOT_ACTIVE',

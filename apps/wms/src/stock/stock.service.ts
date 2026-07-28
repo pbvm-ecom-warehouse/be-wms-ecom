@@ -182,7 +182,9 @@ export class StockService {
             barcode,
             name: dto.name,
             type: dto.type,
-            unit: dto.unit,
+            // WMS vận hành theo thùng nguyên. Đơn vị phụ (cái, chai...) chỉ
+            // mô tả quy cách 1 thùng và không được dùng làm đơn vị tồn.
+            unit: 'thùng',
             altUnits: dto.altUnits,
             attributes: attributeSnapshot,
             isPerishable: dto.isPerishable,

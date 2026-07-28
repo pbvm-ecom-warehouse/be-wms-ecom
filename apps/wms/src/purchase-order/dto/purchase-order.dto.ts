@@ -80,12 +80,12 @@ export class CreatePurchaseOrderItemDto {
   itemId!: string;
 
   @ApiProperty({
-    example: 100,
+    example: 20,
     description:
-      'Nếu SKU đã có SupplierItem.minOrderQty với NCC này, expectedQty phải >= minOrderQty, nếu không PO bị từ chối (PO_QTY_BELOW_MOQ).',
+      'Số thùng nguyên đặt mua. Nếu SKU có SupplierItem.minOrderQty thì expectedQty phải >= minOrderQty.',
   })
-  @IsNumber()
-  @Min(0)
+  @IsInt()
+  @Min(1)
   expectedQty!: number;
 
   @ApiProperty({ example: 'cái' })
