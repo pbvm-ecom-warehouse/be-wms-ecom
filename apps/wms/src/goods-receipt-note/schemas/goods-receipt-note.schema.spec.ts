@@ -38,11 +38,12 @@ describe('GoodsReceiptNote schema', () => {
     expect(statusSchema.options?.default).toBe(GoodsReceiptNoteStatus.DRAFT);
   });
 
-  it('GoodsReceiptNoteItem có field lotNumber/expiryDate optional', () => {
+  it('GoodsReceiptNoteItem có field lotNumber/manufacturedDate/expiryDate', () => {
     const itemPaths = GoodsReceiptNoteSchema.path('items') as unknown as {
       schema: { paths: Record<string, unknown> };
     };
     expect(itemPaths.schema.paths['lotNumber']).toBeDefined();
+    expect(itemPaths.schema.paths['manufacturedDate']).toBeDefined();
     expect(itemPaths.schema.paths['expiryDate']).toBeDefined();
   });
 });

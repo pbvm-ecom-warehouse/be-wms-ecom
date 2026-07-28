@@ -1,5 +1,4 @@
 import { Injectable } from '@nestjs/common';
-import type { NavigationPath } from '../location/navigation.service';
 import { InjectModel } from '@nestjs/mongoose';
 import { ClientSession, Model, PipelineStage, Types } from 'mongoose';
 import {
@@ -537,6 +536,7 @@ export class StockRepository {
     data: {
       itemId: Types.ObjectId;
       lotNumber: string;
+      manufacturedDate?: Date;
       expiryDate: Date;
       receivedDate: Date;
     },
@@ -700,6 +700,9 @@ export class StockRepository {
       quantity: number;
       packageFactor: number | null;
       packageVolumeCm3Snapshot: number | null;
+      packageDepthCm: number | null;
+      packageWidthCm: number | null;
+      packageHeightCm: number | null;
       lotNumber: string | null;
       expiryDate: Date | null;
     }>
@@ -712,6 +715,9 @@ export class StockRepository {
       quantity: number;
       packageFactor: number | null;
       packageVolumeCm3Snapshot: number | null;
+      packageDepthCm: number | null;
+      packageWidthCm: number | null;
+      packageHeightCm: number | null;
       lotNumber: string | null;
       expiryDate: Date | null;
     }>([
@@ -745,6 +751,9 @@ export class StockRepository {
           packageVolumeCm3Snapshot: {
             $ifNull: ['$packageVolumeCm3Snapshot', null],
           },
+          packageDepthCm: '$item.depth',
+          packageWidthCm: '$item.width',
+          packageHeightCm: '$item.height',
           lotNumber: { $ifNull: ['$lot.lotNumber', null] },
           expiryDate: { $ifNull: ['$lot.expiryDate', null] },
         },
@@ -759,6 +768,9 @@ export class StockRepository {
       quantity: r.quantity,
       packageFactor: r.packageFactor,
       packageVolumeCm3Snapshot: r.packageVolumeCm3Snapshot,
+      packageDepthCm: r.packageDepthCm ?? null,
+      packageWidthCm: r.packageWidthCm ?? null,
+      packageHeightCm: r.packageHeightCm ?? null,
       lotNumber: r.lotNumber,
       expiryDate: r.expiryDate,
     }));

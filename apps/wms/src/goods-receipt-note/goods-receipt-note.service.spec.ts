@@ -23,6 +23,11 @@ const resolvedPackageSpec = {
   heightCm: 20,
   volumeCm3: 24000,
 };
+const proofImage = {
+  buffer: Buffer.from('proof'),
+  mimetype: 'image/jpeg',
+  size: 5,
+};
 
 describe('GoodsReceiptNoteService - duyệt trước khi ghi tồn', () => {
   const actorId = new Types.ObjectId().toString();
@@ -121,6 +126,9 @@ describe('GoodsReceiptNoteService - duyệt trước khi ghi tồn', () => {
     repo.countByGrnNumberPrefix.mockResolvedValue(0);
     poService.getPurchaseOrder.mockResolvedValue(purchaseOrder());
     stockRepo.findItemById.mockResolvedValue(warehouseItem);
+    cloudinary.uploadImage.mockResolvedValue({
+      url: 'https://example.com/grn-proof.jpg',
+    });
     locationService.findStagingShelf.mockResolvedValue({ _id: stagingShelfId });
     supplierService.getSupplier.mockResolvedValue({
       name: 'NCC Test',
@@ -131,6 +139,20 @@ describe('GoodsReceiptNoteService - duyệt trước khi ghi tồn', () => {
     });
   });
 
+  it('không cho tạo GRN khi thiếu ảnh minh chứng', async () => {
+    await expect(
+      service.createGoodsReceiptNote(
+        {
+          purchaseOrderId,
+          items: [{ itemId, actualQty: 2, manufacturedDate: '2026-07-28' }],
+        },
+        actorId,
+        [],
+      ),
+    ).rejects.toMatchObject({ code: 'GRN_IMAGE_REQUIRED' });
+    expect(repo.createGoodsReceiptNote).not.toHaveBeenCalled();
+  });
+
   it('tạo GRN với actualQty là số thùng nguyên, không còn packageCount/unit riêng', async () => {
     repo.createGoodsReceiptNote.mockResolvedValue({
       status: GoodsReceiptNoteStatus.DRAFT,
@@ -139,9 +161,10 @@ describe('GoodsReceiptNoteService - duyệt trước khi ghi tồn', () => {
     await service.createGoodsReceiptNote(
       {
         purchaseOrderId,
-        items: [{ itemId, actualQty: 2 }],
+        items: [{ itemId, actualQty: 2, manufacturedDate: '2026-07-28' }],
       },
       actorId,
+      [proofImage],
     );
 
     expect(repo.createGoodsReceiptNote).toHaveBeenCalledWith(
@@ -155,6 +178,7 @@ describe('GoodsReceiptNoteService - duyệt trước khi ghi tồn', () => {
         }),
       ],
       actorId,
+      ['https://example.com/grn-proof.jpg'],
     );
   });
 
@@ -175,11 +199,13 @@ describe('GoodsReceiptNoteService - duyệt trước khi ghi tồn', () => {
             itemId,
             actualQty: 2,
             lotNumber: 'LOT-20260728-001',
+            manufacturedDate: '2026-07-28',
             expiryDate: '2027-01-01',
           },
         ],
       },
       actorId,
+      [proofImage],
     );
 
     expect(repo.createGoodsReceiptNote).toHaveBeenCalledWith(
@@ -190,10 +216,12 @@ describe('GoodsReceiptNoteService - duyệt trước khi ghi tồn', () => {
           itemId,
           actualQty: 2,
           lotNumber: 'LOT-20260728-001',
+          manufacturedDate: new Date('2026-07-28'),
           expiryDate: new Date('2027-01-01'),
         }),
       ],
       actorId,
+      ['https://example.com/grn-proof.jpg'],
     );
   });
 
@@ -208,7 +236,8 @@ describe('GoodsReceiptNoteService - duyệt trước khi ghi tồn', () => {
       sku: 'SKU-1',
       expectedQty: 100,
       actualQty: 2,
-      lotNumber: 'LOT-20260728-001',
+      lotNumber: 'LOT-260728-001',
+      manufacturedDate: new Date('2026-07-28'),
       expiryDate: new Date('2027-01-01'),
     };
     class EmbeddedDocumentStub {
@@ -248,7 +277,8 @@ describe('GoodsReceiptNoteService - duyệt trước khi ghi tồn', () => {
     const items = result.items as Record<string, unknown>[];
 
     expect(items[0].expiryDate).toEqual(new Date('2027-01-01'));
-    expect(items[0].lotNumber).toBe('LOT-20260728-001');
+    expect(items[0].lotNumber).toBe('LOT-260728-001');
+    expect(items[0].manufacturedDate).toEqual(new Date('2026-07-28'));
     expect(items[0].actualQty).toBe(2);
   });
 
@@ -318,7 +348,7 @@ describe('GoodsReceiptNoteService - duyệt trước khi ghi tồn', () => {
     });
 
     await service.updateGoodsReceiptNoteItems(grnId.toString(), [
-      { itemId, actualQty: 2 },
+      { itemId, actualQty: 2, manufacturedDate: '2026-07-28' },
     ]);
     const submitted = await service.submitGoodsReceiptNote(
       grnId.toString(),
@@ -480,7 +510,7 @@ describe('GoodsReceiptNoteService - duyệt trước khi ghi tồn', () => {
       sku: 'SKU-1',
       expectedQty: 100,
       actualQty: 7,
-      lotNumber: 'LOT-20260728-001',
+      lotNumber: 'LOT-260728-001',
       expiryDate: new Date('2027-01-01'),
     };
     class EmbeddedDocumentStub {
@@ -515,7 +545,10 @@ describe('GoodsReceiptNoteService - duyệt trước khi ghi tồn', () => {
     const items = result.items as Record<string, unknown>[];
 
     expect(items[0].actualQty).toBe(7);
-    expect(items[0].lotNumber).toBe('LOT-20260728-001');
+    expect(items[0].lotNumber).toBe('LOT-260728-001');
+    expect(items[0].manufacturedDate).toEqual(
+      new Date('2026-07-28T00:00:00.000Z'),
+    );
     expect(items[0].expiryDate).toEqual(new Date('2027-01-01'));
   });
 });

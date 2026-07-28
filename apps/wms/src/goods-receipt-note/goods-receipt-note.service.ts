@@ -36,6 +36,13 @@ const NON_RECEIVABLE_STATUSES = new Set([
 const ALLOWED_IMAGE_MIMETYPES = ['image/jpeg', 'image/png', 'image/webp'];
 const MAX_IMAGE_SIZE_BYTES = 5 * 1024 * 1024;
 
+function manufacturedDateFromLotNumber(lotNumber?: string): Date | undefined {
+  const match = /^LOT-(\d{2})(\d{2})(\d{2})-\d{3}$/.exec(lotNumber ?? '');
+  if (!match) return undefined;
+  const date = new Date(`20${match[1]}-${match[2]}-${match[3]}T00:00:00.000Z`);
+  return Number.isNaN(date.getTime()) ? undefined : date;
+}
+
 export interface UploadedImageFile {
   buffer: Buffer;
   mimetype: string;
@@ -61,7 +68,13 @@ export class GoodsReceiptNoteService {
   async createGoodsReceiptNote(
     dto: CreateGoodsReceiptNoteDto,
     actorId: string,
+    imageFiles: UploadedImageFile[],
   ): Promise<GoodsReceiptNoteDocument> {
+    if (imageFiles.length === 0) {
+      throw new AppException('GRN_IMAGE_REQUIRED');
+    }
+    imageFiles.forEach((file) => this.validateImageFile(file));
+
     const po = await this.purchaseOrderService.getPurchaseOrder(
       dto.purchaseOrderId,
     );
@@ -69,24 +82,21 @@ export class GoodsReceiptNoteService {
       throw new AppException('PO_NOT_RECEIVABLE');
     }
 
-    // items để trống → RECEIVER xác nhận "nhận đủ theo PO": tự lấy các dòng còn thiếu
-    // (expectedQty - receivedQty), actualQty mặc định = phần còn thiếu. Dòng perishable
-    // vẫn thiếu lotNumber/expiryDate (không thể tự đoán) nên GRN_LOT_INFO_MISSING sẽ chặn
-    // ngay dưới, buộc client gửi lại kèm items đầy đủ cho riêng dòng đó.
-    const items: CreateGoodsReceiptNoteItemDto[] =
-      dto.items && dto.items.length > 0
-        ? dto.items
-        : po.items
-            .filter((poItem) => poItem.receivedQty < poItem.expectedQty)
-            .map((poItem) => ({
-              itemId: poItem.itemId.toString(),
-              actualQty: poItem.expectedQty - poItem.receivedQty,
-            }));
-    if (items.length === 0) {
-      throw new AppException('PO_NOT_RECEIVABLE');
+    // Mỗi dòng GRN phải mang ngày sản xuất và thông tin lô do Receiver xác nhận.
+    // Backend không thể tự suy đoán các dữ liệu này từ PO khi client bỏ trống items.
+    if (!dto.items?.length) {
+      throw new AppException('GRN_LOT_INFO_MISSING');
     }
+    const items: CreateGoodsReceiptNoteItemDto[] = dto.items;
 
     const resolvedItems = await this.resolveAndValidateItems(po, items);
+
+    // Chỉ upload sau khi PO và toàn bộ dòng hàng đã hợp lệ để hạn chế ảnh mồ côi.
+    const images: string[] = [];
+    for (const file of imageFiles) {
+      const { url } = await this.cloudinary.uploadImage(file.buffer, 'wms/grn');
+      images.push(url);
+    }
 
     const grnNumber = await this.generateGrnNumber();
     return this.repo.createGoodsReceiptNote(
@@ -94,6 +104,7 @@ export class GoodsReceiptNoteService {
       grnNumber,
       resolvedItems,
       actorId,
+      images,
     );
   }
 
@@ -132,6 +143,14 @@ export class GoodsReceiptNoteService {
       }
 
       const warehouseItem = await this.stockRepo.findItemById(item.itemId);
+      const manufacturedDate = new Date(item.manufacturedDate);
+      if (
+        !item.manufacturedDate ||
+        Number.isNaN(manufacturedDate.getTime()) ||
+        manufacturedDate > new Date()
+      ) {
+        throw new AppException('GRN_MANUFACTURED_DATE_INVALID');
+      }
       if (
         warehouseItem?.isPerishable &&
         (!item.lotNumber || !item.expiryDate)
@@ -148,6 +167,7 @@ export class GoodsReceiptNoteService {
         // actualQty luôn là số thùng nguyên — không còn quy đổi qua đơn vị lẻ.
         actualQty: item.actualQty,
         lotNumber: item.lotNumber,
+        manufacturedDate,
         expiryDate: item.expiryDate ? new Date(item.expiryDate) : undefined,
         wholePackageOnly: true,
         note: item.note,
@@ -246,6 +266,7 @@ export class GoodsReceiptNoteService {
         volumeCm3: number;
       };
       lotNumber?: string;
+      manufacturedDate: Date;
       expiryDate?: Date;
     }[] = [];
 
@@ -282,6 +303,7 @@ export class GoodsReceiptNoteService {
         baseQty,
         packageSpec,
         lotNumber: line.lotNumber,
+        manufacturedDate: line.manufacturedDate,
         expiryDate: line.expiryDate,
       });
     }
@@ -337,6 +359,7 @@ export class GoodsReceiptNoteService {
                   {
                     itemId: itemObjectId,
                     lotNumber: line.lotNumber,
+                    manufacturedDate: line.manufacturedDate,
                     expiryDate: line.expiryDate,
                     receivedDate: new Date(),
                   },
@@ -582,6 +605,9 @@ export class GoodsReceiptNoteService {
           );
           return {
             ...plainItems[index],
+            manufacturedDate:
+              item.manufacturedDate ??
+              manufacturedDateFromLotNumber(item.lotNumber),
             itemName: warehouseItem?.name,
             barcode: warehouseItem?.barcode,
             category: warehouseItem?.category,
