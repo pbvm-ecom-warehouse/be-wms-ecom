@@ -11,6 +11,8 @@ const makeRepo = () => ({
   updateStatusConfirmed: jest.fn(),
   updateStatusApproved: jest.fn(),
   pushImage: jest.fn(),
+  replaceItems: jest.fn(),
+  deleteGoodsReceiptNote: jest.fn(),
 });
 
 const makeCloudinaryService = () => ({
@@ -402,6 +404,159 @@ describe('GoodsReceiptNoteService', () => {
     });
   });
 
+  describe('updateGoodsReceiptNoteItems', () => {
+    const grnId = 'grn1';
+    const newItems = [{ itemId, actualQty: 30, unit: 'cái' }];
+
+    it('throw GRN_NOT_FOUND khi GRN không tồn tại', async () => {
+      repo.findGoodsReceiptNoteById.mockResolvedValue(null);
+      await expect(
+        svc.updateGoodsReceiptNoteItems(grnId, newItems as never),
+      ).rejects.toMatchObject({ code: 'GRN_NOT_FOUND' });
+      expect(poService.getPurchaseOrder).not.toHaveBeenCalled();
+    });
+
+    it('throw GRN_INVALID_STATUS_TRANSITION khi GRN không phải DRAFT', async () => {
+      repo.findGoodsReceiptNoteById.mockResolvedValue({
+        status: GoodsReceiptNoteStatus.CONFIRMED,
+      });
+      await expect(
+        svc.updateGoodsReceiptNoteItems(grnId, newItems as never),
+      ).rejects.toMatchObject({ code: 'GRN_INVALID_STATUS_TRANSITION' });
+      expect(poService.getPurchaseOrder).not.toHaveBeenCalled();
+    });
+
+    it('throw GRN_ITEM_NOT_IN_PO khi item mới không thuộc PO', async () => {
+      repo.findGoodsReceiptNoteById.mockResolvedValue({
+        status: GoodsReceiptNoteStatus.DRAFT,
+        purchaseOrderId,
+      });
+      poService.getPurchaseOrder.mockResolvedValue({
+        items: [
+          {
+            itemId: 'other-item',
+            sku: 'SKU-1',
+            unit: 'cái',
+            expectedQty: 100,
+            receivedQty: 0,
+          },
+        ],
+      });
+      await expect(
+        svc.updateGoodsReceiptNoteItems(grnId, newItems as never),
+      ).rejects.toMatchObject({ code: 'GRN_ITEM_NOT_IN_PO' });
+      expect(repo.replaceItems).not.toHaveBeenCalled();
+    });
+
+    it('throw GRN_QTY_EXCEEDS_PO khi actualQty mới vượt phần còn thiếu', async () => {
+      repo.findGoodsReceiptNoteById.mockResolvedValue({
+        status: GoodsReceiptNoteStatus.DRAFT,
+        purchaseOrderId,
+      });
+      poService.getPurchaseOrder.mockResolvedValue({
+        items: [
+          {
+            itemId,
+            sku: 'SKU-1',
+            unit: 'cái',
+            expectedQty: 100,
+            receivedQty: 90,
+          },
+        ],
+      });
+      await expect(
+        svc.updateGoodsReceiptNoteItems(grnId, newItems as never),
+      ).rejects.toMatchObject({ code: 'GRN_QTY_EXCEEDS_PO' });
+    });
+
+    it('thay thế toàn bộ items khi hợp lệ, trả về GRN đã cập nhật', async () => {
+      repo.findGoodsReceiptNoteById.mockResolvedValue({
+        status: GoodsReceiptNoteStatus.DRAFT,
+        purchaseOrderId,
+      });
+      poService.getPurchaseOrder.mockResolvedValue({
+        items: [
+          {
+            itemId,
+            sku: 'SKU-1',
+            unit: 'cái',
+            expectedQty: 100,
+            receivedQty: 0,
+          },
+        ],
+      });
+      stockRepo.findItemById.mockResolvedValue({ isPerishable: false });
+      const updatedDoc = { status: GoodsReceiptNoteStatus.DRAFT };
+      repo.replaceItems.mockResolvedValue(updatedDoc);
+
+      const result = await svc.updateGoodsReceiptNoteItems(grnId, newItems);
+
+      expect(repo.replaceItems).toHaveBeenCalledWith(
+        grnId,
+        expect.arrayContaining([
+          expect.objectContaining({ itemId, sku: 'SKU-1', actualQty: 30 }),
+        ]),
+      );
+      expect(result).toBe(updatedDoc);
+    });
+
+    it('throw GRN_NOT_FOUND nếu bị đổi status/xoá giữa lúc validate và lúc replace (race)', async () => {
+      repo.findGoodsReceiptNoteById.mockResolvedValue({
+        status: GoodsReceiptNoteStatus.DRAFT,
+        purchaseOrderId,
+      });
+      poService.getPurchaseOrder.mockResolvedValue({
+        items: [
+          {
+            itemId,
+            sku: 'SKU-1',
+            unit: 'cái',
+            expectedQty: 100,
+            receivedQty: 0,
+          },
+        ],
+      });
+      stockRepo.findItemById.mockResolvedValue({ isPerishable: false });
+      repo.replaceItems.mockResolvedValue(null);
+
+      await expect(
+        svc.updateGoodsReceiptNoteItems(grnId, newItems as never),
+      ).rejects.toMatchObject({ code: 'GRN_NOT_FOUND' });
+    });
+  });
+
+  describe('deleteGoodsReceiptNote', () => {
+    const grnId = 'grn1';
+
+    it('throw GRN_NOT_FOUND khi GRN không tồn tại', async () => {
+      repo.findGoodsReceiptNoteById.mockResolvedValue(null);
+      await expect(svc.deleteGoodsReceiptNote(grnId)).rejects.toMatchObject({
+        code: 'GRN_NOT_FOUND',
+      });
+      expect(repo.deleteGoodsReceiptNote).not.toHaveBeenCalled();
+    });
+
+    it('throw GRN_INVALID_STATUS_TRANSITION khi GRN không phải DRAFT', async () => {
+      repo.findGoodsReceiptNoteById.mockResolvedValue({
+        status: GoodsReceiptNoteStatus.CONFIRMED,
+      });
+      await expect(svc.deleteGoodsReceiptNote(grnId)).rejects.toMatchObject({
+        code: 'GRN_INVALID_STATUS_TRANSITION',
+      });
+      expect(repo.deleteGoodsReceiptNote).not.toHaveBeenCalled();
+    });
+
+    it('xoá vật lý khi GRN còn DRAFT', async () => {
+      repo.findGoodsReceiptNoteById.mockResolvedValue({
+        status: GoodsReceiptNoteStatus.DRAFT,
+      });
+
+      await svc.deleteGoodsReceiptNote(grnId);
+
+      expect(repo.deleteGoodsReceiptNote).toHaveBeenCalledWith(grnId);
+    });
+  });
+
   describe('confirmGoodsReceiptNote', () => {
     const grnId = 'grn1';
 
@@ -421,11 +576,23 @@ describe('GoodsReceiptNoteService', () => {
       ).rejects.toMatchObject({ code: 'GRN_INVALID_STATUS_TRANSITION' });
     });
 
+    it('throw GRN_IMAGE_REQUIRED khi GRN chưa có ảnh minh chứng', async () => {
+      repo.findGoodsReceiptNoteById.mockResolvedValue({
+        status: GoodsReceiptNoteStatus.DRAFT,
+        images: [],
+      });
+      await expect(
+        svc.confirmGoodsReceiptNote(grnId, actorId),
+      ).rejects.toMatchObject({ code: 'GRN_IMAGE_REQUIRED' });
+      expect(poService.getPurchaseOrder).not.toHaveBeenCalled();
+    });
+
     it('throw GRN_QTY_EXCEEDS_PO khi vượt expectedQty còn lại', async () => {
       repo.findGoodsReceiptNoteById.mockResolvedValue({
         _id: grnId,
         status: GoodsReceiptNoteStatus.DRAFT,
         purchaseOrderId,
+        images: ['https://img'],
         items: [{ itemId, sku: 'SKU-1', actualQty: 60, unit: 'cái' }],
       });
       poService.getPurchaseOrder.mockResolvedValue({
@@ -458,6 +625,7 @@ describe('GoodsReceiptNoteService', () => {
           _id: grnId,
           status: GoodsReceiptNoteStatus.DRAFT,
           purchaseOrderId,
+          images: ['https://img'],
           items: [
             {
               itemId,
@@ -560,6 +728,7 @@ describe('GoodsReceiptNoteService', () => {
           status: GoodsReceiptNoteStatus.DRAFT,
           purchaseOrderId,
           grnNumber: 'GRN-X',
+          images: ['https://img'],
           items: [{ itemId, sku: 'SKU-1', actualQty: 20, unit: 'cái' }],
         })
         .mockResolvedValueOnce(confirmed);
@@ -593,6 +762,7 @@ describe('GoodsReceiptNoteService', () => {
           _id: grnId,
           status: GoodsReceiptNoteStatus.DRAFT,
           purchaseOrderId,
+          images: ['https://img'],
           items: [
             {
               itemId,
@@ -746,6 +916,7 @@ describe('GoodsReceiptNoteService', () => {
           _id: grnId,
           status: GoodsReceiptNoteStatus.DRAFT,
           purchaseOrderId,
+          images: ['https://img'],
           items: [
             {
               itemId,
@@ -948,7 +1119,7 @@ describe('GoodsReceiptNoteService', () => {
     const supplierObjectId = new Types.ObjectId();
     const itemObjectId = new Types.ObjectId();
 
-    it('gắn itemName vào từng dòng item + purchaseOrderNumber/supplierName vào GRN', async () => {
+    it('gắn itemName/barcode/category/type/images/isPerishable/unitPrice/receivedQty/remainingQty vào từng dòng item + purchaseOrderNumber/supplierName vào GRN', async () => {
       const doc = {
         _id: grnObjectId,
         purchaseOrderId: poObjectId,
@@ -968,13 +1139,29 @@ describe('GoodsReceiptNoteService', () => {
         }),
       };
       stockRepo.findItemsByIds.mockResolvedValue([
-        { _id: itemObjectId, name: 'Ly nhựa' },
+        {
+          _id: itemObjectId,
+          name: 'Ly nhựa',
+          barcode: '2000000000015',
+          category: 'CUP',
+          type: 'CUP_BLANK',
+          images: ['https://img'],
+          isPerishable: false,
+        },
       ]);
       poService.listPurchaseOrdersByIds.mockResolvedValue([
         {
           _id: poObjectId,
           poNumber: 'PO-X',
           supplierId: supplierObjectId,
+          items: [
+            {
+              itemId: itemObjectId,
+              expectedQty: 100,
+              receivedQty: 30,
+              unitPrice: 500000,
+            },
+          ],
         },
       ]);
       supplierService.listSuppliersByIds.mockResolvedValue([
@@ -991,6 +1178,14 @@ describe('GoodsReceiptNoteService', () => {
           sku: 'SKU-1',
           actualQty: 10,
           itemName: 'Ly nhựa',
+          barcode: '2000000000015',
+          category: 'CUP',
+          type: 'CUP_BLANK',
+          images: ['https://img'],
+          isPerishable: false,
+          unitPrice: 500000,
+          receivedQty: 30,
+          remainingQty: 70,
         },
       ]);
     });

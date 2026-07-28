@@ -1,11 +1,15 @@
 // apps/wms/src/location/location.repository.spec.ts
-import { getModelToken } from '@nestjs/mongoose';
+import { getConnectionToken, getModelToken } from '@nestjs/mongoose';
 import { Test } from '@nestjs/testing';
 import { Types } from 'mongoose';
 import { LocationRepository } from './location.repository';
 import { Zone } from './schemas/zone.schema';
 import { Rack } from './schemas/rack.schema';
 import { Shelf } from './schemas/shelf.schema';
+import { RackTemplate } from './schemas/rack-template.schema';
+import { Aisle } from './schemas/aisle.schema';
+import { Gate } from './schemas/gate.schema';
+import { WarehouseLayoutConfig } from './schemas/warehouse-layout-config.schema';
 
 const makeModel = (overrides: Record<string, jest.Mock> = {}) => ({
   findOne: jest.fn().mockReturnThis(),
@@ -14,6 +18,9 @@ const makeModel = (overrides: Record<string, jest.Mock> = {}) => ({
   updateOne: jest.fn().mockReturnThis(),
   findOneAndUpdate: jest.fn().mockReturnThis(),
   sort: jest.fn().mockReturnThis(),
+  select: jest.fn().mockReturnThis(),
+  lean: jest.fn().mockReturnThis(),
+  session: jest.fn().mockReturnThis(),
   exec: jest.fn(),
   ...overrides,
 });
@@ -23,6 +30,12 @@ describe('LocationRepository', () => {
   let zoneModel: ReturnType<typeof makeModel>;
   let rackModel: ReturnType<typeof makeModel>;
   let shelfModel: ReturnType<typeof makeModel>;
+  let rackTemplateModel: ReturnType<typeof makeModel>;
+  let aisleModel: ReturnType<typeof makeModel>;
+  let gateModel: ReturnType<typeof makeModel>;
+  let layoutConfigModel: ReturnType<typeof makeModel>;
+  let connection: { startSession: jest.Mock };
+  let session: { withTransaction: jest.Mock; endSession: jest.Mock };
   const zoneId = new Types.ObjectId();
   const actorId = new Types.ObjectId().toString();
 
@@ -30,18 +43,135 @@ describe('LocationRepository', () => {
     zoneModel = makeModel();
     rackModel = makeModel();
     shelfModel = makeModel();
+    rackTemplateModel = makeModel();
+    aisleModel = makeModel();
+    gateModel = makeModel();
+    layoutConfigModel = makeModel();
+    session = {
+      withTransaction: jest.fn(async (work: () => Promise<void>) => work()),
+      endSession: jest.fn(),
+    };
+    connection = { startSession: jest.fn().mockResolvedValue(session) };
     const module = await Test.createTestingModule({
       providers: [
         LocationRepository,
+        { provide: getConnectionToken(), useValue: connection },
         { provide: getModelToken(Zone.name), useValue: zoneModel },
         { provide: getModelToken(Rack.name), useValue: rackModel },
         { provide: getModelToken(Shelf.name), useValue: shelfModel },
+        {
+          provide: getModelToken(RackTemplate.name),
+          useValue: rackTemplateModel,
+        },
+        { provide: getModelToken(Aisle.name), useValue: aisleModel },
+        { provide: getModelToken(Gate.name), useValue: gateModel },
+        {
+          provide: getModelToken(WarehouseLayoutConfig.name),
+          useValue: layoutConfigModel,
+        },
       ],
     }).compile();
     repo = module.get(LocationRepository);
     jest.clearAllMocks();
   });
 
+  describe('runInTransaction', () => {
+    it('trả kết quả callback và luôn đóng Mongo session', async () => {
+      await expect(
+        repo.runInTransaction((activeSession) => {
+          expect(activeSession).toBe(session);
+          return Promise.resolve('saved');
+        }),
+      ).resolves.toBe('saved');
+
+      expect(connection.startSession).toHaveBeenCalledTimes(1);
+      expect(session.withTransaction).toHaveBeenCalledTimes(1);
+      expect(session.endSession).toHaveBeenCalledTimes(1);
+    });
+
+    it('hỗ trợ transaction callback không trả payload', async () => {
+      await expect(
+        repo.runInTransaction(() => Promise.resolve(undefined)),
+      ).resolves.toBe(undefined);
+      expect(session.endSession).toHaveBeenCalledTimes(1);
+    });
+    it('ném lại lỗi để Mongo rollback và vẫn đóng session', async () => {
+      const failure = new Error('operation failed');
+
+      await expect(
+        repo.runInTransaction(() => Promise.reject(failure)),
+      ).rejects.toBe(failure);
+
+      expect(session.withTransaction).toHaveBeenCalledTimes(1);
+      expect(session.endSession).toHaveBeenCalledTimes(1);
+    });
+  });
+  describe('layout config', () => {
+    it('lazy-init singleton canvas khi collection chưa có dữ liệu', async () => {
+      layoutConfigModel.exec
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce({ key: 'SINGLETON', revision: 1 });
+
+      const config = await repo.getLayoutConfig();
+
+      expect(layoutConfigModel.findOneAndUpdate).toHaveBeenCalledWith(
+        { key: 'SINGLETON' },
+        {
+          $setOnInsert: {
+            key: 'SINGLETON',
+            widthM: 40,
+            heightM: 24,
+            gridM: 0.5,
+            revision: 1,
+          },
+        },
+        { new: true, upsert: true },
+      );
+      expect(config).toEqual({ key: 'SINGLETON', revision: 1 });
+    });
+
+    it('tăng revision và ghi actor sau mutation layout', async () => {
+      layoutConfigModel.exec
+        .mockResolvedValueOnce({ key: 'SINGLETON', revision: 3 })
+        .mockResolvedValueOnce({ key: 'SINGLETON', revision: 4 });
+
+      const config = await repo.incrementLayoutRevision(actorId);
+
+      expect(layoutConfigModel.findOneAndUpdate).toHaveBeenLastCalledWith(
+        { key: 'SINGLETON' },
+        {
+          $inc: { revision: 1 },
+          $set: { updatedBy: new Types.ObjectId(actorId) },
+        },
+        { new: true },
+      );
+      expect(config.revision).toBe(4);
+    });
+  });
+  describe('delete guard lookups', () => {
+    it('hasRacksInZone chỉ xét rack chưa soft-delete', async () => {
+      rackModel.exec.mockResolvedValue({ _id: new Types.ObjectId() });
+
+      await expect(repo.hasRacksInZone(zoneId.toString())).resolves.toBe(true);
+      expect(rackModel.findOne).toHaveBeenCalledWith({
+        zoneId,
+        deletedAt: null,
+      });
+    });
+
+    it('hasShelvesInRack trả false khi rack không còn shelf active', async () => {
+      const rackId = new Types.ObjectId();
+      shelfModel.exec.mockResolvedValue(null);
+
+      await expect(repo.hasShelvesInRack(rackId.toString())).resolves.toBe(
+        false,
+      );
+      expect(shelfModel.findOne).toHaveBeenCalledWith({
+        rackId,
+        deletedAt: null,
+      });
+    });
+  });
   describe('findStagingShelf', () => {
     it('lọc theo isStaging=true, chưa xóa — không còn scope theo warehouseId', async () => {
       shelfModel.exec.mockResolvedValue(null);
@@ -155,6 +285,51 @@ describe('LocationRepository', () => {
     });
   });
 
+  describe('session propagation', () => {
+    it('gắn session vào query snapshot', async () => {
+      zoneModel.exec.mockResolvedValue([]);
+
+      await repo.findAllZones(session as never);
+
+      expect(zoneModel.session).toHaveBeenCalledWith(session);
+    });
+
+    it('tạo document bằng array form trong transaction', async () => {
+      const dto = { name: 'Khu A', code: 'A' };
+      const created = { _id: new Types.ObjectId(), ...dto };
+      zoneModel.create.mockResolvedValue([created]);
+
+      await expect(
+        repo.createZone(dto, actorId, session as never),
+      ).resolves.toBe(created);
+      expect(zoneModel.create).toHaveBeenCalledWith(
+        [
+          {
+            ...dto,
+            createdBy: new Types.ObjectId(actorId),
+            updatedBy: new Types.ObjectId(actorId),
+          },
+        ],
+        { session },
+      );
+    });
+
+    it('khóa shelf active bằng write trong transaction trước khi ghi inventory', async () => {
+      const shelfId = new Types.ObjectId();
+      const activeShelf = { _id: shelfId, isStaging: false };
+      shelfModel.exec.mockResolvedValue(activeShelf);
+
+      await expect(
+        repo.lockActiveShelfForInventory(shelfId.toString(), session as never),
+      ).resolves.toBe(activeShelf);
+
+      expect(shelfModel.findOneAndUpdate).toHaveBeenCalledWith(
+        { _id: shelfId.toString(), deletedAt: null },
+        { $set: { updatedAt: expect.any(Date) } },
+        { new: true, session },
+      );
+    });
+  });
   describe('findZoneByCode', () => {
     it('lọc theo code, không còn warehouseId', async () => {
       zoneModel.exec.mockResolvedValue(null);
@@ -200,6 +375,77 @@ describe('LocationRepository', () => {
         updatedBy: new Types.ObjectId(actorId),
       });
       expect(result).toBe(mockDoc);
+    });
+  });
+
+  describe('createAisle', () => {
+    it('gọi create với createdBy/updatedBy', async () => {
+      const dto = { code: 'MAIN-01', type: 'MAIN' as const };
+      const mockDoc = { _id: new Types.ObjectId(), ...dto };
+      aisleModel.create.mockResolvedValue(mockDoc);
+
+      const result = await repo.createAisle(dto, actorId);
+
+      expect(aisleModel.create).toHaveBeenCalledWith({
+        ...dto,
+        createdBy: new Types.ObjectId(actorId),
+        updatedBy: new Types.ObjectId(actorId),
+      });
+      expect(result).toBe(mockDoc);
+    });
+
+    it('giải phóng code của aisle đã soft-delete trước khi tạo lại', async () => {
+      const deletedId = new Types.ObjectId();
+      const dto = { code: 'AISLE-03', type: 'RACK' as const };
+      const mockDoc = { _id: new Types.ObjectId(), ...dto };
+      aisleModel.exec
+        .mockResolvedValueOnce({ _id: deletedId, code: dto.code })
+        .mockResolvedValueOnce({ modifiedCount: 1 });
+      aisleModel.create.mockResolvedValue(mockDoc);
+
+      await repo.createAisle(dto, actorId);
+
+      expect(aisleModel.updateOne).toHaveBeenCalledWith(
+        { _id: deletedId },
+        {
+          $set: {
+            code: `${dto.code}__deleted_${deletedId.toString()}`,
+            updatedBy: new Types.ObjectId(actorId),
+          },
+        },
+        undefined,
+      );
+    });
+  });
+
+  describe('findAllAisles', () => {
+    it('lọc chưa soft-delete, sort theo code asc', async () => {
+      aisleModel.exec.mockResolvedValue([]);
+      await repo.findAllAisles();
+      expect(aisleModel.find).toHaveBeenCalledWith({ deletedAt: null });
+      expect(aisleModel.sort).toHaveBeenCalledWith({ code: 1 });
+    });
+  });
+
+  describe('findAisleByCode', () => {
+    it('lọc theo code, chưa soft-delete', async () => {
+      aisleModel.exec.mockResolvedValue(null);
+      await repo.findAisleByCode('MAIN-01');
+      expect(aisleModel.findOne).toHaveBeenCalledWith({
+        code: 'MAIN-01',
+        deletedAt: null,
+      });
+    });
+  });
+
+  describe('softDeleteAisle', () => {
+    it('trả về true khi modifiedCount > 0', async () => {
+      aisleModel.exec.mockResolvedValue({ modifiedCount: 1 });
+      const result = await repo.softDeleteAisle(
+        new Types.ObjectId().toString(),
+        actorId,
+      );
+      expect(result).toBe(true);
     });
   });
 

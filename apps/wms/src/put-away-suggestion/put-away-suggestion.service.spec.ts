@@ -9,6 +9,8 @@ const makeStockRepo = () => ({
 
 const makeLocationRepo = () => ({
   findShelves: jest.fn(),
+  findStagingShelf: jest.fn().mockResolvedValue(null),
+  findRackCentersByShelfId: jest.fn().mockResolvedValue(new Map()),
 });
 
 const makeConfigService = (fillFactor = 0.75) => ({
@@ -220,5 +222,106 @@ describe('PutAwaySuggestionService', () => {
 
     expect(result.warning).toBe('INSUFFICIENT_CAPACITY');
     expect(result.suggestions).toEqual([{ shelfCode: 'A1-1', capacity: 30 }]);
+  });
+
+  it('combine: ưu tiên shelf nhiều chỗ trống hơn (capacity DESC) để dùng ít shelf nhất, không phải best-fit', async () => {
+    const itemId = new Types.ObjectId();
+    stockRepo.findItemBySku.mockResolvedValue({
+      _id: itemId,
+      depth: 10,
+      width: 10,
+      height: 10, // unitVolume = 1000
+    });
+    // 3 shelf, không shelf đơn nào đủ qty=45 (mỗi shelf capacity < 45).
+    // Nếu combine dùng best-fit (free nhỏ ưu tiên) như rankSingleShelf,
+    // thứ tự sẽ là shelfSmall (free nhỏ nhất) trước → cần gộp cả 3 shelf.
+    // Với fix (capacity/free DESC), thứ tự đúng là shelfBig, shelfMed,
+    // shelfSmall → chỉ cần 2 shelf đầu (40 + 30 = 70 >= 45).
+    const shelfBig = {
+      _id: new Types.ObjectId(),
+      code: 'A1-BIG',
+      innerDepth: 100,
+      innerWidth: 40,
+      innerHeight: 10, // usableVolume = 40_000 → capacity 40
+      fillFactor: 1,
+    };
+    const shelfMed = {
+      _id: new Types.ObjectId(),
+      code: 'A1-MED',
+      innerDepth: 100,
+      innerWidth: 30,
+      innerHeight: 10, // usableVolume = 30_000 → capacity 30
+      fillFactor: 1,
+    };
+    const shelfSmall = {
+      _id: new Types.ObjectId(),
+      code: 'A1-SMALL',
+      innerDepth: 100,
+      innerWidth: 20,
+      innerHeight: 10, // usableVolume = 20_000 → capacity 20
+      fillFactor: 1,
+    };
+    // Truyền theo thứ tự ngẫu nhiên để đảm bảo sort thật sự áp dụng.
+    locationRepo.findShelves.mockResolvedValue([
+      shelfSmall,
+      shelfBig,
+      shelfMed,
+    ]);
+    stockRepo.findOccupiedVolume.mockResolvedValue(new Map());
+    stockRepo.findShelfIdsWithItem.mockResolvedValue(new Set());
+
+    const result = await svc.suggest('SKU-A', 45);
+
+    expect(result.warning).toBeNull();
+    expect(result.suggestions).toEqual([
+      { shelfCode: 'A1-BIG', capacity: 40 },
+      { shelfCode: 'A1-MED', capacity: 30 },
+    ]);
+  });
+
+  describe('suggest — weighted scoring theo khoảng cách', () => {
+    it('ưu tiên shelf gần staging hơn khi capacity và same-SKU ngang nhau', async () => {
+      const item = {
+        _id: 'item1',
+        sku: 'SKU-1',
+        depth: 10,
+        width: 10,
+        height: 10,
+      };
+      const nearShelf = {
+        _id: 'shelf-near',
+        code: 'NEAR-01',
+        innerDepth: 100,
+        innerWidth: 100,
+        innerHeight: 100,
+        fillFactor: null,
+      };
+      const farShelf = {
+        _id: 'shelf-far',
+        code: 'FAR-01',
+        innerDepth: 100,
+        innerWidth: 100,
+        innerHeight: 100,
+        fillFactor: null,
+      };
+      const stagingShelf = { _id: 'shelf-staging', code: 'STG-01' };
+
+      stockRepo.findItemBySku.mockResolvedValue(item);
+      locationRepo.findShelves.mockResolvedValue([nearShelf, farShelf]);
+      stockRepo.findOccupiedVolume.mockResolvedValue(new Map());
+      stockRepo.findShelfIdsWithItem.mockResolvedValue(new Set());
+      locationRepo.findStagingShelf.mockResolvedValue(stagingShelf);
+      locationRepo.findRackCentersByShelfId.mockResolvedValue(
+        new Map([
+          ['shelf-near', { xM: 1, yM: 1 }],
+          ['shelf-far', { xM: 50, yM: 50 }],
+          ['shelf-staging', { xM: 0, yM: 0 }],
+        ]),
+      );
+
+      const result = await svc.suggest('SKU-1', 5);
+
+      expect(result.suggestions[0].shelfCode).toBe('NEAR-01');
+    });
   });
 });

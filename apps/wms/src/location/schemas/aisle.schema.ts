@@ -1,15 +1,20 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { HydratedDocument, Types } from 'mongoose';
 
-@Schema({ collection: 'zones', timestamps: true })
-export class Zone {
-  @Prop({ required: true })
-  name!: string;
+export enum AisleType {
+  MAIN = 'MAIN',
+  RACK = 'RACK',
+}
 
+/** Lối đi trên sơ đồ kho — thuần phục vụ hiển thị 2D, không ảnh hưởng nghiệp vụ tồn kho. */
+@Schema({ collection: 'aisles', timestamps: true })
+export class Aisle {
   @Prop({ required: true })
   code!: string;
 
-  /** Toạ độ góc trên-trái trên sơ đồ kho, đơn vị mét. */
+  @Prop({ enum: AisleType, required: true })
+  type!: AisleType;
+
   @Prop({ type: Number, default: 0 })
   xM!: number;
 
@@ -22,10 +27,6 @@ export class Zone {
   @Prop({ type: Number, default: 0 })
   heightM!: number;
 
-  /** 0 hoặc 90 độ — xoay hình chữ nhật trên map, không xoay tự do. */
-  @Prop({ type: Number, enum: [0, 90], default: 0 })
-  rotation!: number;
-
   @Prop({ type: Types.ObjectId })
   createdBy?: Types.ObjectId;
 
@@ -36,10 +37,10 @@ export class Zone {
   deletedAt?: Date | null;
 }
 
-export type ZoneDocument = HydratedDocument<Zone>;
-export const ZoneSchema = SchemaFactory.createForClass(Zone);
-ZoneSchema.index({ deletedAt: 1 });
-ZoneSchema.index(
+export type AisleDocument = HydratedDocument<Aisle>;
+export const AisleSchema = SchemaFactory.createForClass(Aisle);
+AisleSchema.index({ deletedAt: 1 });
+AisleSchema.index(
   { code: 1 },
   { unique: true, partialFilterExpression: { deletedAt: null } },
 );

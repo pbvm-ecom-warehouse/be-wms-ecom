@@ -17,6 +17,7 @@ import {
 } from 'class-validator';
 import { Types } from 'mongoose';
 import { GoodsReceiptNoteStatus } from '../schemas/goods-receipt-note.schema';
+import { ItemType } from '../../stock/schemas/warehouse-item.schema';
 
 export class CreateGoodsReceiptNoteItemDto {
   @ApiProperty({
@@ -86,6 +87,17 @@ export class CreateGoodsReceiptNoteDto {
   items?: CreateGoodsReceiptNoteItemDto[];
 }
 
+/** Sửa items của GRN còn DRAFT — thay thế toàn bộ, không merge. Bắt buộc gửi đủ
+ * (khác lúc tạo, "để trống = nhận đủ theo PO" không áp dụng khi sửa). */
+export class UpdateGoodsReceiptNoteItemsDto {
+  @ApiProperty({ type: [CreateGoodsReceiptNoteItemDto] })
+  @IsArray()
+  @ArrayMinSize(1)
+  @ValidateNested({ each: true })
+  @Type(() => CreateGoodsReceiptNoteItemDto)
+  items!: CreateGoodsReceiptNoteItemDto[];
+}
+
 export class QueryGoodsReceiptNoteDto {
   @ApiPropertyOptional({ enum: GoodsReceiptNoteStatus })
   @IsOptional()
@@ -125,14 +137,49 @@ export class GoodsReceiptNoteItemResponseDto {
   @ApiProperty()
   sku!: string;
 
-  /** Denormalize từ WarehouseItem.name tại thời điểm build response — không lưu trong GRN item. */
+  /** Denormalize từ WarehouseItem tại thời điểm build response — không lưu trong GRN item. */
   @Expose()
   @ApiPropertyOptional()
   itemName?: string;
 
   @Expose()
+  @ApiPropertyOptional()
+  barcode?: string;
+
+  @Expose()
+  @ApiPropertyOptional()
+  category?: string;
+
+  @Expose()
+  @ApiPropertyOptional({ enum: ItemType })
+  type?: ItemType;
+
+  @Expose()
+  @ApiPropertyOptional({ type: [String] })
+  images?: string[];
+
+  @Expose()
+  @ApiPropertyOptional()
+  isPerishable?: boolean;
+
+  @Expose()
   @ApiProperty()
   expectedQty!: number;
+
+  /** Denormalize từ PurchaseOrderItem.unitPrice tại thời điểm build response. */
+  @Expose()
+  @ApiPropertyOptional()
+  unitPrice?: number;
+
+  /** Tổng đã nhận của PO tính đến hiện tại (mọi GRN đã CONFIRMED) — không phải riêng GRN này. */
+  @Expose()
+  @ApiPropertyOptional()
+  receivedQty?: number;
+
+  /** = expectedQty - receivedQty tại thời điểm trả response — FE không tự trừ lại. */
+  @Expose()
+  @ApiPropertyOptional()
+  remainingQty?: number;
 
   @Expose()
   @ApiProperty()

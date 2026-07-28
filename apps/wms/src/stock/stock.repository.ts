@@ -127,7 +127,8 @@ export class StockRepository {
 
   /**
    * Lấy thông tin hiển thị của nhiều mặt hàng theo id (batch) — dùng khi tạo StockCount
-   * (tránh N+1 query) và khi gắn itemName/barcode/category/type/images vào PO response.
+   * (tránh N+1 query) và khi gắn itemName/barcode/category/type/images/isPerishable
+   * vào PO/GRN response.
    */
   findItemsByIds(itemIds: Types.ObjectId[]): Promise<
     {
@@ -138,11 +139,12 @@ export class StockRepository {
       category?: string;
       type: ItemType;
       images: string[];
+      isPerishable: boolean;
     }[]
   > {
     return this.itemModel
       .find({ _id: { $in: itemIds } })
-      .select('sku name barcode category type images')
+      .select('sku name barcode category type images isPerishable')
       .lean()
       .exec();
   }
@@ -565,6 +567,99 @@ export class StockRepository {
       lotNumber: r.lotNumber,
       expiryDate: r.expiryDate,
       quantity: r.quantity,
+    }));
+  }
+
+  async hasPositiveInventoryOnShelf(
+    shelfId: Types.ObjectId,
+    session?: ClientSession,
+  ): Promise<boolean> {
+    const query = this.inventoryModel
+      .findOne({ shelfId, quantity: { $gt: 0 } })
+      .select('_id')
+      .lean();
+    if (session) query.session(session);
+    return (await query.exec()) !== null;
+  }
+
+  async hasPositiveInventoryOnAnyShelf(
+    shelfIds: Types.ObjectId[],
+    session?: ClientSession,
+  ): Promise<boolean> {
+    if (shelfIds.length === 0) return false;
+    const query = this.inventoryModel
+      .findOne({ shelfId: { $in: shelfIds }, quantity: { $gt: 0 } })
+      .select('_id')
+      .lean();
+    if (session) query.session(session);
+    return (await query.exec()) !== null;
+  }
+
+  /**
+   * Tồn kho thật tại 1 shelf — join InventoryStock → WarehouseItem (tên/unit)
+   * → Lot (số lô/hạn dùng, optional). Dùng cho rack elevation view (FE) hiển
+   * thị đúng SKU/số lượng/lô đang nằm trong từng shelf, KHÔNG suy diễn.
+   */
+  async findInventoryByShelfId(shelfId: Types.ObjectId): Promise<
+    Array<{
+      id: string;
+      sku: string;
+      itemName: string;
+      unit: string;
+      quantity: number;
+      lotNumber: string | null;
+      expiryDate: Date | null;
+    }>
+  > {
+    const rows = await this.inventoryModel.aggregate<{
+      _id: Types.ObjectId;
+      sku: string;
+      itemName: string;
+      unit: string;
+      quantity: number;
+      lotNumber: string | null;
+      expiryDate: Date | null;
+    }>([
+      { $match: { shelfId, quantity: { $gt: 0 } } },
+      {
+        $lookup: {
+          from: 'warehouse_items',
+          localField: 'itemId',
+          foreignField: '_id',
+          as: 'item',
+        },
+      },
+      { $unwind: '$item' },
+      {
+        $lookup: {
+          from: 'lots',
+          localField: 'lotId',
+          foreignField: '_id',
+          as: 'lot',
+        },
+      },
+      { $unwind: { path: '$lot', preserveNullAndEmptyArrays: true } },
+      {
+        $project: {
+          _id: 1,
+          sku: '$item.sku',
+          itemName: '$item.name',
+          unit: '$item.unit',
+          quantity: 1,
+          lotNumber: { $ifNull: ['$lot.lotNumber', null] },
+          expiryDate: { $ifNull: ['$lot.expiryDate', null] },
+        },
+      },
+    ]);
+
+    return rows.map((r) => ({
+      id: r._id.toString(),
+      sku: r.sku,
+      itemName: r.itemName,
+      unit: r.unit,
+      quantity: r.quantity,
+      lotNumber: r.lotNumber,
+      expiryDate: r.expiryDate,
     }));
   }
 

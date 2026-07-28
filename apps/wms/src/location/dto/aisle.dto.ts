@@ -1,48 +1,43 @@
 import { ApiProperty, ApiPropertyOptional, PartialType } from '@nestjs/swagger';
 import { Expose, Transform } from 'class-transformer';
-import { IsIn, IsNumber, IsOptional, IsString, MinLength } from 'class-validator';
+import { IsEnum, IsNumber, IsOptional, IsString, MinLength } from 'class-validator';
 import { Types } from 'mongoose';
+import { AisleType } from '../schemas/aisle.schema';
 
-export class CreateZoneDto {
-  @ApiProperty({ example: 'Khu A' })
-  @IsString()
-  @MinLength(1)
-  name!: string;
-
-  @ApiProperty({ example: 'A' })
+export class CreateAisleDto {
+  @ApiProperty({ example: 'MAIN-01' })
   @IsString()
   @MinLength(1)
   code!: string;
 
-  @ApiPropertyOptional({ example: 1, description: 'Toạ độ X trên sơ đồ (mét)' })
+  @ApiProperty({ enum: AisleType, example: AisleType.MAIN })
+  @IsEnum(AisleType)
+  type!: AisleType;
+
+  @ApiPropertyOptional({ example: 18 })
   @IsOptional()
   @IsNumber()
   xM?: number;
 
-  @ApiPropertyOptional({ example: 1, description: 'Toạ độ Y trên sơ đồ (mét)' })
+  @ApiPropertyOptional({ example: 0 })
   @IsOptional()
   @IsNumber()
   yM?: number;
 
-  @ApiPropertyOptional({ example: 16 })
+  @ApiPropertyOptional({ example: 4 })
   @IsOptional()
   @IsNumber()
   widthM?: number;
 
-  @ApiPropertyOptional({ example: 22 })
+  @ApiPropertyOptional({ example: 24 })
   @IsOptional()
   @IsNumber()
   heightM?: number;
-
-  @ApiPropertyOptional({ example: 0, enum: [0, 90] })
-  @IsOptional()
-  @IsIn([0, 90])
-  rotation?: number;
 }
 
-export class UpdateZoneDto extends PartialType(CreateZoneDto) {}
+export class UpdateAisleDto extends PartialType(CreateAisleDto) {}
 
-export class ZoneResponseDto {
+export class AisleResponseDto {
   @Expose()
   @Transform(({ obj }: { obj: { _id?: Types.ObjectId } }) =>
     obj._id?.toString(),
@@ -52,11 +47,11 @@ export class ZoneResponseDto {
 
   @Expose()
   @ApiProperty()
-  name!: string;
+  code!: string;
 
   @Expose()
-  @ApiProperty()
-  code!: string;
+  @ApiProperty({ enum: AisleType })
+  type!: AisleType;
 
   @Expose()
   @ApiProperty()
@@ -73,10 +68,6 @@ export class ZoneResponseDto {
   @Expose()
   @ApiProperty()
   heightM!: number;
-
-  @Expose()
-  @ApiProperty({ enum: [0, 90] })
-  rotation!: number;
 
   @Expose()
   @ApiProperty()

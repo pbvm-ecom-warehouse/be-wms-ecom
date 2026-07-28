@@ -122,4 +122,28 @@ export class GoodsReceiptNoteRepository {
       .findOneAndUpdate({ _id: id }, { $push: { images: url } }, { new: true })
       .exec();
   }
+
+  /** Thay thế toàn bộ items của GRN còn DRAFT — service đã validate trước khi gọi.
+   * GRN không có updatedBy (chứng từ giao dịch, không audit field này — xem
+   * data-and-mongoose.md), timestamps:true đã tự cập nhật updatedAt. */
+  async replaceItems(
+    id: string,
+    resolvedItems: ResolvedGoodsReceiptNoteItem[],
+  ): Promise<GoodsReceiptNoteDocument | null> {
+    return this.model
+      .findOneAndUpdate(
+        { _id: id, status: GoodsReceiptNoteStatus.DRAFT },
+        // itemId giữ string — Mongoose tự cast theo schema, cùng cách createGoodsReceiptNote làm.
+        { items: resolvedItems as unknown as GoodsReceiptNote['items'] },
+        { new: true },
+      )
+      .exec();
+  }
+
+  /** Xóa vật lý GRN còn DRAFT — service đã kiểm tra status trước khi gọi. */
+  async deleteGoodsReceiptNote(id: string): Promise<void> {
+    await this.model
+      .deleteOne({ _id: id, status: GoodsReceiptNoteStatus.DRAFT })
+      .exec();
+  }
 }

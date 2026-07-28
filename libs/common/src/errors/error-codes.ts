@@ -78,7 +78,7 @@ export const ERROR_CATALOG = {
     message: 'Đã có nhân viên trong hệ thống',
   },
 
-  // ── WMS — Location Structure (Zone/Rack/Shelf) ──────────────────────────────
+  // ── WMS — Location Structure (Zone/Rack/Shelf/Aisle/RackTemplate/Gate) ────────
   ZONE_NOT_FOUND: {
     status: HttpStatus.NOT_FOUND,
     message: 'Không tìm thấy khu vực',
@@ -102,6 +102,66 @@ export const ERROR_CATALOG = {
   SHELF_CODE_EXISTS: {
     status: HttpStatus.CONFLICT,
     message: 'Mã barcode tầng đã tồn tại',
+  },
+  AISLE_NOT_FOUND: {
+    status: HttpStatus.NOT_FOUND,
+    message: 'Không tìm thấy lối đi',
+  },
+  AISLE_CODE_EXISTS: {
+    status: HttpStatus.CONFLICT,
+    message: 'Mã lối đi đã tồn tại',
+  },
+  RACK_TEMPLATE_NOT_FOUND: {
+    status: HttpStatus.NOT_FOUND,
+    message: 'Chưa cấu hình kích thước kệ chuẩn',
+  },
+  RACK_TEMPLATE_INVALID: {
+    status: HttpStatus.BAD_REQUEST,
+    message: 'Kích thước kệ không hợp lệ',
+  },
+  GATE_NOT_FOUND: {
+    status: HttpStatus.NOT_FOUND,
+    message: 'Không tìm thấy cổng',
+  },
+  GATE_CODE_EXISTS: {
+    status: HttpStatus.CONFLICT,
+    message: 'Mã cổng đã tồn tại',
+  },
+  ZONE_HAS_RACKS: {
+    status: HttpStatus.CONFLICT,
+    message: 'Không thể xoá khu vực đang còn kệ',
+  },
+  RACK_HAS_SHELVES: {
+    status: HttpStatus.CONFLICT,
+    message: 'Không thể xoá kệ đang còn tầng kệ',
+  },
+  STAGING_SHELF_CANNOT_DELETE: {
+    status: HttpStatus.CONFLICT,
+    message: 'Không thể xoá tầng kệ staging',
+  },
+  SHELF_HAS_STOCK: {
+    status: HttpStatus.CONFLICT,
+    message: 'Không thể xoá tầng kệ đang còn tồn kho',
+  },
+  LAYOUT_REVISION_CONFLICT: {
+    status: HttpStatus.CONFLICT,
+    message: 'Sơ đồ kho đã được cập nhật bởi phiên khác',
+  },
+  LAYOUT_VALIDATION_FAILED: {
+    status: HttpStatus.UNPROCESSABLE_ENTITY,
+    message: 'Sơ đồ kho không hợp lệ',
+  },
+  LAYOUT_DUPLICATE_CLIENT_ID: {
+    status: HttpStatus.BAD_REQUEST,
+    message: 'clientId tạm bị trùng trong change-set',
+  },
+  LAYOUT_INVALID_REFERENCE: {
+    status: HttpStatus.BAD_REQUEST,
+    message: 'Tham chiếu ID tạm không hợp lệ hoặc chưa được tạo',
+  },
+  LAYOUT_OPERATION_NOT_ALLOWED: {
+    status: HttpStatus.BAD_REQUEST,
+    message: 'Operation không được phép cho loại entity này',
   },
 
   // ── WMS — Supplier ─────────────────────────────────────────────────────────
@@ -169,6 +229,10 @@ export const ERROR_CATALOG = {
   GRN_STAGING_SHELF_NOT_FOUND: {
     status: HttpStatus.NOT_FOUND,
     message: 'Kho chưa cấu hình vị trí nhận hàng (staging)',
+  },
+  GRN_IMAGE_REQUIRED: {
+    status: HttpStatus.BAD_REQUEST,
+    message: 'Cần ít nhất 1 ảnh minh chứng trước khi xác nhận nhận hàng',
   },
   PO_NOT_RECEIVABLE: {
     status: HttpStatus.CONFLICT,
