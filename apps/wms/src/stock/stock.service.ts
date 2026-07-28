@@ -7,7 +7,8 @@ import {
   type StockLowPayload,
   type WarehouseItemCreatedPayload,
 } from '@app/events';
-import { AppException, CloudinaryService } from '@app/common';
+import { AppException } from '@app/common/errors/app.exception';
+import { CloudinaryService } from '@app/common/cloudinary/cloudinary.service';
 import { Queue } from 'bullmq';
 import { Types } from 'mongoose';
 import { StockRepository } from './stock.repository';

@@ -28,7 +28,8 @@
     "seed:ecom": "ts-node -r tsconfig-paths/register apps/ecommerce/src/seed/seed.ts",
     "seed:test-sync": "ts-node -r tsconfig-paths/register apps/wms/src/seed/test-sync-seed.ts",
     "cleanup:test-sync": "ts-node -r tsconfig-paths/register apps/wms/src/seed/test-sync-cleanup.ts",
-    "backfill:barcode-registry": "ts-node -r tsconfig-paths/register apps/wms/scripts/backfill-barcode-registry.ts"
+    "backfill:barcode-registry": "ts-node -r tsconfig-paths/register apps/wms/scripts/backfill-barcode-registry.ts",
+    "migrate:storage-cells": "ts-node -r tsconfig-paths/register apps/wms/scripts/migrate-storage-cells.ts"
   },
   "dependencies": {
     "@nestjs/bullmq": "^11.0.4",

@@ -18,6 +18,7 @@ import {
 import { Types } from 'mongoose';
 import { GoodsReceiptNoteStatus } from '../schemas/goods-receipt-note.schema';
 import { ItemType } from '../../stock/schemas/warehouse-item.schema';
+import { PackageSpecResponseDto } from '../../purchase-order/dto/purchase-order.dto';
 
 export class CreateGoodsReceiptNoteItemDto {
   @ApiProperty({
@@ -31,6 +32,16 @@ export class CreateGoodsReceiptNoteItemDto {
   @IsNumber()
   @Min(0)
   actualQty!: number;
+
+  @ApiPropertyOptional({
+    example: 5,
+    description:
+      'Số thùng thực nhận; nếu bỏ trống server tính từ actualQty/packageSpec.factor.',
+  })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  packageCount?: number;
 
   @ApiPropertyOptional({
     example: 'cái',
@@ -96,6 +107,20 @@ export class UpdateGoodsReceiptNoteItemsDto {
   @ValidateNested({ each: true })
   @Type(() => CreateGoodsReceiptNoteItemDto)
   items!: CreateGoodsReceiptNoteItemDto[];
+}
+
+export class SubmitGoodsReceiptNoteDto {
+  @ApiPropertyOptional({ example: 'Gửi duyệt sau khi bổ sung ảnh kiện hàng' })
+  @IsOptional()
+  @IsString()
+  note?: string;
+}
+
+export class RejectGoodsReceiptNoteDto {
+  @ApiProperty({ example: 'Ảnh kiện hàng chưa rõ hoặc số thùng lệch PO' })
+  @IsString()
+  @MinLength(1)
+  reason!: string;
 }
 
 export class QueryGoodsReceiptNoteDto {
@@ -200,6 +225,19 @@ export class GoodsReceiptNoteItemResponseDto {
   @Expose()
   @ApiPropertyOptional()
   note?: string;
+
+  @Expose()
+  @ApiProperty()
+  packageCount!: number;
+
+  @Expose()
+  @Type(() => PackageSpecResponseDto)
+  @ApiPropertyOptional({ type: PackageSpecResponseDto })
+  packageSpec?: PackageSpecResponseDto;
+
+  @Expose()
+  @ApiProperty()
+  wholePackageOnly!: boolean;
 }
 
 export class GoodsReceiptNoteResponseDto {
@@ -243,6 +281,30 @@ export class GoodsReceiptNoteResponseDto {
   @Expose()
   @ApiProperty({ type: [String] })
   images!: string[];
+
+  @Expose()
+  @ApiPropertyOptional()
+  submittedAt?: Date;
+
+  @Expose()
+  @ApiPropertyOptional()
+  approvedAt?: Date;
+
+  @Expose()
+  @ApiPropertyOptional()
+  rejectedAt?: Date;
+
+  @Expose()
+  @ApiPropertyOptional()
+  rejectionReason?: string;
+
+  @Expose()
+  @ApiPropertyOptional()
+  totalPackageCount?: number;
+
+  @Expose()
+  @ApiPropertyOptional()
+  totalVolumeCm3?: number;
 
   @Expose()
   @ApiProperty()

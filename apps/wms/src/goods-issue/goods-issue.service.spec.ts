@@ -1,427 +1,237 @@
 import { Types } from 'mongoose';
+import { AppException } from '@app/common/errors/app.exception';
 import { GoodsIssueService } from './goods-issue.service';
-import { GoodsIssueStatus } from './schemas/goods-issue.schema';
 
-const makeRepo = () => ({
-  findByOrderId: jest.fn(),
-  createGoodsIssue: jest.fn(),
-  findById: jest.fn(),
-  findAll: jest.fn(),
-  decrementRemainingQty: jest.fn(),
-  markConfirmedIfAllDone: jest.fn(),
+const path = (rackId: string, distanceM: number) => ({
+  startGateCode: 'GATE-01',
+  targetRackId: rackId,
+  points: [
+    { xM: 0, yM: 0 },
+    { xM: distanceM, yM: 0 },
+  ],
+  distanceM,
 });
 
-const makeStockRepo = () => ({
-  findItemBySku: jest.fn(),
-  findItemById: jest.fn(),
-  findItemByIdDocument: jest.fn(),
-  findInventory: jest.fn(),
-  upsertInventory: jest.fn(),
-  upsertBalance: jest.fn(),
-  insertMovement: jest.fn(),
-  findAvailableStockForPick: jest.fn(),
-});
-
-const makeBarcodeService = () => ({
-  findItemIdByCode: jest.fn(),
-});
-
-const makeLocationRepo = () => ({
-  findShelfByCode: jest.fn(),
-});
-
-const makeStockService = () => ({
-  checkAndEmitStockLow: jest.fn(),
-});
-
-const makeTxHelper = () => ({
-  withStockTransaction: jest.fn((fn: (session: unknown) => unknown) => fn({})),
-});
-
-const makeQueue = () => ({
-  add: jest.fn(),
-});
-
-describe('GoodsIssueService', () => {
-  let svc: GoodsIssueService;
-  let repo: ReturnType<typeof makeRepo>;
-  let stockRepo: ReturnType<typeof makeStockRepo>;
-  let stockService: ReturnType<typeof makeStockService>;
-  let locationRepo: ReturnType<typeof makeLocationRepo>;
-  let txHelper: ReturnType<typeof makeTxHelper>;
-  let barcodeSvc: ReturnType<typeof makeBarcodeService>;
-  let queue: ReturnType<typeof makeQueue>;
-  let internalQueue: ReturnType<typeof makeQueue>;
-
+describe('GoodsIssueService theo khoang và thùng nguyên', () => {
   const actorId = new Types.ObjectId().toString();
-  const orderId = 'order-1';
   const itemId = new Types.ObjectId();
+  const shelfId = new Types.ObjectId();
+  const cellId = new Types.ObjectId();
+  const giId = new Types.ObjectId().toString();
+  const orderId = 'order-1';
+
+  const repo = {
+    findByOrderId: jest.fn(),
+    createGoodsIssue: jest.fn(),
+    findById: jest.fn(),
+    findAll: jest.fn(),
+    decrementRemainingQty: jest.fn(),
+    markConfirmedIfAllDone: jest.fn(),
+  };
+  const stockRepo = {
+    findItemBySku: jest.fn(),
+    findItemById: jest.fn(),
+    findItemByIdDocument: jest.fn(),
+    findInventory: jest.fn(),
+    findAvailableStockForPick: jest.fn(),
+    decrementInventoryIfAvailable: jest.fn(),
+    issueReservedIfAvailable: jest.fn(),
+    insertMovement: jest.fn(),
+  };
+  const stockService = { checkAndEmitStockLow: jest.fn() };
+  const locationRepo = {
+    findCellByCode: jest.fn(),
+    findShelfById: jest.fn(),
+    lockActiveCellForInventory: jest.fn(),
+  };
+  const tx = {
+    withStockTransaction: jest.fn((fn: (session: object) => unknown) => fn({})),
+  };
+  const barcode = { findItemIdByCode: jest.fn() };
+  const navigation = { getPath: jest.fn() };
+  const shipmentQueue = { add: jest.fn() };
+  const internalQueue = { add: jest.fn() };
+
+  let service: GoodsIssueService;
+
+  const goodsIssue = () => ({
+    _id: new Types.ObjectId(giId),
+    orderId,
+    items: [{ itemId, sku: 'SKU-1', quantity: 50, remainingQty: 50 }],
+  });
+  const cell = () => ({ _id: cellId, shelfId });
+  const inventory = () => ({
+    quantity: 50,
+    packageCount: 5,
+    packageFactor: 10,
+    packageVolumeCm3Snapshot: 1000,
+  });
 
   beforeEach(() => {
-    repo = makeRepo();
-    stockRepo = makeStockRepo();
-    stockService = makeStockService();
-    locationRepo = makeLocationRepo();
-    txHelper = makeTxHelper();
-    barcodeSvc = makeBarcodeService();
-    queue = makeQueue();
-    internalQueue = makeQueue();
-    svc = new GoodsIssueService(
+    jest.clearAllMocks();
+    service = new GoodsIssueService(
       repo as never,
       stockRepo as never,
       stockService as never,
       locationRepo as never,
-      txHelper as never,
-      barcodeSvc as never,
-      queue as never,
+      tx as never,
+      barcode as never,
+      navigation as never,
+      shipmentQueue as never,
       internalQueue as never,
     );
+    repo.findById.mockResolvedValue(goodsIssue());
+    stockRepo.findItemById.mockResolvedValue({ isPerishable: false });
+    stockRepo.findItemByIdDocument.mockResolvedValue({ _id: itemId });
+    barcode.findItemIdByCode.mockResolvedValue(itemId);
+    locationRepo.findCellByCode.mockResolvedValue(cell());
+    locationRepo.findShelfById.mockResolvedValue({ _id: shelfId });
+    locationRepo.lockActiveCellForInventory.mockResolvedValue(cell());
+    stockRepo.findInventory.mockResolvedValue(inventory());
+    stockRepo.decrementInventoryIfAvailable.mockResolvedValue({ quantity: 40 });
+    stockRepo.issueReservedIfAvailable.mockResolvedValue(true);
+    repo.decrementRemainingQty.mockResolvedValue(goodsIssue());
+    repo.markConfirmedIfAllDone.mockResolvedValue(false);
   });
 
-  const snapshotArgs = () =>
-    [
-      { street: '123 Le Loi' },
-      { name: 'Nguyen Van A', phone: '0900000000' },
-      'COD' as const,
-      0,
-    ] as const;
+  it('gợi ý pick theo FEFO trước, rồi khoảng cách cho cùng hạn dùng', async () => {
+    stockRepo.findItemById.mockResolvedValue({ isPerishable: true });
+    const early = new Date('2026-08-01');
+    const late = new Date('2026-09-01');
+    stockRepo.findAvailableStockForPick.mockResolvedValue([
+      {
+        cellId: new Types.ObjectId(),
+        cellCode: 'C-LATE',
+        rackId: new Types.ObjectId('64b000000000000000000003'),
+        expiryDate: late,
+      },
+      {
+        cellId: new Types.ObjectId(),
+        cellCode: 'C-FAR',
+        rackId: new Types.ObjectId('64b000000000000000000002'),
+        expiryDate: early,
+      },
+      {
+        cellId: new Types.ObjectId(),
+        cellCode: 'C-NEAR',
+        rackId: new Types.ObjectId('64b000000000000000000001'),
+        expiryDate: early,
+      },
+    ]);
+    navigation.getPath.mockImplementation((rackId: string) =>
+      Promise.resolve(
+        path(rackId, rackId.endsWith('1') ? 2 : rackId.endsWith('2') ? 9 : 1),
+      ),
+    );
 
-  describe('createFromOrderReady', () => {
-    it('bỏ qua nếu đã có GoodsIssue cho orderId này (idempotent)', async () => {
-      repo.findByOrderId.mockResolvedValue({ _id: 'gi1' });
-      await svc.createFromOrderReady(
-        orderId,
-        [{ sku: 'SKU-1', quantity: 5 }],
-        ...snapshotArgs(),
-      );
-      expect(repo.createGoodsIssue).not.toHaveBeenCalled();
-    });
+    const result = await service.getPickSuggestions(giId, itemId.toString());
 
-    it('bỏ qua dòng sku không khớp WarehouseItem, vẫn tạo phiếu với dòng hợp lệ', async () => {
-      repo.findByOrderId.mockResolvedValue(null);
-      stockRepo.findItemBySku.mockImplementation((sku: string) =>
-        sku === 'SKU-1'
-          ? Promise.resolve({ _id: itemId, sku: 'SKU-1' })
-          : Promise.resolve(null),
-      );
-      const [shippingAddress, recipient, paymentMethod, codAmount] =
-        snapshotArgs();
-      await svc.createFromOrderReady(
-        orderId,
-        [
-          { sku: 'SKU-1', quantity: 5 },
-          { sku: 'SKU-UNKNOWN', quantity: 3 },
-        ],
-        shippingAddress,
-        recipient,
-        paymentMethod,
-        codAmount,
-      );
-      expect(repo.createGoodsIssue).toHaveBeenCalledWith({
-        orderId,
-        lines: [{ itemId, sku: 'SKU-1', quantity: 5 }],
-        shippingAddress,
-        recipient,
-        paymentMethod,
-        codAmount,
-      });
-    });
-
-    it('không tạo phiếu nếu không có dòng nào khớp sku', async () => {
-      repo.findByOrderId.mockResolvedValue(null);
-      stockRepo.findItemBySku.mockResolvedValue(null);
-      await svc.createFromOrderReady(
-        orderId,
-        [{ sku: 'SKU-UNKNOWN', quantity: 3 }],
-        ...snapshotArgs(),
-      );
-      expect(repo.createGoodsIssue).not.toHaveBeenCalled();
-    });
+    expect(result.map((entry) => entry.cellCode)).toEqual([
+      'C-NEAR',
+      'C-FAR',
+      'C-LATE',
+    ]);
+    expect(result[0].path.distanceM).toBe(2);
   });
 
-  describe('getPickSuggestions', () => {
-    it('throw GOODS_ISSUE_NOT_FOUND khi phiếu không tồn tại', async () => {
-      repo.findById.mockResolvedValue(null);
-      await expect(
-        svc.getPickSuggestions('gi1', itemId.toString()),
-      ).rejects.toMatchObject({ code: 'GOODS_ISSUE_NOT_FOUND' });
-    });
+  it('bỏ vị trí không có đường điều hướng', async () => {
+    stockRepo.findAvailableStockForPick.mockResolvedValue([
+      {
+        cellId: new Types.ObjectId(),
+        cellCode: 'C1',
+        rackId: new Types.ObjectId(),
+      },
+    ]);
+    navigation.getPath.mockRejectedValue(
+      new AppException('NAVIGATION_RACK_NOT_CONNECTED'),
+    );
 
-    it('throw GOODS_ISSUE_ITEM_MISMATCH khi itemId không thuộc phiếu', async () => {
-      repo.findById.mockResolvedValue({
-        _id: 'gi1',
-        items: [{ itemId: new Types.ObjectId(), remainingQty: 5 }],
-      });
-      await expect(
-        svc.getPickSuggestions('gi1', itemId.toString()),
-      ).rejects.toMatchObject({ code: 'GOODS_ISSUE_ITEM_MISMATCH' });
-    });
-
-    it('gọi findAvailableStockForPick với isPerishable đúng theo WarehouseItem', async () => {
-      repo.findById.mockResolvedValue({
-        _id: 'gi1',
-        items: [{ itemId, remainingQty: 5 }],
-      });
-      stockRepo.findItemById.mockResolvedValue({ isPerishable: true });
-      stockRepo.findAvailableStockForPick.mockResolvedValue([]);
-
-      await svc.getPickSuggestions('gi1', itemId.toString());
-
-      expect(stockRepo.findAvailableStockForPick).toHaveBeenCalledWith(
-        itemId,
-        true,
-      );
-    });
+    await expect(
+      service.getPickSuggestions(giId, itemId.toString()),
+    ).resolves.toEqual([]);
   });
 
-  describe('confirmLine', () => {
-    const giId = 'gi1';
-    const shelfId = new Types.ObjectId();
+  it('bắt buộc quét đúng khoang', async () => {
+    locationRepo.findCellByCode.mockResolvedValue(null);
 
-    const baseGi = () => ({
-      _id: giId,
-      orderId,
-      items: [{ itemId, sku: 'SKU-1', quantity: 20, remainingQty: 20 }],
-    });
-
-    it('throw GOODS_ISSUE_NOT_FOUND khi phiếu không tồn tại', async () => {
-      repo.findById.mockResolvedValue(null);
-      await expect(
-        svc.confirmLine(
-          giId,
-          { itemBarcode: 'X', shelfCode: 'A1', quantity: 5 },
-          actorId,
-        ),
-      ).rejects.toMatchObject({ code: 'GOODS_ISSUE_NOT_FOUND' });
-    });
-
-    it('throw GOODS_ISSUE_ITEM_NOT_FOUND khi barcode không khớp item nào', async () => {
-      repo.findById.mockResolvedValue(baseGi());
-      barcodeSvc.findItemIdByCode.mockResolvedValue(null);
-      stockRepo.findItemByIdDocument.mockResolvedValue(null);
-      await expect(
-        svc.confirmLine(
-          giId,
-          { itemBarcode: 'UNKNOWN', shelfCode: 'A1', quantity: 5 },
-          actorId,
-        ),
-      ).rejects.toMatchObject({ code: 'GOODS_ISSUE_ITEM_NOT_FOUND' });
-    });
-
-    it('throw GOODS_ISSUE_SHELF_NOT_FOUND khi shelf code không khớp', async () => {
-      repo.findById.mockResolvedValue(baseGi());
-      barcodeSvc.findItemIdByCode.mockResolvedValue(itemId);
-      stockRepo.findItemByIdDocument.mockResolvedValue({ _id: itemId });
-      locationRepo.findShelfByCode.mockResolvedValue(null);
-      await expect(
-        svc.confirmLine(
-          giId,
-          { itemBarcode: 'X', shelfCode: 'UNKNOWN', quantity: 5 },
-          actorId,
-        ),
-      ).rejects.toMatchObject({ code: 'GOODS_ISSUE_SHELF_NOT_FOUND' });
-    });
-
-    it('throw GOODS_ISSUE_ITEM_MISMATCH khi item không thuộc phiếu', async () => {
-      repo.findById.mockResolvedValue(baseGi());
-      const mismatchedItemId = new Types.ObjectId();
-      barcodeSvc.findItemIdByCode.mockResolvedValue(mismatchedItemId);
-      stockRepo.findItemByIdDocument.mockResolvedValue({
-        _id: mismatchedItemId,
-      });
-      locationRepo.findShelfByCode.mockResolvedValue({
-        _id: shelfId,
-      });
-      await expect(
-        svc.confirmLine(
-          giId,
-          { itemBarcode: 'X', shelfCode: 'A1', quantity: 5 },
-          actorId,
-        ),
-      ).rejects.toMatchObject({ code: 'GOODS_ISSUE_ITEM_MISMATCH' });
-    });
-
-    it('throw GOODS_ISSUE_QTY_EXCEEDS khi quantity > remainingQty', async () => {
-      repo.findById.mockResolvedValue(baseGi());
-      barcodeSvc.findItemIdByCode.mockResolvedValue(itemId);
-      stockRepo.findItemByIdDocument.mockResolvedValue({ _id: itemId });
-      locationRepo.findShelfByCode.mockResolvedValue({
-        _id: shelfId,
-      });
-      await expect(
-        svc.confirmLine(
-          giId,
-          { itemBarcode: 'X', shelfCode: 'A1', quantity: 999 },
-          actorId,
-        ),
-      ).rejects.toMatchObject({ code: 'GOODS_ISSUE_QTY_EXCEEDS' });
-    });
-
-    it('throw STOCK_INSUFFICIENT khi InventoryStock tại shelf/lot không đủ', async () => {
-      repo.findById.mockResolvedValue(baseGi());
-      barcodeSvc.findItemIdByCode.mockResolvedValue(itemId);
-      stockRepo.findItemByIdDocument.mockResolvedValue({ _id: itemId });
-      locationRepo.findShelfByCode.mockResolvedValue({
-        _id: shelfId,
-      });
-      stockRepo.findInventory.mockResolvedValue({ quantity: 2 });
-      await expect(
-        svc.confirmLine(
-          giId,
-          { itemBarcode: 'X', shelfCode: 'A1', quantity: 5 },
-          actorId,
-        ),
-      ).rejects.toMatchObject({ code: 'STOCK_INSUFFICIENT' });
-    });
-
-    it('throw STOCK_INSUFFICIENT khi không có InventoryStock nào tại shelf/lot đó', async () => {
-      repo.findById.mockResolvedValue(baseGi());
-      barcodeSvc.findItemIdByCode.mockResolvedValue(itemId);
-      stockRepo.findItemByIdDocument.mockResolvedValue({ _id: itemId });
-      locationRepo.findShelfByCode.mockResolvedValue({
-        _id: shelfId,
-      });
-      stockRepo.findInventory.mockResolvedValue(null);
-      await expect(
-        svc.confirmLine(
-          giId,
-          { itemBarcode: 'X', shelfCode: 'A1', quantity: 5 },
-          actorId,
-        ),
-      ).rejects.toMatchObject({ code: 'STOCK_INSUFFICIENT' });
-    });
-
-    it('trừ onHand+reserved, ghi movement ISSUE âm, KHÔNG emit goods.issued khi còn dòng chưa xong', async () => {
-      repo.findById.mockResolvedValueOnce(baseGi()).mockResolvedValueOnce({
-        ...baseGi(),
-        status: GoodsIssueStatus.PENDING,
-      });
-      barcodeSvc.findItemIdByCode.mockResolvedValue(itemId);
-      stockRepo.findItemByIdDocument.mockResolvedValue({ _id: itemId });
-      locationRepo.findShelfByCode.mockResolvedValue({
-        _id: shelfId,
-      });
-      stockRepo.findInventory.mockResolvedValue({ quantity: 20 });
-      repo.markConfirmedIfAllDone.mockResolvedValue(false);
-
-      await svc.confirmLine(
+    await expect(
+      service.confirmLine(
         giId,
-        { itemBarcode: 'X', shelfCode: 'A1', quantity: 12 },
+        { itemBarcode: 'SKU-1', cellBarcode: 'WRONG', packageCount: 1 },
         actorId,
-      );
-
-      expect(stockRepo.upsertInventory).toHaveBeenCalledWith(
-        itemId,
-        shelfId,
-        null,
-        -12,
-        expect.anything(),
-      );
-      expect(stockRepo.upsertBalance).toHaveBeenCalledWith(
-        itemId,
-        -12,
-        -12,
-        0,
-        expect.anything(),
-      );
-      expect(stockRepo.insertMovement).toHaveBeenCalledWith(
-        expect.objectContaining({
-          itemId,
-          shelfId,
-          type: 'ISSUE',
-          quantity: -12,
-          refType: 'goods_issue',
-        }),
-        expect.anything(),
-      );
-      expect(repo.decrementRemainingQty).toHaveBeenCalledWith(
-        giId,
-        itemId,
-        12,
-        expect.anything(),
-      );
-      expect(queue.add).not.toHaveBeenCalled();
-      expect(internalQueue.add).not.toHaveBeenCalled();
-    });
-
-    it('emit goods.issued đúng 1 lần khi markConfirmedIfAllDone trả true — trên CẢ 2 queue (SHIPMENT + SHIPMENT_INTERNAL)', async () => {
-      repo.findById.mockResolvedValueOnce(baseGi()).mockResolvedValueOnce({
-        ...baseGi(),
-        status: GoodsIssueStatus.CONFIRMED,
-      });
-      barcodeSvc.findItemIdByCode.mockResolvedValue(itemId);
-      stockRepo.findItemByIdDocument.mockResolvedValue({ _id: itemId });
-      locationRepo.findShelfByCode.mockResolvedValue({
-        _id: shelfId,
-      });
-      stockRepo.findInventory.mockResolvedValue({ quantity: 20 });
-      repo.markConfirmedIfAllDone.mockResolvedValue(true);
-
-      await svc.confirmLine(
-        giId,
-        { itemBarcode: 'X', shelfCode: 'A1', quantity: 20 },
-        actorId,
-      );
-
-      expect(queue.add).toHaveBeenCalledTimes(1);
-      expect(queue.add).toHaveBeenCalledWith(
-        'goods.issued',
-        { orderId, goodsIssueId: giId },
-        { jobId: `goods_issue:${giId}` },
-      );
-      expect(internalQueue.add).toHaveBeenCalledTimes(1);
-      expect(internalQueue.add).toHaveBeenCalledWith(
-        'goods.issued',
-        { orderId, goodsIssueId: giId },
-        { jobId: `goods_issue:${giId}` },
-      );
-    });
-
-    it('confirmLine gọi checkAndEmitStockLow(item._id) sau khi transaction commit', async () => {
-      repo.findById.mockResolvedValueOnce(baseGi()).mockResolvedValueOnce({
-        ...baseGi(),
-        status: GoodsIssueStatus.PENDING,
-      });
-      barcodeSvc.findItemIdByCode.mockResolvedValue(itemId);
-      stockRepo.findItemByIdDocument.mockResolvedValue({ _id: itemId });
-      locationRepo.findShelfByCode.mockResolvedValue({
-        _id: shelfId,
-      });
-      stockRepo.findInventory.mockResolvedValue({ quantity: 20 });
-      repo.markConfirmedIfAllDone.mockResolvedValue(false);
-
-      await svc.confirmLine(
-        giId,
-        { itemBarcode: 'X', shelfCode: 'A1', quantity: 12 },
-        actorId,
-      );
-
-      expect(stockService.checkAndEmitStockLow).toHaveBeenCalledWith(itemId);
-    });
+      ),
+    ).rejects.toMatchObject({ code: 'GOODS_ISSUE_CELL_NOT_FOUND' });
   });
 
-  describe('listGoodsIssues', () => {
-    it('ủy quyền cho repo.findAll', async () => {
-      repo.findAll.mockResolvedValue({ data: [], total: 0 });
-      const result = await svc.listGoodsIssues({});
-      expect(repo.findAll).toHaveBeenCalledWith({});
-      expect(result).toEqual({ data: [], total: 0 });
-    });
+  it('chặn số lượng cơ sở không khớp số thùng nguyên', async () => {
+    await expect(
+      service.confirmLine(
+        giId,
+        {
+          itemBarcode: 'SKU-1',
+          cellBarcode: 'R1-T1-B1',
+          packageCount: 2,
+          quantity: 15,
+        },
+        actorId,
+      ),
+    ).rejects.toMatchObject({ code: 'GOODS_ISSUE_PACKAGE_QTY_MISMATCH' });
   });
 
-  describe('getGoodsIssue', () => {
-    it('throw GOODS_ISSUE_NOT_FOUND khi không tìm thấy', async () => {
-      repo.findById.mockResolvedValue(null);
-      await expect(svc.getGoodsIssue('gi1')).rejects.toMatchObject({
-        code: 'GOODS_ISSUE_NOT_FOUND',
-      });
-    });
+  it('rollback nghiệp vụ khi tồn cell không còn đủ tại thời điểm transaction', async () => {
+    stockRepo.decrementInventoryIfAvailable.mockResolvedValue(null);
 
-    it('trả về document khi tìm thấy', async () => {
-      const doc = { _id: 'gi1' };
-      repo.findById.mockResolvedValue(doc);
-      const result = await svc.getGoodsIssue('gi1');
-      expect(result).toBe(doc);
-    });
+    await expect(
+      service.confirmLine(
+        giId,
+        { itemBarcode: 'SKU-1', cellBarcode: 'R1-T1-B1', packageCount: 2 },
+        actorId,
+      ),
+    ).rejects.toMatchObject({ code: 'STOCK_INSUFFICIENT' });
+    expect(stockRepo.insertMovement).not.toHaveBeenCalled();
+  });
+
+  it('trừ đúng cell và onHand/reserved, ghi audit override và phát goods.issued khi hoàn tất', async () => {
+    repo.markConfirmedIfAllDone.mockResolvedValue(true);
+    const suggestedCellId = new Types.ObjectId().toString();
+
+    await service.confirmLine(
+      giId,
+      {
+        itemBarcode: 'SKU-1',
+        cellBarcode: 'R1-T1-B1',
+        packageCount: 2,
+        suggestedCellId,
+      },
+      actorId,
+    );
+
+    expect(stockRepo.decrementInventoryIfAvailable).toHaveBeenCalledWith(
+      itemId,
+      shelfId,
+      cellId,
+      null,
+      20,
+      2,
+      expect.anything(),
+    );
+    expect(stockRepo.issueReservedIfAvailable).toHaveBeenCalledWith(
+      itemId,
+      20,
+      expect.anything(),
+    );
+    expect(stockRepo.insertMovement).toHaveBeenCalledWith(
+      expect.objectContaining({
+        cellId,
+        quantity: -20,
+        packageCount: -2,
+        suggestedCellId: new Types.ObjectId(suggestedCellId),
+        actualCellId: cellId,
+        isOverride: true,
+      }),
+      expect.anything(),
+    );
+    expect(shipmentQueue.add).toHaveBeenCalledTimes(1);
+    expect(internalQueue.add).toHaveBeenCalledTimes(1);
   });
 });

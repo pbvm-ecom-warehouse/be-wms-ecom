@@ -17,6 +17,7 @@ import { CreateShelfDto, UpdateShelfDto } from './dto/shelf.dto';
 import { CreateAisleDto, UpdateAisleDto } from './dto/aisle.dto';
 import { CreateGateDto, UpdateGateDto } from './dto/gate.dto';
 import { UpdateRackTemplateDto } from './dto/rack-template.dto';
+import type { ShelfDocument } from './schemas/shelf.schema';
 import { LocationRepository } from './location.repository';
 import {
   validateWarehouseLayoutGeometry,
@@ -86,6 +87,14 @@ export class WarehouseLayoutEditorService {
       }
 
       const snapshot = await this.loadSnapshot(session);
+      const stagingRackIds = new Set(
+        (snapshot.shelves as ShelfDocument[])
+          .filter((shelf) => shelf.isStaging)
+          .map((shelf) => shelf.rackId.toString()),
+      );
+      if (stagingRackIds.size > 1) {
+        throw new AppException('STAGING_SHELVES_MUST_SHARE_RACK');
+      }
       const issues = this.mapCreatedEntityIssuesToClientIds(
         validateWarehouseLayoutGeometry(snapshot),
         idMap,
@@ -202,6 +211,13 @@ export class WarehouseLayoutEditorService {
           throw new AppException('SHELF_CODE_EXISTS');
         }
         created = await this.repo.createShelf(data, actorId, session);
+        const template = await this.repo.getRackTemplate(session);
+        await this.repo.createStorageCellsForShelf(
+          created as ShelfDocument,
+          template.bayCount,
+          actorId,
+          session,
+        );
         break;
       }
       case LayoutEntity.AISLE: {
@@ -264,7 +280,28 @@ export class WarehouseLayoutEditorService {
         },
         LayoutEntity.RACK_TEMPLATE,
       );
+      if (patch.bayCount < current.bayCount) {
+        const removedCells = await this.repo.findCellsAboveBay(
+          patch.bayCount,
+          session,
+        );
+        if (
+          await this.stockRepo.hasPositiveInventoryOnCells(
+            removedCells.map((cell) => cell._id),
+            session,
+          )
+        ) {
+          throw new AppException('STORAGE_CELL_HAS_STOCK');
+        }
+      }
       await this.repo.updateRackTemplate(patch, actorId, session);
+      if (patch.bayCount !== current.bayCount) {
+        await this.repo.reconcileStorageCellBayCount(
+          patch.bayCount,
+          actorId,
+          session,
+        );
+      }
       return;
     }
 
@@ -360,8 +397,48 @@ export class WarehouseLayoutEditorService {
             throw new AppException('SHELF_CODE_EXISTS');
           }
         }
-        if (!(await this.repo.updateShelf(id, patch, actorId, session))) {
-          throw new AppException('SHELF_NOT_FOUND');
+        const current = await this.repo.findShelfById(id, session);
+        if (!current) throw new AppException('SHELF_NOT_FOUND');
+        const updated = await this.repo.updateShelf(
+          id,
+          patch,
+          actorId,
+          session,
+        );
+        if (!updated) throw new AppException('SHELF_NOT_FOUND');
+        const template = await this.repo.getRackTemplate(session);
+        if (!current.isStaging && updated.isStaging) {
+          const cells = await this.repo.findCellsByShelfId(
+            current._id,
+            session,
+          );
+          if (
+            await this.stockRepo.hasPositiveInventoryOnCells(
+              cells.map((cell) => cell._id),
+              session,
+            )
+          ) {
+            throw new AppException('STORAGE_CELL_HAS_STOCK');
+          }
+          await this.repo.softDeleteStorageCellsForShelf(
+            current._id,
+            actorId,
+            session,
+          );
+        } else if (current.isStaging && !updated.isStaging) {
+          await this.repo.createStorageCellsForShelf(
+            updated,
+            template.bayCount,
+            actorId,
+            session,
+          );
+        } else {
+          await this.repo.syncStorageCellsForShelf(
+            updated,
+            template.bayCount,
+            actorId,
+            session,
+          );
         }
         return;
       }
@@ -444,6 +521,11 @@ export class WarehouseLayoutEditorService {
         ) {
           throw new AppException('SHELF_HAS_STOCK');
         }
+        await this.repo.softDeleteStorageCellsForShelf(
+          shelf._id,
+          actorId,
+          session,
+        );
         if (!(await this.repo.softDeleteShelf(id, actorId, session))) {
           throw new AppException('SHELF_NOT_FOUND');
         }

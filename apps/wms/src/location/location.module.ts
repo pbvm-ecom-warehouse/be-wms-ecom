@@ -3,6 +3,7 @@ import { MongooseModule } from '@nestjs/mongoose';
 import { Zone, ZoneSchema } from './schemas/zone.schema';
 import { Rack, RackSchema } from './schemas/rack.schema';
 import { Shelf, ShelfSchema } from './schemas/shelf.schema';
+import { StorageCell, StorageCellSchema } from './schemas/storage-cell.schema';
 import {
   RackTemplate,
   RackTemplateSchema,
@@ -18,6 +19,7 @@ import { LocationService } from './location.service';
 import { LocationController } from './location.controller';
 import { WarehouseLayoutEditorService } from './warehouse-layout-editor.service';
 import { StockModule } from '../stock/stock.module';
+import { WarehouseNavigationService } from './navigation.service';
 
 @Module({
   imports: [
@@ -25,6 +27,7 @@ import { StockModule } from '../stock/stock.module';
       { name: Zone.name, schema: ZoneSchema },
       { name: Rack.name, schema: RackSchema },
       { name: Shelf.name, schema: ShelfSchema },
+      { name: StorageCell.name, schema: StorageCellSchema },
       { name: RackTemplate.name, schema: RackTemplateSchema },
       { name: Aisle.name, schema: AisleSchema },
       { name: Gate.name, schema: GateSchema },
@@ -42,11 +45,12 @@ import { StockModule } from '../stock/stock.module';
     LocationRepository,
     LocationService,
     WarehouseLayoutEditorService,
+    WarehouseNavigationService,
   ],
   controllers: [LocationController],
   // LocationRepository export riêng để PutAwayService gọi thẳng findShelfByCode
   // (trả về null khi không thấy) và tự throw PUTAWAY_SHELF_NOT_FOUND — tránh
   // code lỗi generic SHELF_NOT_FOUND của LocationService rò vào domain put-away.
-  exports: [LocationService, LocationRepository],
+  exports: [LocationService, LocationRepository, WarehouseNavigationService],
 })
 export class LocationModule {}

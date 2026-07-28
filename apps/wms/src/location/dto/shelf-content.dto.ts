@@ -25,6 +25,10 @@ export class ShelfContentResponseDto {
   quantity!: number;
 
   @Expose()
+  @ApiPropertyOptional()
+  packageCount?: number;
+
+  @Expose()
   @ApiPropertyOptional({ nullable: true })
   lotNumber!: string | null;
 

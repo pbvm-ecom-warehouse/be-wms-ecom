@@ -48,12 +48,6 @@ ShelfSchema.index(
   { code: 1 },
   { unique: true, partialFilterExpression: { deletedAt: null } },
 );
-// App = 1 kho duy nhất → tối đa 1 staging shelf toàn hệ thống (trước đây chỉ
-// là quy ước ngầm scoped theo warehouseId, giờ siết thành ràng buộc DB thật).
-ShelfSchema.index(
-  { isStaging: 1 },
-  {
-    unique: true,
-    partialFilterExpression: { isStaging: true, deletedAt: null },
-  },
-);
+// Một rack nhận tạm có thể có nhiều tầng; service đảm bảo các tầng staging
+// chỉ thuộc cùng một rack tại một thời điểm.
+ShelfSchema.index({ isStaging: 1, rackId: 1, deletedAt: 1 });

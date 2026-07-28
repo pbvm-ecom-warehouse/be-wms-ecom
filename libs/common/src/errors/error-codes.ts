@@ -139,9 +139,61 @@ export const ERROR_CATALOG = {
     status: HttpStatus.CONFLICT,
     message: 'Không thể xoá tầng kệ staging',
   },
+  STAGING_SHELVES_MUST_SHARE_RACK: {
+    status: HttpStatus.CONFLICT,
+    message: 'Các tầng nhận tạm phải nằm trong cùng một rack',
+  },
   SHELF_HAS_STOCK: {
     status: HttpStatus.CONFLICT,
     message: 'Không thể xoá tầng kệ đang còn tồn kho',
+  },
+  STORAGE_CELL_NOT_FOUND: {
+    status: HttpStatus.NOT_FOUND,
+    message: 'Không tìm thấy khoang theo barcode đã quét',
+  },
+  STORAGE_CELL_HAS_STOCK: {
+    status: HttpStatus.CONFLICT,
+    message: 'Không thể giảm hoặc xóa khoang đang còn tồn kho',
+  },
+  STORAGE_CELL_DIMENSION_MISMATCH: {
+    status: HttpStatus.BAD_REQUEST,
+    message: 'Kích thước thùng không vừa khoang đã chọn',
+  },
+  STORAGE_CELL_CAPACITY_EXCEEDED: {
+    status: HttpStatus.CONFLICT,
+    message: 'Khoang đã chọn không còn đủ thể tích',
+  },
+  UNASSIGNED_INVENTORY_NOT_FOUND: {
+    status: HttpStatus.NOT_FOUND,
+    message: 'Không tìm thấy dòng tồn cũ chưa phân khoang',
+  },
+  UNASSIGNED_INVENTORY_QTY_EXCEEDS: {
+    status: HttpStatus.CONFLICT,
+    message: 'Số thùng phân khoang vượt quá tồn chưa phân còn lại',
+  },
+  PACKAGE_FACTOR_MISMATCH: {
+    status: HttpStatus.CONFLICT,
+    message: 'Quy cách thùng không khớp dữ liệu tồn đã ghi nhận',
+  },
+  NAVIGATION_GATE_NOT_FOUND: {
+    status: HttpStatus.NOT_FOUND,
+    message: 'Không tìm thấy cổng xuất phát GATE-01',
+  },
+  NAVIGATION_RACK_NOT_FOUND: {
+    status: HttpStatus.NOT_FOUND,
+    message: 'Không tìm thấy kệ đích',
+  },
+  NAVIGATION_GATE_NOT_CONNECTED: {
+    status: HttpStatus.UNPROCESSABLE_ENTITY,
+    message: 'Cổng xuất phát chưa nối với lối đi',
+  },
+  NAVIGATION_RACK_NOT_CONNECTED: {
+    status: HttpStatus.UNPROCESSABLE_ENTITY,
+    message: 'Điểm tiếp cận kệ chưa nối với lối đi',
+  },
+  NAVIGATION_PATH_NOT_FOUND: {
+    status: HttpStatus.UNPROCESSABLE_ENTITY,
+    message: 'Không tìm thấy đường đi từ cổng tới kệ',
   },
   LAYOUT_REVISION_CONFLICT: {
     status: HttpStatus.CONFLICT,
@@ -232,7 +284,23 @@ export const ERROR_CATALOG = {
   },
   GRN_IMAGE_REQUIRED: {
     status: HttpStatus.BAD_REQUEST,
-    message: 'Cần ít nhất 1 ảnh minh chứng trước khi xác nhận nhận hàng',
+    message: 'Cần ít nhất 1 ảnh minh chứng trước khi gửi duyệt',
+  },
+  GRN_ITEM_REQUIRED: {
+    status: HttpStatus.BAD_REQUEST,
+    message: 'Phiếu nhập phải có ít nhất một dòng hàng',
+  },
+  GRN_PACKAGE_SPEC_REQUIRED: {
+    status: HttpStatus.BAD_REQUEST,
+    message: 'Dòng hàng chưa có quy cách thùng từ đơn mua',
+  },
+  GRN_PACKAGE_COUNT_REQUIRED: {
+    status: HttpStatus.BAD_REQUEST,
+    message: 'Số thùng thực nhận phải lớn hơn 0',
+  },
+  GRN_PACKAGE_QTY_MISMATCH: {
+    status: HttpStatus.BAD_REQUEST,
+    message: 'Số thùng và số lượng cơ sở không khớp quy cách',
   },
   PO_NOT_RECEIVABLE: {
     status: HttpStatus.CONFLICT,
@@ -307,7 +375,31 @@ export const ERROR_CATALOG = {
   },
   PUTAWAY_QTY_EXCEEDS: {
     status: HttpStatus.BAD_REQUEST,
-    message: 'Số lượng quét vượt quá số lượng còn lại cần xếp',
+    message: 'Số thùng quét vượt quá số lượng còn lại cần cất',
+  },
+  PUTAWAY_CELL_NOT_FOUND: {
+    status: HttpStatus.NOT_FOUND,
+    message: 'Không tìm thấy khoang theo barcode đã quét',
+  },
+  PUTAWAY_PACKAGE_COUNT_REQUIRED: {
+    status: HttpStatus.BAD_REQUEST,
+    message: 'Phải cất ít nhất một thùng nguyên',
+  },
+  PUTAWAY_PACKAGE_SPEC_REQUIRED: {
+    status: HttpStatus.BAD_REQUEST,
+    message: 'Lệnh cất chưa có snapshot quy cách thùng',
+  },
+  PUTAWAY_PACKAGE_QTY_MISMATCH: {
+    status: HttpStatus.BAD_REQUEST,
+    message: 'Số thùng và số lượng cất không khớp quy cách',
+  },
+  PUTAWAY_CELL_DIMENSION_MISMATCH: {
+    status: HttpStatus.BAD_REQUEST,
+    message: 'Thùng hàng không vừa khoang đã chọn',
+  },
+  PUTAWAY_CELL_CAPACITY_EXCEEDED: {
+    status: HttpStatus.CONFLICT,
+    message: 'Khoang đã chọn không còn đủ thể tích',
   },
 
   // ── WMS — Goods Issue ────────────────────────────────────────────────────
@@ -329,7 +421,19 @@ export const ERROR_CATALOG = {
   },
   GOODS_ISSUE_QTY_EXCEEDS: {
     status: HttpStatus.BAD_REQUEST,
-    message: 'Số lượng quét vượt quá số lượng còn lại cần xuất',
+    message: 'Số thùng quét vượt quá số lượng còn lại cần xuất',
+  },
+  GOODS_ISSUE_CELL_NOT_FOUND: {
+    status: HttpStatus.NOT_FOUND,
+    message: 'Không tìm thấy khoang theo barcode đã quét',
+  },
+  GOODS_ISSUE_PACKAGE_COUNT_REQUIRED: {
+    status: HttpStatus.BAD_REQUEST,
+    message: 'Phải xuất ít nhất một thùng nguyên',
+  },
+  GOODS_ISSUE_PACKAGE_QTY_MISMATCH: {
+    status: HttpStatus.BAD_REQUEST,
+    message: 'Số thùng và số lượng xuất không khớp quy cách',
   },
 
   // ── WMS — Print Job ──────────────────────────────────────────────────────

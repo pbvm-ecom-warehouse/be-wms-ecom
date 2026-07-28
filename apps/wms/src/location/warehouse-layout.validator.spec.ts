@@ -22,6 +22,8 @@ const validLayout = () => ({
       xM: 3,
       yM: 3,
       rotation: 0,
+      accessPointXM: 5,
+      accessPointYM: 9,
     },
   ],
   aisles: [
@@ -80,6 +82,18 @@ describe('validateWarehouseLayoutGeometry', () => {
       entity: 'RACK',
       id: 'rack-2',
       code: 'RACK_OVERLAPS_RACK',
+    });
+  });
+
+  it('phát hiện rack chưa có điểm tiếp cận nối với aisle', () => {
+    const layout = validLayout();
+    layout.racks[0].accessPointXM = 30;
+    layout.racks[0].accessPointYM = 20;
+
+    expect(validateWarehouseLayoutGeometry(layout)).toContainEqual({
+      entity: 'RACK',
+      id: 'rack-1',
+      code: 'RACK_ACCESS_POINT_NOT_CONNECTED',
     });
   });
 
