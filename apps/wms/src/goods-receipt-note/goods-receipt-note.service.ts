@@ -1,7 +1,8 @@
 // apps/wms/src/goods-receipt-note/goods-receipt-note.service.ts
 import { Injectable, Logger } from '@nestjs/common';
 import { Types } from 'mongoose';
-import { AppException, CloudinaryService } from '@app/common';
+import { AppException } from '@app/common/errors/app.exception';
+import { CloudinaryService } from '@app/common/cloudinary/cloudinary.service';
 import {
   GoodsReceiptNoteRepository,
   ResolvedGoodsReceiptNoteItem,
@@ -109,6 +110,14 @@ export class GoodsReceiptNoteService {
         unit: string;
         expectedQty: number;
         receivedQty: number;
+        packageSpec?: {
+          unit: string;
+          factor: number;
+          depthCm: number;
+          widthCm: number;
+          heightCm: number;
+          volumeCm3: number;
+        };
       }[];
     },
     items: CreateGoodsReceiptNoteItemDto[],
@@ -149,13 +158,23 @@ export class GoodsReceiptNoteService {
         unit: item.unit ?? poItem.unit,
         lotNumber: item.lotNumber,
         expiryDate: item.expiryDate ? new Date(item.expiryDate) : undefined,
+        packageCount: this.resolvePackageCount(item, poItem.packageSpec),
+        packageSpec: poItem.packageSpec,
+        wholePackageOnly: true,
         note: item.note,
       });
     }
     return resolvedItems;
   }
 
-  /**
+  private resolvePackageCount(
+    item: CreateGoodsReceiptNoteItemDto,
+    packageSpec?: { factor: number },
+  ): number {
+    if (item.packageCount !== undefined) return item.packageCount;
+    if (!packageSpec?.factor) return 0;
+    return item.actualQty / packageSpec.factor;
+  } /**
    * Sửa toàn bộ items của 1 GRN còn DRAFT — thay thế hoàn toàn (không merge),
    * chạy lại đúng validate như lúc tạo. Chỉ cho phép khi DRAFT vì sau CONFIRMED
    * đã cộng tồn kho thật, sửa items sẽ làm lệch số liệu đã ghi sổ.
@@ -166,7 +185,10 @@ export class GoodsReceiptNoteService {
   ): Promise<GoodsReceiptNoteDocument> {
     const grn = await this.repo.findGoodsReceiptNoteById(id);
     if (!grn) throw new AppException('GRN_NOT_FOUND');
-    if (grn.status !== GoodsReceiptNoteStatus.DRAFT) {
+    if (
+      grn.status !== GoodsReceiptNoteStatus.DRAFT &&
+      grn.status !== GoodsReceiptNoteStatus.REJECTED
+    ) {
       throw new AppException('GRN_INVALID_STATUS_TRANSITION');
     }
 
@@ -193,35 +215,63 @@ export class GoodsReceiptNoteService {
     await this.repo.deleteGoodsReceiptNote(id);
   }
 
-  async confirmGoodsReceiptNote(
+  async submitGoodsReceiptNote(
     id: string,
     actorId: string,
   ): Promise<GoodsReceiptNoteDocument> {
     const grn = await this.repo.findGoodsReceiptNoteById(id);
     if (!grn) throw new AppException('GRN_NOT_FOUND');
-    // Guard này làm confirm idempotent với retry HTTP: check TRƯỚC mọi ghi transaction/stock,
-    // nên nếu transaction đã commit (GRN → CONFIRMED) thì retry luôn rơi vào đây và bị chặn sạch,
-    // không cộng tồn 2 lần; nếu transaction chưa commit (crash giữa chừng) thì chưa ghi gì, retry chạy lại bình thường.
-    if (grn.status !== GoodsReceiptNoteStatus.DRAFT) {
+    if (
+      grn.status !== GoodsReceiptNoteStatus.DRAFT &&
+      grn.status !== GoodsReceiptNoteStatus.REJECTED
+    ) {
       throw new AppException('GRN_INVALID_STATUS_TRANSITION');
     }
-    // Bắt buộc có ảnh minh chứng trước khi cộng tồn — chặn sớm trước transaction,
-    // tránh RECEIVER xác nhận nhận hàng mà không có bằng chứng đối soát sau này.
-    if (grn.images.length === 0) {
-      throw new AppException('GRN_IMAGE_REQUIRED');
+    this.assertReadyForApproval(grn);
+    const submitted = await this.repo.updateStatusSubmitted(id, actorId);
+    if (!submitted) throw new AppException('GRN_INVALID_STATUS_TRANSITION');
+    return submitted;
+  }
+
+  /** Deprecated: giữ alias để client cũ không gãy, nhưng không còn cộng tồn. */
+  async confirmGoodsReceiptNote(
+    id: string,
+    actorId: string,
+  ): Promise<GoodsReceiptNoteDocument> {
+    return this.submitGoodsReceiptNote(id, actorId);
+  }
+
+  async approveGoodsReceiptNote(
+    id: string,
+    actorId: string,
+  ): Promise<GoodsReceiptNoteDocument> {
+    const grn = await this.repo.findGoodsReceiptNoteById(id);
+    if (!grn) throw new AppException('GRN_NOT_FOUND');
+    if (grn.status === GoodsReceiptNoteStatus.APPROVED) return grn;
+    if (grn.status !== GoodsReceiptNoteStatus.PENDING_APPROVAL) {
+      throw new AppException('GRN_INVALID_STATUS_TRANSITION');
     }
+    this.assertReadyForApproval(grn);
 
     const po = await this.purchaseOrderService.getPurchaseOrder(
       grn.purchaseOrderId.toString(),
     );
     await this.warnIfSupplierNotActive(po.supplierId.toString(), grn.grnNumber);
 
-    // Gộp baseQty theo itemId trước khi so sánh — 1 GRN có thể có nhiều dòng cùng item (nhiều lô)
     const baseQtyByItem = new Map<string, number>();
     const resolvedLines: {
       itemId: string;
       sku: string;
       baseQty: number;
+      packageCount: number;
+      packageSpec?: {
+        unit: string;
+        factor: number;
+        depthCm: number;
+        widthCm: number;
+        heightCm: number;
+        volumeCm3: number;
+      };
       lotNumber?: string;
       expiryDate?: Date;
     }[] = [];
@@ -231,14 +281,21 @@ export class GoodsReceiptNoteService {
         line.itemId.toString(),
       );
       const factor =
-        warehouseItem?.altUnits?.find((u) => u.unit === line.unit)?.factor ?? 1;
-      const baseQty = line.actualQty * factor;
+        line.packageSpec?.factor ??
+        warehouseItem?.altUnits?.find((u) => u.unit === line.unit)?.factor ??
+        1;
+      const baseQty =
+        line.packageCount > 0
+          ? line.packageCount * factor
+          : line.actualQty * factor;
       const key = line.itemId.toString();
       baseQtyByItem.set(key, (baseQtyByItem.get(key) ?? 0) + baseQty);
       resolvedLines.push({
         itemId: key,
         sku: line.sku,
         baseQty,
+        packageCount: line.packageCount,
+        packageSpec: line.packageSpec,
         lotNumber: line.lotNumber,
         expiryDate: line.expiryDate,
       });
@@ -253,100 +310,126 @@ export class GoodsReceiptNoteService {
     }
 
     const stagingShelf = await this.locationService.findStagingShelf();
-
-    // S4-04: item đã chạm upsertBalance trong transaction — dùng để
-    // checkAndEmitStockLow SAU KHI commit (đọc lại balance, không dedup trùng
-    // trong 1 GRN vì baseQtyByItem đã gộp theo itemId).
     const touchedItemIds = new Set<string>();
 
-    await this.stockTransactionHelper.withStockTransaction(async (session) => {
-      // Tích lũy dòng put-away trong cùng vòng lặp — cần lotId ĐÃ RESOLVE (không phải
-      // lotNumber gốc từ GRN), vì PutAwayTask xếp hàng theo lô thật đã tạo/tìm thấy ở dưới.
-      const putAwayLines: {
-        itemId: string;
-        lotId: Types.ObjectId | null;
-        quantity: number;
-      }[] = [];
-
-      for (const line of resolvedLines) {
-        const itemObjectId = new Types.ObjectId(line.itemId);
-
-        let lotId: Types.ObjectId | null = null;
-        if (line.lotNumber && line.expiryDate) {
-          const existingLot = await this.stockRepo.findActiveLotByNumber(
-            itemObjectId,
-            line.lotNumber,
+    const approvalCommitted =
+      await this.stockTransactionHelper.withStockTransaction(
+        async (session) => {
+          const claimed = await this.repo.updateStatusApproved(
+            id,
+            actorId,
             session,
           );
-          const lot =
-            existingLot ??
-            (await this.stockRepo.createLot(
+          if (!claimed) return false;
+
+          const putAwayLines: {
+            itemId: string;
+            lotId: Types.ObjectId | null;
+            quantity: number;
+            packageCount: number;
+            packageSpec?: {
+              unit: string;
+              factor: number;
+              depthCm: number;
+              widthCm: number;
+              heightCm: number;
+              volumeCm3: number;
+            };
+          }[] = [];
+
+          for (const line of resolvedLines) {
+            const itemObjectId = new Types.ObjectId(line.itemId);
+
+            let lotId: Types.ObjectId | null = null;
+            if (line.lotNumber && line.expiryDate) {
+              const existingLot = await this.stockRepo.findActiveLotByNumber(
+                itemObjectId,
+                line.lotNumber,
+                session,
+              );
+              const lot =
+                existingLot ??
+                (await this.stockRepo.createLot(
+                  {
+                    itemId: itemObjectId,
+                    lotNumber: line.lotNumber,
+                    expiryDate: line.expiryDate,
+                    receivedDate: new Date(),
+                  },
+                  session,
+                ));
+              lotId = lot._id;
+            }
+
+            putAwayLines.push({
+              itemId: line.itemId,
+              lotId,
+              quantity: line.baseQty,
+              packageCount: line.packageCount,
+              packageSpec: line.packageSpec,
+            });
+
+            await this.stockRepo.upsertBalance(
+              itemObjectId,
+              line.baseQty,
+              0,
+              0,
+              session,
+            );
+            touchedItemIds.add(line.itemId);
+            await this.stockRepo.upsertInventory(
+              itemObjectId,
+              stagingShelf._id,
+              lotId,
+              line.baseQty,
+              session,
+              {
+                packageCount: line.packageCount,
+                packageFactor: line.packageSpec?.factor,
+                packageVolumeCm3Snapshot: line.packageSpec?.volumeCm3,
+              },
+            );
+            await this.stockRepo.insertMovement(
               {
                 itemId: itemObjectId,
-                lotNumber: line.lotNumber,
-                expiryDate: line.expiryDate,
-                receivedDate: new Date(),
+                shelfId: stagingShelf._id,
+                lotId,
+                type: MovementType.RECEIVE,
+                quantity: line.baseQty,
+                refType: 'grn',
+                refId: grn._id,
+                createdBy: new Types.ObjectId(actorId),
+                packageCount: line.packageCount,
+                packageFactor: line.packageSpec?.factor,
+                packageVolumeCm3Snapshot: line.packageSpec?.volumeCm3,
               },
               session,
-            ));
-          lotId = lot._id;
-        }
+            );
+            await this.purchaseOrderService.applyReceivedQty(
+              grn.purchaseOrderId.toString(),
+              line.itemId,
+              line.baseQty,
+              session,
+            );
+          }
 
-        putAwayLines.push({
-          itemId: line.itemId,
-          lotId,
-          quantity: line.baseQty,
-        });
-
-        await this.stockRepo.upsertBalance(
-          itemObjectId,
-          line.baseQty,
-          0,
-          0,
-          session,
-        );
-        touchedItemIds.add(line.itemId);
-        await this.stockRepo.upsertInventory(
-          itemObjectId,
-          stagingShelf._id,
-          lotId,
-          line.baseQty,
-          session,
-        );
-        await this.stockRepo.insertMovement(
-          {
-            itemId: itemObjectId,
-            shelfId: stagingShelf._id,
-            lotId,
-            type: MovementType.RECEIVE,
-            quantity: line.baseQty,
-            refType: 'grn',
-            refId: grn._id,
-            createdBy: new Types.ObjectId(actorId),
-          },
-          session,
-        );
-        await this.purchaseOrderService.applyReceivedQty(
-          grn.purchaseOrderId.toString(),
-          line.itemId,
-          line.baseQty,
-          session,
-        );
-      }
-
-      // Sinh PutAwayTask cùng transaction cộng tồn — nếu rollback thì task cũng không
-      // được tạo, tránh việc GRN chưa confirm mà đã có task xếp hàng "ma".
-      await this.putAwayService.createTaskFromGrn(
-        grn._id,
-        putAwayLines,
-        actorId,
-        session,
+          await this.putAwayService.createTaskFromGrn(
+            grn._id,
+            putAwayLines,
+            actorId,
+            session,
+            stagingShelf._id,
+          );
+          return true;
+        },
       );
 
-      await this.repo.updateStatusConfirmed(id, actorId, session);
-    });
+    if (!approvalCommitted) {
+      const current = await this.repo.findGoodsReceiptNoteById(id);
+      if (current?.status === GoodsReceiptNoteStatus.APPROVED) return current;
+      throw new AppException('GRN_INVALID_STATUS_TRANSITION');
+    }
 
-    // Ngoài transaction — BullMQ không tham gia Mongo transaction
     for (const [itemId, totalBaseQty] of baseQtyByItem) {
       await this.stockService.publishAvailableForItem(
         itemId,
@@ -361,25 +444,35 @@ export class GoodsReceiptNoteService {
       );
     }
 
-    const confirmed = await this.repo.findGoodsReceiptNoteById(id);
-    if (!confirmed) throw new AppException('GRN_NOT_FOUND');
-    return confirmed;
-  }
-
-  async approveGoodsReceiptNote(
-    id: string,
-    actorId: string,
-  ): Promise<GoodsReceiptNoteDocument> {
-    const grn = await this.repo.findGoodsReceiptNoteById(id);
-    if (!grn) throw new AppException('GRN_NOT_FOUND');
-    if (grn.status !== GoodsReceiptNoteStatus.CONFIRMED) {
-      throw new AppException('GRN_INVALID_STATUS_TRANSITION');
-    }
-    const approved = await this.repo.updateStatusApproved(id, actorId);
+    const approved = await this.repo.findGoodsReceiptNoteById(id);
     if (!approved) throw new AppException('GRN_NOT_FOUND');
     return approved;
   }
 
+  async rejectGoodsReceiptNote(
+    id: string,
+    actorId: string,
+    reason: string,
+  ): Promise<GoodsReceiptNoteDocument> {
+    const rejected = await this.repo.updateStatusRejected(id, actorId, reason);
+    if (!rejected) throw new AppException('GRN_INVALID_STATUS_TRANSITION');
+    return rejected;
+  }
+
+  private assertReadyForApproval(grn: GoodsReceiptNoteDocument): void {
+    if (grn.items.length === 0) throw new AppException('GRN_ITEM_REQUIRED');
+    if (grn.images.length === 0) throw new AppException('GRN_IMAGE_REQUIRED');
+    for (const line of grn.items) {
+      if (!line.packageSpec)
+        throw new AppException('GRN_PACKAGE_SPEC_REQUIRED');
+      if (line.packageCount <= 0)
+        throw new AppException('GRN_PACKAGE_COUNT_REQUIRED');
+      const expectedBaseQty = line.packageCount * line.packageSpec.factor;
+      if (expectedBaseQty !== line.actualQty) {
+        throw new AppException('GRN_PACKAGE_QTY_MISMATCH');
+      }
+    }
+  }
   /**
    * Thêm 1 ảnh minh chứng vào GRN (kiện hàng/hàng lỗi lúc nhận). Chỉ cho phép khi
    * GRN chưa APPROVED — tránh sửa chứng từ đã duyệt (đúng tinh thần "chứng từ giao
@@ -391,7 +484,10 @@ export class GoodsReceiptNoteService {
   ): Promise<GoodsReceiptNoteDocument> {
     const grn = await this.repo.findGoodsReceiptNoteById(id);
     if (!grn) throw new AppException('GRN_NOT_FOUND');
-    if (grn.status === GoodsReceiptNoteStatus.APPROVED) {
+    if (
+      grn.status !== GoodsReceiptNoteStatus.DRAFT &&
+      grn.status !== GoodsReceiptNoteStatus.REJECTED
+    ) {
       throw new AppException('GRN_INVALID_STATUS_TRANSITION');
     }
 
@@ -464,8 +560,19 @@ export class GoodsReceiptNoteService {
     return docs.map((doc) => {
       const plain = doc.toObject() as unknown as Record<string, unknown>;
       const po = poById.get(doc.purchaseOrderId.toString());
+      const totalPackageCount = doc.items.reduce(
+        (sum, item) => sum + (item.packageCount ?? 0),
+        0,
+      );
+      const totalVolumeCm3 = doc.items.reduce(
+        (sum, item) =>
+          sum + (item.packageCount ?? 0) * (item.packageSpec?.volumeCm3 ?? 0),
+        0,
+      );
       return {
         ...plain,
+        totalPackageCount,
+        totalVolumeCm3,
         purchaseOrderNumber: po?.poNumber,
         supplierName: po
           ? supplierNameById.get(po.supplierId.toString())

@@ -20,15 +20,34 @@ export class ConfirmPutAwayLineDto {
   @MinLength(1)
   itemBarcode!: string;
 
-  @ApiProperty({ example: 'A1-2', description: 'Barcode quét vị trí shelf' })
+  @ApiPropertyOptional({ example: 'A1-T1', description: 'Legacy barcode shelf' })
+  @IsOptional()
   @IsString()
   @MinLength(1)
-  shelfCode!: string;
+  shelfCode?: string;
 
-  @ApiProperty({ example: 20, description: 'Số lượng xếp vào shelf này' })
+  @ApiPropertyOptional({ example: 'A1-T1-B1', description: 'Barcode khoang quét tại vị trí cất' })
+  @IsOptional()
+  @IsString()
+  @MinLength(1)
+  cellBarcode?: string;
+
+  @ApiPropertyOptional({ description: 'Khoang hệ thống đã gợi ý để audit override' })
+  @IsOptional()
+  @IsMongoId()
+  suggestedCellId?: string;
+
+  @ApiPropertyOptional({ example: 20, description: 'Legacy số lượng base unit' })
+  @IsOptional()
   @IsNumber()
   @Min(1)
-  quantity!: number;
+  quantity?: number;
+
+  @ApiPropertyOptional({ example: 2, description: 'Số thùng nguyên cần cất' })
+  @IsOptional()
+  @IsNumber()
+  @Min(1)
+  packageCount?: number;
 
   @ApiPropertyOptional({
     description: 'Lô hàng — bắt buộc nếu item isPerishable',
@@ -60,6 +79,31 @@ export class QueryPutAwayTaskDto {
   limit?: number;
 }
 
+export class PutAwayPackageSpecResponseDto {
+  @Expose()
+  @ApiProperty()
+  unit!: string;
+
+  @Expose()
+  @ApiProperty()
+  factor!: number;
+
+  @Expose()
+  @ApiProperty()
+  depthCm!: number;
+
+  @Expose()
+  @ApiProperty()
+  widthCm!: number;
+
+  @Expose()
+  @ApiProperty()
+  heightCm!: number;
+
+  @Expose()
+  @ApiProperty()
+  volumeCm3!: number;
+}
 export class PutAwayItemResponseDto {
   @Expose()
   @Transform(({ obj }: { obj: { itemId?: Types.ObjectId } }) =>
@@ -82,6 +126,19 @@ export class PutAwayItemResponseDto {
   @Expose()
   @ApiProperty()
   remainingQty!: number;
+
+  @Expose()
+  @ApiProperty()
+  packageCount!: number;
+
+  @Expose()
+  @ApiProperty()
+  remainingPackageCount!: number;
+
+  @Expose()
+  @Type(() => PutAwayPackageSpecResponseDto)
+  @ApiPropertyOptional({ type: PutAwayPackageSpecResponseDto })
+  packageSpec?: PutAwayPackageSpecResponseDto;
 }
 
 export class PutAwayTaskResponseDto {

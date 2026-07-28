@@ -48,6 +48,8 @@ export interface WarehouseLayoutGeometry {
       xM: number;
       yM: number;
       rotation?: number;
+      accessPointXM?: number;
+      accessPointYM?: number;
     }
   >;
   aisles: Array<
@@ -215,6 +217,19 @@ export function validateWarehouseLayoutGeometry(
     }
     if (aisleRects.some(({ rect: aisle }) => overlaps(rect, aisle))) {
       issues.push(issue('RACK', rack, 'RACK_OVERLAPS_AISLE'));
+    }
+    const accessPoint = {
+      xM: rack.accessPointXM ?? Number.NaN,
+      yM: rack.accessPointYM ?? Number.NaN,
+      widthM: 0,
+      heightM: 0,
+    };
+    const accessConnected =
+      Number.isFinite(accessPoint.xM) &&
+      Number.isFinite(accessPoint.yM) &&
+      aisleRects.some(({ rect: aisle }) => contains(aisle, accessPoint));
+    if (!accessConnected) {
+      issues.push(issue('RACK', rack, 'RACK_ACCESS_POINT_NOT_CONNECTED'));
     }
     return { rack, rect };
   });

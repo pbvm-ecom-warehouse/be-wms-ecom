@@ -18,6 +18,14 @@ export interface ResolvedPurchaseOrderItem {
   expectedQty: number;
   unit: string;
   unitPrice: number;
+  packageSpec?: {
+    unit: string;
+    factor: number;
+    depthCm: number;
+    widthCm: number;
+    heightCm: number;
+    volumeCm3: number;
+  };
 }
 
 @Injectable()

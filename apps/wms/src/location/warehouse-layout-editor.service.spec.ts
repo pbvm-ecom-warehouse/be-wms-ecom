@@ -28,6 +28,10 @@ const makeRepo = () => ({
   findShelfByCode: jest.fn(),
   findShelfById: jest.fn(),
   createShelf: jest.fn(),
+  createStorageCellsForShelf: jest.fn(),
+  findCellsByShelfId: jest.fn().mockResolvedValue([]),
+  syncStorageCellsForShelf: jest.fn(),
+  softDeleteStorageCellsForShelf: jest.fn(),
   findAisleByCode: jest.fn(),
   createAisle: jest.fn(),
   findGateByCode: jest.fn(),
@@ -52,10 +56,13 @@ const makeRepo = () => ({
   findAllAisles: jest.fn(),
   findAllGates: jest.fn(),
   incrementLayoutRevision: jest.fn(),
+  findCellsAboveBay: jest.fn(),
+  reconcileStorageCellBayCount: jest.fn(),
 });
 
 const makeStockRepo = () => ({
   hasPositiveInventoryOnShelf: jest.fn(),
+  hasPositiveInventoryOnCells: jest.fn(),
 });
 
 describe('WarehouseLayoutEditorService', () => {
@@ -119,6 +126,8 @@ describe('WarehouseLayoutEditorService', () => {
       xM: 3,
       yM: 3,
       rotation: 0,
+      accessPointXM: 5,
+      accessPointYM: 9,
     };
     const shelf = {
       _id: shelfId,
@@ -151,7 +160,16 @@ describe('WarehouseLayoutEditorService', () => {
     repo.findAllZones.mockResolvedValue([zone]);
     repo.findAllRacks.mockResolvedValue([rack]);
     repo.findAllShelves.mockResolvedValue([shelf]);
-    repo.findAllAisles.mockResolvedValue([]);
+    repo.findAllAisles.mockResolvedValue([
+      {
+        _id: new Types.ObjectId(),
+        code: 'MAIN',
+        xM: 1,
+        yM: 8,
+        widthM: 16,
+        heightM: 2,
+      },
+    ]);
     repo.findAllGates.mockResolvedValue([]);
     repo.incrementLayoutRevision.mockResolvedValue({
       revision: 5,
@@ -189,6 +207,8 @@ describe('WarehouseLayoutEditorService', () => {
             xM: 3,
             yM: 3,
             rotation: 0,
+            accessPointXM: 5,
+            accessPointYM: 9,
           },
         },
         {
@@ -404,7 +424,16 @@ describe('WarehouseLayoutEditorService', () => {
     repo.findAllZones.mockResolvedValue([createdZone]);
     repo.findAllRacks.mockResolvedValue([]);
     repo.findAllShelves.mockResolvedValue([]);
-    repo.findAllAisles.mockResolvedValue([]);
+    repo.findAllAisles.mockResolvedValue([
+      {
+        _id: new Types.ObjectId(),
+        code: 'MAIN',
+        xM: 1,
+        yM: 8,
+        widthM: 16,
+        heightM: 2,
+      },
+    ]);
     repo.findAllGates.mockResolvedValue([]);
 
     let thrown: unknown;
@@ -479,7 +508,16 @@ describe('WarehouseLayoutEditorService', () => {
     repo.findAllZones.mockResolvedValue([]);
     repo.findAllRacks.mockResolvedValue([]);
     repo.findAllShelves.mockResolvedValue([]);
-    repo.findAllAisles.mockResolvedValue([]);
+    repo.findAllAisles.mockResolvedValue([
+      {
+        _id: new Types.ObjectId(),
+        code: 'MAIN',
+        xM: 1,
+        yM: 8,
+        widthM: 16,
+        heightM: 2,
+      },
+    ]);
     repo.findAllGates.mockResolvedValue([]);
     repo.incrementLayoutRevision.mockResolvedValue({
       revision: 6,
@@ -516,6 +554,112 @@ describe('WarehouseLayoutEditorService', () => {
     expect(repo.incrementLayoutRevision).not.toHaveBeenCalled();
   });
 
+  it('khi chuyển tầng thành nhận tạm thì loại toàn bộ khoang cũ khỏi candidate putaway', async () => {
+    const currentShelf = { _id: shelfId, rackId, level: 1, isStaging: false };
+    const updatedShelf = { ...currentShelf, isStaging: true };
+    repo.getLayoutConfig.mockResolvedValue({
+      revision: 5,
+      widthM: 40,
+      heightM: 24,
+      gridM: 0.5,
+    });
+    repo.findShelfById.mockResolvedValue(currentShelf);
+    repo.updateShelf.mockResolvedValue(updatedShelf);
+    repo.getRackTemplate.mockResolvedValue({
+      widthM: 4,
+      depthM: 1.5,
+      levelCount: 3,
+      bayCount: 2,
+    });
+    repo.findAllZones.mockResolvedValue([]);
+    repo.findAllRacks.mockResolvedValue([]);
+    repo.findAllShelves.mockResolvedValue([]);
+    repo.findAllAisles.mockResolvedValue([]);
+    repo.findAllGates.mockResolvedValue([]);
+    repo.incrementLayoutRevision.mockResolvedValue({
+      revision: 6,
+      widthM: 40,
+      heightM: 24,
+      gridM: 0.5,
+      updatedAt: new Date(),
+    });
+
+    await service.saveLayout(
+      {
+        expectedRevision: 5,
+        operations: [
+          {
+            op: LayoutOperation.UPDATE,
+            entity: LayoutEntity.SHELF,
+            id: shelfId.toString(),
+            patch: { isStaging: true },
+          },
+        ],
+      },
+      actorId,
+    );
+
+    expect(repo.softDeleteStorageCellsForShelf).toHaveBeenCalledWith(
+      shelfId,
+      actorId,
+      session,
+    );
+    expect(repo.syncStorageCellsForShelf).not.toHaveBeenCalled();
+  });
+  it('cho phép nhiều tầng nhận tạm trong cùng một rack nhưng chặn trải qua nhiều rack', async () => {
+    const otherRackId = new Types.ObjectId();
+    repo.getLayoutConfig.mockResolvedValue({
+      revision: 5,
+      widthM: 40,
+      heightM: 24,
+      gridM: 0.5,
+    });
+    repo.updateLayoutConfig.mockResolvedValue({});
+    repo.getRackTemplate.mockResolvedValue({
+      widthM: 4,
+      depthM: 1.5,
+      levelCount: 3,
+      bayCount: 2,
+    });
+    repo.findAllZones.mockResolvedValue([]);
+    repo.findAllRacks.mockResolvedValue([]);
+    repo.findAllShelves.mockResolvedValue([
+      { _id: new Types.ObjectId(), rackId, level: 1, isStaging: true },
+      {
+        _id: new Types.ObjectId(),
+        rackId: otherRackId,
+        level: 1,
+        isStaging: true,
+      },
+    ]);
+    repo.findAllAisles.mockResolvedValue([]);
+    repo.findAllGates.mockResolvedValue([]);
+    repo.incrementLayoutRevision.mockResolvedValue({
+      revision: 6,
+      widthM: 40,
+      heightM: 24,
+      gridM: 1,
+      updatedAt: new Date(),
+    });
+
+    await expect(
+      service.saveLayout(
+        {
+          expectedRevision: 5,
+          operations: [
+            {
+              op: LayoutOperation.UPDATE,
+              entity: LayoutEntity.CANVAS,
+              patch: { gridM: 1 },
+            },
+          ],
+        },
+        actorId,
+      ),
+    ).rejects.toMatchObject({ code: 'STAGING_SHELVES_MUST_SHARE_RACK' });
+
+    expect(repo.incrementLayoutRevision).not.toHaveBeenCalled();
+  });
   it('đọc final snapshot tuần tự trên cùng transaction session', async () => {
     const config = {
       revision: 7,
@@ -597,7 +741,16 @@ describe('WarehouseLayoutEditorService', () => {
     repo.findAllZones.mockResolvedValue([]);
     repo.findAllRacks.mockResolvedValue([]);
     repo.findAllShelves.mockResolvedValue([]);
-    repo.findAllAisles.mockResolvedValue([]);
+    repo.findAllAisles.mockResolvedValue([
+      {
+        _id: new Types.ObjectId(),
+        code: 'MAIN',
+        xM: 1,
+        yM: 8,
+        widthM: 16,
+        heightM: 2,
+      },
+    ]);
     repo.findAllGates.mockResolvedValue([]);
     repo.incrementLayoutRevision.mockResolvedValue({
       revision: 7,
@@ -660,7 +813,16 @@ describe('WarehouseLayoutEditorService', () => {
       },
     ]);
     repo.findAllShelves.mockResolvedValue([]);
-    repo.findAllAisles.mockResolvedValue([]);
+    repo.findAllAisles.mockResolvedValue([
+      {
+        _id: new Types.ObjectId(),
+        code: 'MAIN',
+        xM: 1,
+        yM: 8,
+        widthM: 16,
+        heightM: 2,
+      },
+    ]);
     repo.findAllGates.mockResolvedValue([]);
 
     await expect(

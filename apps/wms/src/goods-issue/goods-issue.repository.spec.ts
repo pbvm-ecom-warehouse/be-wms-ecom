@@ -94,7 +94,11 @@ describe('GoodsIssueRepository', () => {
       });
       await repo.decrementRemainingQty('gi1', itemId, 5, session);
       expect(model.findOneAndUpdate).toHaveBeenCalledWith(
-        { _id: 'gi1', items: { $elemMatch: { itemId } } },
+        {
+          _id: 'gi1',
+          status: GoodsIssueStatus.PENDING,
+          items: { $elemMatch: { itemId, remainingQty: { $gte: 5 } } },
+        },
         { $inc: { 'items.$.remainingQty': -5 } },
         { new: true, session },
       );

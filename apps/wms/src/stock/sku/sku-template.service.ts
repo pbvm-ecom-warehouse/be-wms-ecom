@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { AppException } from '@app/common';
+import { AppException } from '@app/common/errors/app.exception';
 import { AttributeOptionRepository } from '../attribute-option/attribute-option.repository';
 import { AttributeOptionKey } from '../schemas/attribute-option.schema';
 import { ItemType } from '../schemas/warehouse-item.schema';

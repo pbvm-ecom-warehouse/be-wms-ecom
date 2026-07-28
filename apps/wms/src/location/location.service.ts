@@ -202,7 +202,15 @@ export class LocationService {
       if (!rack) throw new AppException('RACK_NOT_FOUND');
       const existing = await this.repo.findShelfByCode(dto.code, session);
       if (existing) throw new AppException('SHELF_CODE_EXISTS');
-      return this.repo.createShelf(dto, actorId, session);
+      const shelf = await this.repo.createShelf(dto, actorId, session);
+      const template = await this.repo.getRackTemplate(session);
+      await this.repo.createStorageCellsForShelf(
+        shelf,
+        template.bayCount,
+        actorId,
+        session,
+      );
+      return shelf;
     });
   }
 
@@ -232,6 +240,13 @@ export class LocationService {
       }
       const doc = await this.repo.updateShelf(id, dto, actorId, session);
       if (!doc) throw new AppException('SHELF_NOT_FOUND');
+      const template = await this.repo.getRackTemplate(session);
+      await this.repo.syncStorageCellsForShelf(
+        doc,
+        template.bayCount,
+        actorId,
+        session,
+      );
       return doc;
     });
   }
@@ -251,6 +266,11 @@ export class LocationService {
       ) {
         throw new AppException('SHELF_HAS_STOCK');
       }
+      await this.repo.softDeleteStorageCellsForShelf(
+        shelf._id,
+        actorId,
+        session,
+      );
       const deleted = await this.repo.softDeleteShelf(id, actorId, session);
       if (!deleted) throw new AppException('SHELF_NOT_FOUND');
       return true;
@@ -274,9 +294,32 @@ export class LocationService {
     dto: UpdateRackTemplateDto,
     actorId: string,
   ): Promise<RackTemplateDocument> {
-    return this.mutateWithRevision(actorId, (session) =>
-      this.repo.updateRackTemplate(dto, actorId, session),
-    );
+    return this.mutateWithRevision(actorId, async (session) => {
+      const current = await this.repo.getRackTemplate(session);
+      if (dto.bayCount !== undefined && dto.bayCount < current.bayCount) {
+        const removedCells = await this.repo.findCellsAboveBay(
+          dto.bayCount,
+          session,
+        );
+        if (
+          await this.stockRepo.hasPositiveInventoryOnCells(
+            removedCells.map((cell) => cell._id),
+            session,
+          )
+        ) {
+          throw new AppException('STORAGE_CELL_HAS_STOCK');
+        }
+      }
+      const updated = await this.repo.updateRackTemplate(dto, actorId, session);
+      if (dto.bayCount !== undefined && dto.bayCount !== current.bayCount) {
+        await this.repo.reconcileStorageCellBayCount(
+          dto.bayCount,
+          actorId,
+          session,
+        );
+      }
+      return updated;
+    });
   }
 
   // ─── Aisle ────────────────────────────────────────────────────────────────
@@ -381,6 +424,7 @@ export class LocationService {
       ) {
         throw new AppException('LAYOUT_RESET_REQUIRES_EMPTY_STOCK');
       }
+      await this.repo.softDeleteAllStorageCells(actorId, session);
       await this.repo.softDeleteAllShelves(actorId, session);
       await this.repo.softDeleteAllRacks(actorId, session);
       await this.repo.softDeleteAllZones(actorId, session);
@@ -441,5 +485,51 @@ export class LocationService {
   async getShelfContents(shelfId: string) {
     await this.getShelf(shelfId);
     return this.stockRepo.findInventoryByShelfId(new Types.ObjectId(shelfId));
+  }
+
+  async getRackCells(rackId: string) {
+    const rack = await this.repo.findRackById(rackId);
+    if (!rack) throw new AppException('RACK_NOT_FOUND');
+    const cells = await this.repo.findCellsByRackId(rackId);
+    return Promise.all(
+      cells.map(async (cell) => {
+        const contents = await this.stockRepo.findInventoryByCellId(cell._id);
+        const usableVolumeCm3 =
+          cell.innerDepth *
+          cell.innerWidth *
+          cell.innerHeight *
+          (cell.fillFactor ?? 0.75);
+        const occupiedVolumeCm3 = contents.reduce(
+          (sum, item) =>
+            sum + item.packageCount * (item.packageVolumeCm3Snapshot ?? 0),
+          0,
+        );
+        return {
+          id: cell._id.toString(),
+          rackId: cell.rackId.toString(),
+          shelfId: cell.shelfId.toString(),
+          level: cell.level,
+          bay: cell.bay,
+          code: cell.code,
+          barcode: cell.barcode,
+          status: cell.status,
+          innerDepth: cell.innerDepth,
+          innerWidth: cell.innerWidth,
+          innerHeight: cell.innerHeight,
+          usableVolumeCm3,
+          occupiedVolumeCm3,
+          fillPercent: Math.min(
+            100,
+            Math.round((occupiedVolumeCm3 / usableVolumeCm3) * 100),
+          ),
+          contents,
+        };
+      }),
+    );
+  }
+  async getCellContents(cellId: string) {
+    const cell = await this.repo.findCellById(cellId);
+    if (!cell) throw new AppException('STORAGE_CELL_NOT_FOUND');
+    return this.stockRepo.findInventoryByCellId(new Types.ObjectId(cellId));
   }
 }

@@ -4,11 +4,13 @@ import {
 } from './goods-receipt-note.schema';
 
 describe('GoodsReceiptNote schema', () => {
-  it('GoodsReceiptNoteStatus enum có đủ 3 giá trị', () => {
+  it('GoodsReceiptNoteStatus enum có đủ vòng đời duyệt', () => {
     expect(Object.values(GoodsReceiptNoteStatus)).toEqual([
       'DRAFT',
+      'PENDING_APPROVAL',
       'CONFIRMED',
       'APPROVED',
+      'REJECTED',
     ]);
   });
 
