@@ -1,5 +1,6 @@
 import { Processor, WorkerHost } from '@nestjs/bullmq';
 import { Logger } from '@nestjs/common';
+import * as React from 'react';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { UserFcmToken } from '../../ecommerce/src/auth/schemas/user-fcm-token.schema';
@@ -215,6 +216,60 @@ export class NotificationConsumer extends WorkerHost {
           this.logger.error(
             'Lỗi khi gửi FCM Push Notification cho Ecom Manager:',
             err,
+          );
+        }
+        break;
+      }
+      case EVENTS.PRINT_COMPLETED: {
+        const payload = job.data as {
+          orderId: string;
+          customerEmail: string;
+          customerId?: string;
+        };
+        await this.email.send({
+          to: payload.customerEmail,
+          subject: `🖨️ Đơn in hoàn tất — Đơn hàng ${payload.orderId}`,
+          react: React.createElement(
+            'div',
+            { style: { fontFamily: 'sans-serif', padding: '20px' } },
+            React.createElement('h2', { style: { color: '#4caf50' } }, 'Đơn hàng in hoàn tất!'),
+            React.createElement('p', null, `Các ly in thuộc đơn hàng ${payload.orderId} của bạn đã hoàn thành in ấn và chuẩn bị chuyển sang bộ phận đóng gói giao đi.`),
+          ),
+          idempotencyKey: key,
+        });
+        if (payload.customerId) {
+          await this.sendPushNotificationToCustomer(
+            payload.customerId,
+            'Đơn in hoàn tất 🖨️',
+            `Các ly in thuộc đơn hàng ${payload.orderId} của bạn đã hoàn thành in ấn và chuẩn bị được đóng gói giao đi!`,
+            { orderId: payload.orderId, type: 'PRINT_COMPLETED' },
+          );
+        }
+        break;
+      }
+      case EVENTS.SHIPMENT_SHIPPED: {
+        const payload = job.data as {
+          orderId: string;
+          customerEmail: string;
+          customerId?: string;
+        };
+        await this.email.send({
+          to: payload.customerEmail,
+          subject: `🚚 Đơn hàng đang được giao — Đơn hàng ${payload.orderId}`,
+          react: React.createElement(
+            'div',
+            { style: { fontFamily: 'sans-serif', padding: '20px' } },
+            React.createElement('h2', { style: { color: '#2196f3' } }, 'Đơn hàng đang trên đường giao!'),
+            React.createElement('p', null, `Đơn hàng ${payload.orderId} của bạn đang được giao đi.`),
+          ),
+          idempotencyKey: key,
+        });
+        if (payload.customerId) {
+          await this.sendPushNotificationToCustomer(
+            payload.customerId,
+            'Đơn hàng đang giao 🚚',
+            `Đơn hàng ${payload.orderId} của bạn đang trên đường giao tới bạn.`,
+            { orderId: payload.orderId, type: 'SHIPMENT_SHIPPED' },
           );
         }
         break;

@@ -401,6 +401,20 @@ export class OrderService {
         fulfillmentStatus: FulfillmentStatus.READY_TO_PICK,
       });
 
+      // Báo khách hàng in xong ly
+      const customer = await this.userRepo.findActiveById(order.customerId);
+      if (customer) {
+        await this.notifyQueue.add(
+          EVENTS.PRINT_COMPLETED,
+          {
+            orderId,
+            customerEmail: customer.email,
+            customerId: order.customerId.toString(),
+          },
+          { removeOnComplete: true },
+        );
+      }
+
       // Đối với đơn hàng in:
       // - Nếu là COD: cho phép xuất kho luôn vì đợt 3 sẽ thu COD khi giao thành công.
       // - Nếu là ONLINE: chỉ xuất kho khi đã đóng đủ 100% (paymentStatus = PAID).
@@ -431,6 +445,22 @@ export class OrderService {
       fulfillmentStatus: FulfillmentStatus.SHIPPED,
     });
     this.logger.log(`WMS cập nhật: Đơn hàng ${orderId} đang được giao`);
+
+    const order = await this.repo.findById(orderId);
+    if (order) {
+      const customer = await this.userRepo.findActiveById(order.customerId);
+      if (customer) {
+        await this.notifyQueue.add(
+          EVENTS.SHIPMENT_SHIPPED,
+          {
+            orderId,
+            customerEmail: customer.email,
+            customerId: order.customerId.toString(),
+          },
+          { removeOnComplete: true },
+        );
+      }
+    }
   }
 
   async onDelivered(orderId: string) {
