@@ -52,12 +52,16 @@ export class PrintJobRepository {
     stage: PrintStage,
     lines: CreatePrintJobLineInput[],
     session: ClientSession,
+    printJobNumber: string,
+    orderCode: string,
     orderDetail?: Record<string, any>,
   ): Promise<PrintJobDocument> {
     const [doc] = await this.model.create(
       [
         {
+          printJobNumber,
           orderId,
+          orderCode,
           stage,
           status: PrintJobStatus.PENDING,
           orderDetail,

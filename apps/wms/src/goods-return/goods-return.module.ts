@@ -10,6 +10,7 @@ import { OrderReturnedConsumer } from './order-returned.consumer';
 import { LocationModule } from '../location/location.module';
 import { StockModule } from '../stock/stock.module';
 import { ScrapNoteModule } from '../scrap-note/scrap-note.module';
+import { DocumentNumberModule } from '../document-number/document-number.module';
 
 @Module({
   imports: [
@@ -21,6 +22,7 @@ import { ScrapNoteModule } from '../scrap-note/scrap-note.module';
     LocationModule, // findShelfById
     StockModule, // StockRepository + StockTransactionHelper
     ScrapNoteModule, // createApprovedScrapNoteForReturn (dòng DAMAGED)
+    DocumentNumberModule,
   ],
   providers: [GoodsReturnRepository, GoodsReturnService, OrderReturnedConsumer],
   controllers: [GoodsReturnController],

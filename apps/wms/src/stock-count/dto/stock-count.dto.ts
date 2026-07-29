@@ -173,6 +173,15 @@ export class StockCountResponseDto {
   id!: string;
 
   @Expose()
+  @Transform(({ value }: { value?: string }) => value ?? null)
+  @ApiProperty({
+    example: 'SC-20260730-0001',
+    nullable: true,
+    description: 'Null với chứng từ legacy chưa backfill',
+  })
+  stockCountNumber!: string | null;
+
+  @Expose()
   @Transform(({ obj }: { obj: { zoneId?: Types.ObjectId | null } }) =>
     obj.zoneId ? obj.zoneId.toString() : null,
   )

@@ -101,6 +101,7 @@ export interface OrderCancelledPayload {
 
 export interface OrderReturnedPayload {
   orderId: string;
+  orderCode: string;
   items: { sku: string; quantity: number }[];
 }
 
@@ -117,6 +118,7 @@ export enum PrintStage {
 
 export interface PrintRequestedPayload {
   orderId: string;
+  orderCode: string;
   stage: PrintStage;
   items: {
     /** ID dòng đơn bên Ecommerce, dùng map SKU in xong về đúng dòng. */

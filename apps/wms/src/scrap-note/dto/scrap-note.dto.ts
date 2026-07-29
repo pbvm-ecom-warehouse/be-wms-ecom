@@ -161,6 +161,15 @@ export class ScrapNoteResponseDto {
   id!: string;
 
   @Expose()
+  @Transform(({ value }: { value?: string }) => value ?? null)
+  @ApiProperty({
+    example: 'SCR-20260730-0001',
+    nullable: true,
+    description: 'Null với chứng từ legacy chưa backfill',
+  })
+  scrapNoteNumber!: string | null;
+
+  @Expose()
   @ApiProperty({ enum: ScrapNoteStatus })
   status!: ScrapNoteStatus;
 

@@ -23,6 +23,7 @@ import { LocationRepository } from '../location/location.repository';
 import { ScrapNoteService } from '../scrap-note/scrap-note.service';
 import { StockTransactionHelper } from '../stock/helpers/with-stock-transaction.helper';
 import { MovementType } from '../stock/schemas/stock-movement.schema';
+import { DocumentNumberService } from '../document-number/document-number.service';
 
 interface OrderReturnedItem {
   sku: string;
@@ -50,6 +51,7 @@ export class GoodsReturnService {
     private readonly locationRepo: LocationRepository,
     private readonly scrapNoteService: ScrapNoteService,
     private readonly stockTransactionHelper: StockTransactionHelper,
+    private readonly documentNumberService: DocumentNumberService,
     @InjectQueue(QUEUES.STOCK) private readonly stockQueue: Queue,
     private readonly cloudinary: CloudinaryService,
   ) {}
@@ -63,6 +65,7 @@ export class GoodsReturnService {
    */
   async createFromOrderReturned(
     orderId: string,
+    orderCode: string,
     items: OrderReturnedItem[],
   ): Promise<void> {
     const existing = await this.repo.findByOrderId(orderId);
@@ -97,7 +100,15 @@ export class GoodsReturnService {
       return;
     }
 
-    await this.repo.createGoodsReturn(orderId, null, undefined, lines);
+    const goodsReturnNumber = await this.documentNumberService.next('RET');
+    await this.repo.createGoodsReturn(
+      orderId,
+      null,
+      undefined,
+      lines,
+      goodsReturnNumber,
+      orderCode,
+    );
   }
 
   /**
@@ -121,11 +132,13 @@ export class GoodsReturnService {
       });
     }
 
+    const goodsReturnNumber = await this.documentNumberService.next('RET');
     return this.repo.createGoodsReturn(
       dto.orderId,
       new Types.ObjectId(actorId),
       dto.note,
       lines,
+      goodsReturnNumber,
     );
   }
 

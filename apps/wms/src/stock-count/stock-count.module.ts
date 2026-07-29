@@ -8,6 +8,7 @@ import { StockCountService } from './stock-count.service';
 import { StockCountController } from './stock-count.controller';
 import { LocationModule } from '../location/location.module';
 import { StockModule } from '../stock/stock.module';
+import { DocumentNumberModule } from '../document-number/document-number.module';
 
 @Module({
   imports: [
@@ -18,6 +19,7 @@ import { StockModule } from '../stock/stock.module';
     ]),
     LocationModule, // findZoneById/findShelfIdsByZone
     StockModule, // StockRepository + StockTransactionHelper
+    DocumentNumberModule,
   ],
   providers: [StockCountRepository, StockCountService],
   controllers: [StockCountController],

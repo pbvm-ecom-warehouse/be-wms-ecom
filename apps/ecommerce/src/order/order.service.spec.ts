@@ -79,6 +79,35 @@ describe('OrderService.onReturned', () => {
   });
 });
 
+describe('OrderService.returnOrder', () => {
+  it('phát order.returned kèm orderCode và jobId idempotent', async () => {
+    const repo = makeRepo();
+    const { service, orderQueue } = createService(repo);
+    const orderId = new Types.ObjectId().toString();
+    const customerId = new Types.ObjectId();
+    repo.findById.mockResolvedValue({
+      code: 'ORD-20260730-0001',
+      customerId,
+      fulfillmentStatus: FulfillmentStatus.DELIVERED,
+      placedAt: new Date(),
+      items: [{ sku: 'SKU-1', quantity: 2, isPrintItem: false }],
+    });
+    repo.updateOrder.mockResolvedValue({ _id: orderId });
+
+    await service.returnOrder(orderId, customerId.toString());
+
+    expect(orderQueue.add).toHaveBeenCalledWith(
+      'order.returned',
+      {
+        orderId,
+        orderCode: 'ORD-20260730-0001',
+        items: [{ sku: 'SKU-1', quantity: 2 }],
+      },
+      { jobId: `order-returned-${orderId}` },
+    );
+  });
+});
+
 describe('OrderService.onStockReserved', () => {
   it('phát order.ready_to_fulfill kèm orderCode và jobId idempotent cho COD', async () => {
     const repo = makeRepo();
@@ -279,6 +308,7 @@ describe('OrderService print contract', () => {
       'print.requested',
       {
         orderId,
+        orderCode: 'ORD-20260730-001',
         stage: 'SAMPLE',
         items: [
           {
@@ -319,6 +349,7 @@ describe('OrderService print contract', () => {
       'print.requested',
       {
         orderId,
+        orderCode: 'ORD-20260730-001',
         stage: 'PRODUCTION',
         items: [
           {

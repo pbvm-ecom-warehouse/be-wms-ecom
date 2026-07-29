@@ -51,6 +51,9 @@ const makeStockService = () => ({
 // apps/ecommerce/src/order/order.consumer.ts @Processor(QUEUES.SHIPMENT)).
 const makeStockQueue = () => ({ add: jest.fn() });
 const makeShipmentQueue = () => ({ add: jest.fn() });
+const makeDocumentNumberService = () => ({
+  next: jest.fn().mockResolvedValue('PRN-20260730-0001'),
+});
 
 const printedSkuFor = (blankSku: string, identity: string) =>
   `${blankSku}-DSG${createHash('sha256')
@@ -69,6 +72,7 @@ describe('PrintJobService', () => {
   let barcodeSvc: ReturnType<typeof makeBarcodeService>;
   let stockQueue: ReturnType<typeof makeStockQueue>;
   let shipmentQueue: ReturnType<typeof makeShipmentQueue>;
+  let documentNumber: ReturnType<typeof makeDocumentNumberService>;
 
   const actorId = new Types.ObjectId().toString();
   const orderId = 'order-1';
@@ -84,6 +88,7 @@ describe('PrintJobService', () => {
     barcodeSvc = makeBarcodeService();
     stockQueue = makeStockQueue();
     shipmentQueue = makeShipmentQueue();
+    documentNumber = makeDocumentNumberService();
     stockRepo.reserveIfAvailable.mockResolvedValue(true);
     svc = new PrintJobService(
       repo as never,
@@ -92,6 +97,7 @@ describe('PrintJobService', () => {
       locationRepo,
       txHelper as never,
       barcodeSvc as never,
+      documentNumber as never,
       stockQueue as never,
       shipmentQueue as never,
     );
@@ -100,6 +106,7 @@ describe('PrintJobService', () => {
   describe('createFromPrintRequested', () => {
     const canonicalRequest = (overrides: Record<string, unknown> = {}) => ({
       orderId,
+      orderCode: 'ORD-20260730-0001',
       stage: PrintStage.PRODUCTION,
       items: [
         {
@@ -229,8 +236,11 @@ describe('PrintJobService', () => {
           }),
         ],
         expect.anything(),
+        'PRN-20260730-0001',
+        'ORD-20260730-0001',
         undefined,
       );
+      expect(documentNumber.next).toHaveBeenCalledWith('PRN');
     });
 
     it('fallback sang orderItemId và tạo cùng output SKU cho SAMPLE/PRODUCTION của cùng dòng', async () => {
@@ -282,6 +292,8 @@ describe('PrintJobService', () => {
           }),
         ],
         expect.anything(),
+        'PRN-20260730-0001',
+        'ORD-20260730-0001',
         undefined,
       );
     });
@@ -536,6 +548,8 @@ describe('PrintJobService', () => {
         PrintStage.PRODUCTION,
         [expect.objectContaining({ orderItemId: 'order-item-1' })],
         { attempt: 2 },
+        'PRN-20260730-0001',
+        'ORD-20260730-0001',
         undefined,
       );
       expect(stockQueue.add).toHaveBeenCalledWith(

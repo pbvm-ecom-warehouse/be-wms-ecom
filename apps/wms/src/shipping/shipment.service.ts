@@ -12,6 +12,7 @@ import {
 import { ShipmentDocument, ShipmentStatus } from './schemas/shipment.schema';
 import { CarrierService } from './carrier.service';
 import { CarrierStatus } from './schemas/carrier.schema';
+import { DocumentNumberService } from '../document-number/document-number.service';
 
 // Giới hạn upload ảnh POD — theo đúng ràng buộc thiết kế IMG-01/IMG-09.
 const ALLOWED_IMAGE_MIMETYPES = ['image/jpeg', 'image/png', 'image/webp'];
@@ -50,12 +51,14 @@ export class ShipmentService {
   constructor(
     private readonly repo: ShipmentRepository,
     private readonly carrierService: CarrierService,
+    private readonly documentNumberService: DocumentNumberService,
     @InjectQueue(QUEUES.SHIPMENT) private readonly shipmentQueue: Queue,
     private readonly cloudinary: CloudinaryService,
   ) {}
 
   async createFromGoodsIssue(input: {
     orderId: string;
+    orderCode?: string;
     goodsIssueId: string;
     recipient: {
       name: string;
@@ -68,8 +71,11 @@ export class ShipmentService {
     const existing = await this.repo.findByGoodsIssueId(input.goodsIssueId);
     if (existing) return;
 
+    const shipmentNumber = await this.documentNumberService.next('SHP');
     const createInput: CreateShipmentFromGoodsIssueInput = {
+      shipmentNumber,
       orderId: input.orderId,
+      orderCode: input.orderCode,
       goodsIssueId: new Types.ObjectId(input.goodsIssueId),
       recipient: input.recipient,
       paymentMethod: input.paymentMethod,

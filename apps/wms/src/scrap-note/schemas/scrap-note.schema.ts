@@ -72,6 +72,10 @@ const ScrapNoteItemSchema = SchemaFactory.createForClass(ScrapNoteItem);
  */
 @Schema({ collection: 'scrap_notes', timestamps: true })
 export class ScrapNote {
+  /** Mã phiếu hủy nghiệp vụ; sparse để dữ liệu legacy vẫn đọc được. */
+  @Prop({ unique: true, sparse: true })
+  scrapNoteNumber?: string;
+
   @Prop({ enum: ScrapNoteStatus, default: ScrapNoteStatus.DRAFT })
   status!: ScrapNoteStatus;
 

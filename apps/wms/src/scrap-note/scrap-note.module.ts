@@ -8,6 +8,7 @@ import { ScrapNoteService } from './scrap-note.service';
 import { ScrapNoteController } from './scrap-note.controller';
 import { LocationModule } from '../location/location.module';
 import { StockModule } from '../stock/stock.module';
+import { DocumentNumberModule } from '../document-number/document-number.module';
 
 @Module({
   imports: [
@@ -19,6 +20,7 @@ import { StockModule } from '../stock/stock.module';
     ]),
     LocationModule, // findShelfById
     StockModule, // StockRepository + StockTransactionHelper
+    DocumentNumberModule,
   ],
   providers: [ScrapNoteRepository, ScrapNoteService],
   controllers: [ScrapNoteController],

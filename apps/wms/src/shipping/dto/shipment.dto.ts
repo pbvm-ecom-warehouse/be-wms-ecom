@@ -125,8 +125,26 @@ export class ShipmentResponseDto {
   id!: string;
 
   @Expose()
+  @Transform(({ value }: { value?: string }) => value ?? null)
+  @ApiProperty({
+    example: 'SHP-20260730-0001',
+    nullable: true,
+    description: 'Null với chứng từ legacy chưa backfill',
+  })
+  shipmentNumber!: string | null;
+
+  @Expose()
   @ApiProperty()
   orderId!: string;
+
+  @Expose()
+  @Transform(({ value }: { value?: string }) => value ?? null)
+  @ApiProperty({
+    example: 'ORD-20260730-0001',
+    nullable: true,
+    description: 'Snapshot mã đơn Ecommerce; null với dữ liệu legacy',
+  })
+  orderCode!: string | null;
 
   @Expose()
   @Transform(({ obj }: { obj: { goodsIssueId?: Types.ObjectId } }) =>

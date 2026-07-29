@@ -67,6 +67,7 @@ export class OrderService {
   ): Promise<void> {
     const payload: PrintRequestedPayload = {
       orderId,
+      orderCode: order.code,
       stage,
       items: this.buildPrintRequestedItems(order.items, stage),
       orderDetail: this.toOrderDetail(order),
@@ -747,10 +748,18 @@ export class OrderService {
     });
 
     // Phát sự kiện hoàn trả về kho cho WMS biết để xử lý hoàn nhập kho
-    await this.orderQueue.add(EVENTS.ORDER_RETURNED, {
-      orderId,
-      items: order.items.map((i) => ({ sku: i.sku, quantity: i.quantity })),
-    });
+    await this.orderQueue.add(
+      EVENTS.ORDER_RETURNED,
+      {
+        orderId,
+        orderCode: order.code,
+        items: order.items.map((i) => ({
+          sku: i.sku,
+          quantity: i.quantity,
+        })),
+      },
+      { jobId: this.queueJobId('order-returned', orderId) },
+    );
 
     this.logger.log(`Yêu cầu đổi trả đơn hàng ${orderId} được xác nhận`);
     return updated;

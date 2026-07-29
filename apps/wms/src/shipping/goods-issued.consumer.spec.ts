@@ -19,6 +19,7 @@ describe('GoodsIssuedConsumer', () => {
     goodsIssueRepo.findById.mockResolvedValue({
       _id: 'gi1',
       orderId: 'order-1',
+      orderCode: 'ORD-20260730-0001',
       shippingAddress: { street: '123' },
       recipient: { name: 'A', phone: '090' },
       paymentMethod: 'COD',
@@ -33,6 +34,7 @@ describe('GoodsIssuedConsumer', () => {
 
     expect(shipmentService.createFromGoodsIssue).toHaveBeenCalledWith({
       orderId: 'order-1',
+      orderCode: 'ORD-20260730-0001',
       goodsIssueId: 'gi1',
       recipient: { name: 'A', phone: '090', address: { street: '123' } },
       paymentMethod: 'COD',

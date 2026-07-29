@@ -60,9 +60,17 @@ const PrintJobItemSchema = SchemaFactory.createForClass(PrintJobItem);
  */
 @Schema({ collection: 'print_jobs', timestamps: true })
 export class PrintJob {
+  /** Mã lệnh in nghiệp vụ; sparse để dữ liệu legacy vẫn đọc được. */
+  @Prop({ unique: true, sparse: true })
+  printJobNumber?: string;
+
   /** id đơn hàng bên Ecom — KHÔNG phải ObjectId nội bộ WMS */
   @Prop({ required: true })
   orderId!: string;
+
+  /** Snapshot mã đơn Ecommerce, không query chéo ecom_db. */
+  @Prop()
+  orderCode?: string;
 
   /** SAMPLE và PRODUCTION của cùng orderId là hai lệnh độc lập. */
   @Prop({ type: String, enum: PrintStage, required: true })

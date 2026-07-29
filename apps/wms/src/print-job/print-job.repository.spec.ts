@@ -60,11 +60,15 @@ describe('PrintJobRepository', () => {
           },
         ],
         session,
+        'PRN-20260730-0001',
+        'ORD-20260730-0001',
       );
       expect(model.create).toHaveBeenCalledWith(
         [
           {
+            printJobNumber: 'PRN-20260730-0001',
             orderId,
+            orderCode: 'ORD-20260730-0001',
             stage: PrintStage.PRODUCTION,
             status: PrintJobStatus.PENDING,
             items: [

@@ -54,12 +54,19 @@ describe('GoodsReturnRepository', () => {
   describe('createGoodsReturn', () => {
     it('tạo document DRAFT, dòng chưa phân loại', async () => {
       model.create.mockResolvedValue([{ _id: 'gr1' }]);
-      await repo.createGoodsReturn('order-1', null, undefined, [
-        { itemId, sku: 'SKU-1', quantity: 5 },
-      ]);
+      await repo.createGoodsReturn(
+        'order-1',
+        null,
+        undefined,
+        [{ itemId, sku: 'SKU-1', quantity: 5 }],
+        'RET-20260730-0001',
+        'ORD-20260730-0001',
+      );
       expect(model.create).toHaveBeenCalledWith([
         {
+          goodsReturnNumber: 'RET-20260730-0001',
           orderId: 'order-1',
+          orderCode: 'ORD-20260730-0001',
           note: undefined,
           status: GoodsReturnStatus.DRAFT,
           createdBy: null,

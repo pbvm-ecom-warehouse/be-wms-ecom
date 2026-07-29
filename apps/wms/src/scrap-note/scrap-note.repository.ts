@@ -39,9 +39,11 @@ export class ScrapNoteRepository {
     note: string | undefined,
     createdBy: Types.ObjectId,
     lines: CreateScrapNoteLineInput[],
+    scrapNoteNumber: string,
   ): Promise<ScrapNoteDocument> {
     const [doc] = await this.model.create([
       {
+        scrapNoteNumber,
         note,
         status: ScrapNoteStatus.DRAFT,
         createdBy,
@@ -69,10 +71,12 @@ export class ScrapNoteRepository {
     createdBy: Types.ObjectId,
     lines: CreateScrapNoteLineInput[],
     session: ClientSession,
+    scrapNoteNumber: string,
   ): Promise<ScrapNoteDocument> {
     const [doc] = await this.model.create(
       [
         {
+          scrapNoteNumber,
           status: ScrapNoteStatus.APPROVED,
           createdBy,
           approvedBy: createdBy,

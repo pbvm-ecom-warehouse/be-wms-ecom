@@ -182,8 +182,26 @@ export class GoodsReturnResponseDto {
   id!: string;
 
   @Expose()
+  @Transform(({ value }: { value?: string }) => value ?? null)
+  @ApiProperty({
+    example: 'RET-20260730-0001',
+    nullable: true,
+    description: 'Null với chứng từ legacy chưa backfill',
+  })
+  goodsReturnNumber!: string | null;
+
+  @Expose()
   @ApiPropertyOptional()
   orderId?: string;
+
+  @Expose()
+  @Transform(({ value }: { value?: string }) => value ?? null)
+  @ApiProperty({
+    example: 'ORD-20260730-0001',
+    nullable: true,
+    description: 'Snapshot mã đơn Ecommerce; null với phiếu tay/dữ liệu legacy',
+  })
+  orderCode!: string | null;
 
   @Expose()
   @ApiProperty({ enum: GoodsReturnStatus })

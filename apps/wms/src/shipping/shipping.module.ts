@@ -12,6 +12,7 @@ import { ShipmentService } from './shipment.service';
 import { ShipmentController } from './shipment.controller';
 import { GoodsIssuedConsumer } from './goods-issued.consumer';
 import { GoodsIssueModule } from '../goods-issue/goods-issue.module';
+import { DocumentNumberModule } from '../document-number/document-number.module';
 
 @Module({
   imports: [
@@ -27,6 +28,7 @@ import { GoodsIssueModule } from '../goods-issue/goods-issue.module';
       { name: Shipment.name, schema: ShipmentSchema },
     ]),
     GoodsIssueModule, // GoodsIssueRepository — đọc snapshot recipient/paymentMethod/codAmount
+    DocumentNumberModule,
   ],
   providers: [
     CarrierRepository,

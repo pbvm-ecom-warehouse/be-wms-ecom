@@ -31,6 +31,10 @@ const makeTxHelper = () => ({
 
 const makeStockQueue = () => ({ add: jest.fn() });
 
+const makeDocumentNumberService = () => ({
+  next: jest.fn().mockResolvedValue('SC-20260730-0001'),
+});
+
 const makeStockService = () => ({ checkAndEmitStockLow: jest.fn() });
 
 const makeCloudinaryService = () => ({
@@ -60,6 +64,7 @@ describe('StockCountService', () => {
   let stockQueue: ReturnType<typeof makeStockQueue>;
   let stockService: ReturnType<typeof makeStockService>;
   let cloudinary: ReturnType<typeof makeCloudinaryService>;
+  let documentNumber: ReturnType<typeof makeDocumentNumberService>;
 
   const actorId = new Types.ObjectId().toString();
   const zoneId = new Types.ObjectId();
@@ -74,12 +79,14 @@ describe('StockCountService', () => {
     stockQueue = makeStockQueue();
     stockService = makeStockService();
     cloudinary = makeCloudinaryService();
+    documentNumber = makeDocumentNumberService();
     svc = new StockCountService(
       repo as never,
       stockRepo as never,
       stockService as never,
       locationRepo as never,
       txHelper as never,
+      documentNumber as never,
       stockQueue as never,
       cloudinary as never,
     );
@@ -113,7 +120,9 @@ describe('StockCountService', () => {
             systemQty: 50,
           },
         ],
+        'SC-20260730-0001',
       );
+      expect(documentNumber.next).toHaveBeenCalledWith('SC');
     });
 
     it('lọc theo zoneId khi có truyền — dùng findShelfIdsByZone trước', async () => {
@@ -172,6 +181,7 @@ describe('StockCountService', () => {
             systemQty: 50,
           },
         ],
+        'SC-20260730-0001',
       );
     });
 
