@@ -56,6 +56,14 @@ export class CompletePrintJobItemDto {
   @IsNumber()
   @Min(1)
   quantity!: number;
+
+  @ApiPropertyOptional({
+    example: 'https://res.cloudinary.com/.../proof.png',
+    description: 'Ảnh chụp sản phẩm thực tế đã in thành công (Dành cho in mẫu)',
+  })
+  @IsString()
+  @IsOptional()
+  proofImage?: string;
 }
 
 export class QueryPrintJobDto {

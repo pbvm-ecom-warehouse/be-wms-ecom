@@ -124,6 +124,8 @@ export interface PrintRequestedPayload {
 export interface PrintCompletedPayload {
   orderId: string;
   printJobId: string;
+  /** Link ảnh chụp sản phẩm mẫu thực tế để gửi khách duyệt */
+  proofImage?: string;
 }
 
 export interface ShipmentEventPayload {

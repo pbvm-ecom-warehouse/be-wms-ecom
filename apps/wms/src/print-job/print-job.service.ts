@@ -397,7 +397,7 @@ export class PrintJobService {
     if (!updated) throw new AppException('PRINT_JOB_NOT_FOUND');
 
     if (allDone) {
-      await this.emitPrintCompleted(job.orderId, id);
+      await this.emitPrintCompleted(job.orderId, id, dto.proofImage);
     }
 
     return updated;
@@ -406,12 +406,13 @@ export class PrintJobService {
   private async emitPrintCompleted(
     orderId: string,
     printJobId: string,
+    proofImage?: string,
   ): Promise<void> {
-    const payload: PrintCompletedPayload = { orderId, printJobId };
+    const payload: PrintCompletedPayload = { orderId, printJobId, proofImage };
     const jobId = `print_job:${printJobId}`;
     await this.shipmentQueue.add(EVENTS.PRINT_COMPLETED, payload, { jobId });
     this.logger.log(
-      `print.completed → orderId=${orderId} printJobId=${printJobId}`,
+      `print.completed → orderId=${orderId} printJobId=${printJobId} proofImage=${proofImage}`,
     );
   }
 

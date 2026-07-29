@@ -48,6 +48,10 @@ export class OrderItemResponseDto {
   @Expose()
   @ApiProperty({ example: null, nullable: true })
   printJobId!: string | null;
+
+  @Expose()
+  @ApiPropertyOptional({ example: 'https://res.cloudinary.com/.../proof.png', nullable: true })
+  sampleProofImage?: string | null;
 }
 
 export class ShippingAddressResponseDto {

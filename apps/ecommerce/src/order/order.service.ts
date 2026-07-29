@@ -438,7 +438,7 @@ export class OrderService {
     );
   }
 
-  async onPrintCompleted(rawOrderId: string, printJobId: string) {
+  async onPrintCompleted(rawOrderId: string, printJobId: string, proofImage?: string) {
     // WMS báo về với orderId có thể kèm hậu tố "-sample" (in bản mẫu) hoặc không (in chính thức)
     const isSample = rawOrderId.endsWith('-sample');
     const orderId = isSample ? rawOrderId.slice(0, -7) : rawOrderId; // cắt '-sample'
@@ -449,9 +449,15 @@ export class OrderService {
     const orderDetail = JSON.parse(JSON.stringify(order));
 
     if (isSample) {
+      // Lưu link ảnh chụp mẫu vào OrderItem tương ứng
+      const items = order.items.map((item) =>
+        item.isPrintItem ? { ...item, sampleProofImage: proofImage } : item,
+      );
+
       // ── In BẢN MẪU xong: chuyển sang SAMPLE_PRINTED, thông báo khách/admin xem mẫu ──
       await this.repo.updateOrder(orderId, {
         fulfillmentStatus: FulfillmentStatus.SAMPLE_PRINTED,
+        items,
       });
 
       const customer = await this.userRepo.findActiveById(order.customerId);
@@ -462,12 +468,13 @@ export class OrderService {
             orderId,
             customerEmail: customer.email,
             customerId: order.customerId.toString(),
+            proofImage, // Gửi ảnh mẫu thực tế cho ecom để hiển thị/thông báo khách
           },
           { removeOnComplete: true },
         );
       }
       this.logger.log(
-        `WMS in xong BẢN MẪU đơn ${orderId} -> SAMPLE_PRINTED -> Chờ khách xác nhận & thanh toán đợt 2`,
+        `WMS in xong BẢN MẪU đơn ${orderId} -> SAMPLE_PRINTED -> Chờ khách xác nhận & thanh toán đợt 2. Ảnh mẫu: ${proofImage}`,
       );
       return;
     }

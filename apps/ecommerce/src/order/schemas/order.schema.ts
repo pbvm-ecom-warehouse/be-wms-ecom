@@ -60,6 +60,9 @@ export class OrderItem {
 
   @Prop({ default: null })
   printJobId?: string; // mã lệnh in WMS gán sau
+
+  @Prop({ default: null })
+  sampleProofImage?: string; // Lưu URL ảnh thực tế bản mẫu WMS chụp gửi về để khách hàng xem
 }
 
 export class ShippingAddress {

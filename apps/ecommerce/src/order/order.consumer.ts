@@ -38,7 +38,7 @@ export class ShipmentConsumer extends WorkerHost {
         this.logger.log(
           `Nhận sự kiện fulfillment: ${job.name} cho đơn hàng ${data.orderId}`,
         );
-        await this.orderService.onPrintCompleted(data.orderId, data.printJobId);
+        await this.orderService.onPrintCompleted(data.orderId, data.printJobId, data.proofImage);
         break;
       }
       case EVENTS.SHIPMENT_SHIPPED: {
