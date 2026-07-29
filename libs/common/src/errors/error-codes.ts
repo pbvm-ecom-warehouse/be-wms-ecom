@@ -311,6 +311,11 @@ export const ERROR_CATALOG = {
     message:
       'Đơn đặt hàng đã hủy hoặc đã nhận đủ, không thể tạo phiếu nhập mới',
   },
+  PO_HAS_OPEN_GRN: {
+    status: HttpStatus.CONFLICT,
+    message:
+      'Đơn đặt hàng đang có phiếu nhập kho chưa xử lý xong (nháp/chờ duyệt), cần hoàn tất trước khi tạo phiếu mới',
+  },
   GRN_NUMBER_GENERATION_CONFLICT: {
     status: HttpStatus.CONFLICT,
     message: 'Không sinh được mã phiếu nhập kho do trùng lặp, thử lại thao tác',
