@@ -107,23 +107,39 @@ export interface GoodsIssuedPayload {
   goodsIssueId: string;
 }
 
+/** Giai đoạn in của cùng một đơn — là một phần của khóa idempotency. */
+export enum PrintStage {
+  SAMPLE = 'SAMPLE',
+  PRODUCTION = 'PRODUCTION',
+}
+
 export interface PrintRequestedPayload {
   orderId: string;
+  stage: PrintStage;
   items: {
-    sku: string;
+    /** ID dòng đơn bên Ecommerce, dùng map SKU in xong về đúng dòng. */
+    orderItemId: string;
+    /** SKU CUP_BLANK nguồn; WMS tự sinh SKU CUP_PRINTED, không tin output từ Ecom. */
+    blankSku: string;
     quantity: number;
-    designFile?: string;
-    blankSku?: string;
+    designFile: string;
+    /** Identity thiết kế ổn định; nếu thiếu, WMS dùng orderItemId. */
+    designId?: string;
   }[];
   /** Toàn bộ thông tin đơn hàng từ Ecom — để WMS có đủ context khi tạo lệnh in */
   orderDetail?: Record<string, any>;
-  /** true = in bản mẫu, false = in chính thức */
-  isSample?: boolean;
 }
 
 export interface PrintCompletedPayload {
   orderId: string;
   printJobId: string;
+  stage: PrintStage;
+  items: {
+    orderItemId: string;
+    printedSku: string;
+    /** Số lượng thực tế WMS đã output, không phải số yêu cầu ban đầu. */
+    quantity: number;
+  }[];
   /** Link ảnh chụp sản phẩm mẫu thực tế để gửi khách duyệt */
   proofImage?: string;
 }

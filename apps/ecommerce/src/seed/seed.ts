@@ -17,6 +17,8 @@ import { FulfillmentType } from '../catalog/schemas/product-variant.schema';
 const logger = new Logger('SeedEcom');
 
 const SEED_PASSWORD = 'Seed@12345';
+const LEGACY_CUSTOM_PRINT_SKU = 'ECOM-CUP-CUSTOM-500';
+const CUSTOM_PRINT_BLANK_SKU = 'CUP-HRT-PET-500-CLR';
 
 const SEED_MANAGER: CreateEcomManagerDto = {
   email: 'seed_manager@ecom.local',
@@ -97,8 +99,8 @@ interface SeedProductSpec {
   variants: SeedVariantSpec[];
 }
 
-// SKU độc lập với sku WarehouseItem bên WMS (đó là nguyên liệu/bao bì tồn kho
-// nội bộ, không phải hàng bán ra) — prefix ECOM- để tách rõ 2 không gian.
+// SKU hàng thường vẫn dùng namespace ECOM-* của catalog. Riêng CUSTOM_PRINT
+// phải trỏ đúng SKU CUP_BLANK do WMS quản lý để tạo lệnh in không mơ hồ.
 const SEED_PRODUCTS: SeedProductSpec[] = [
   {
     name: 'Ly nhựa PET 500ml trong suốt (in sẵn)',
@@ -150,7 +152,7 @@ const SEED_PRODUCTS: SeedProductSpec[] = [
     status: ProductStatus.ACTIVE,
     variants: [
       {
-        sku: 'ECOM-CUP-CUSTOM-500',
+        sku: CUSTOM_PRINT_BLANK_SKU,
         attributes: { capacity: '500ml' },
         price: 3800000,
         availableQty: 0,
@@ -323,6 +325,55 @@ async function seedCatalog(app: INestApplicationContext): Promise<void> {
     }
 
     for (const v of p.variants) {
+      if (
+        v.fulfillmentType === FulfillmentType.CUSTOM_PRINT &&
+        v.sku === CUSTOM_PRINT_BLANK_SKU
+      ) {
+        const currentVariant = await catalogRepo.findVariantBySkuAny(
+          CUSTOM_PRINT_BLANK_SKU,
+        );
+        const legacyVariant = await catalogRepo.findVariantBySkuAny(
+          LEGACY_CUSTOM_PRINT_SKU,
+        );
+        const canonicalData = {
+          productId: new Types.ObjectId(productId),
+          attributes: v.attributes,
+          price: v.price,
+          fulfillmentType: FulfillmentType.CUSTOM_PRINT,
+          isActive: true,
+        };
+
+        if (currentVariant) {
+          await catalogRepo.updateVariant(
+            currentVariant._id.toString(),
+            canonicalData,
+          );
+          if (
+            legacyVariant &&
+            legacyVariant._id.toString() !== currentVariant._id.toString()
+          ) {
+            await catalogRepo.updateVariant(legacyVariant._id.toString(), {
+              isActive: false,
+            });
+          }
+          logger.log(
+            `Chuẩn hóa variant CUSTOM_PRINT về CUP_BLANK ${CUSTOM_PRINT_BLANK_SKU}.`,
+          );
+          continue;
+        }
+
+        if (legacyVariant) {
+          await catalogRepo.updateVariant(legacyVariant._id.toString(), {
+            ...canonicalData,
+            sku: CUSTOM_PRINT_BLANK_SKU,
+          });
+          logger.log(
+            `Migrate variant CUSTOM_PRINT ${LEGACY_CUSTOM_PRINT_SKU} -> ${CUSTOM_PRINT_BLANK_SKU}.`,
+          );
+          continue;
+        }
+      }
+
       const existingVariant = await catalogRepo.findVariantBySkuAny(v.sku);
       if (existingVariant) {
         logger.log(`Variant ${v.sku} đã tồn tại — bỏ qua.`);

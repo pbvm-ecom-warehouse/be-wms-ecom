@@ -1,4 +1,5 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
+import { PrintStage } from '@app/events';
 import { HydratedDocument, Types } from 'mongoose';
 
 export enum PrintJobStatus {
@@ -17,6 +18,10 @@ export enum PrintJobLineStatus {
 /** Sub-document: 1 dòng in (1 design). Không audit riêng — kế thừa từ PrintJob cha. */
 @Schema({ _id: false })
 export class PrintJobItem {
+  /** ID dòng đơn bên Ecommerce — dùng map output về đúng dòng khi hoàn tất. */
+  @Prop({ required: true })
+  orderItemId!: string;
+
   /** WarehouseItem CUP_BLANK dùng làm nguyên liệu */
   @Prop({ type: Types.ObjectId, required: true })
   inputItemId!: Types.ObjectId;
@@ -56,15 +61,12 @@ const PrintJobItemSchema = SchemaFactory.createForClass(PrintJobItem);
 @Schema({ collection: 'print_jobs', timestamps: true })
 export class PrintJob {
   /** id đơn hàng bên Ecom — KHÔNG phải ObjectId nội bộ WMS */
-  @Prop({ required: true, unique: true })
+  @Prop({ required: true })
   orderId!: string;
 
-  /**
-   * true = lệnh in BẢN MẪU (quantity=1, chờ khách duyệt rồi mới in chính thức).
-   * false = lệnh in CHÍNH THỨC (in hàng loạt đủ số lượng đơn).
-   */
-  @Prop({ type: Boolean, default: false })
-  isSample!: boolean;
+  /** SAMPLE và PRODUCTION của cùng orderId là hai lệnh độc lập. */
+  @Prop({ type: String, enum: PrintStage, required: true })
+  stage!: PrintStage;
 
   @Prop({ enum: PrintJobStatus, default: PrintJobStatus.PENDING })
   status!: PrintJobStatus;
@@ -84,5 +86,8 @@ export class PrintJob {
 export type PrintJobDocument = HydratedDocument<PrintJob>;
 export const PrintJobSchema = SchemaFactory.createForClass(PrintJob);
 
-// unique index cho orderId đã khai báo qua @Prop({ unique: true }) ở trên
+PrintJobSchema.index(
+  { orderId: 1, stage: 1 },
+  { unique: true, name: 'orderId_1_stage_1' },
+);
 PrintJobSchema.index({ status: 1 });

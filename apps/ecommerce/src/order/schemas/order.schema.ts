@@ -35,6 +35,9 @@ export enum FulfillmentStatus {
 
 export class OrderItem {
   @Prop({ required: true })
+  orderItemId: string; // line id ổn định để đối soát event in giữa Ecommerce và WMS
+
+  @Prop({ required: true })
   sku: string;
 
   @Prop({ required: true })
@@ -57,6 +60,9 @@ export class OrderItem {
 
   @Prop({ default: null })
   blankSku?: string; // SKU ly trống để in
+
+  @Prop({ default: null })
+  printedSku?: string; // SKU ly đã in do WMS trả về theo đúng orderItemId
 
   @Prop({ default: null })
   printJobId?: string; // mã lệnh in WMS gán sau

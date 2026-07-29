@@ -52,7 +52,9 @@ export class CheckoutService {
 
     if (dto.directItem) {
       // LUỒNG 1: MUA NGAY TRỰC TIẾP (Bỏ qua giỏ hàng, chỉ dùng cho ly in)
-      const variant = await this.catalogService.findVariantBySku(dto.directItem.sku);
+      const variant = await this.catalogService.findVariantBySku(
+        dto.directItem.sku,
+      );
       if (!variant) {
         throw new AppException(
           'CART_VARIANT_NOT_AVAILABLE',
@@ -66,10 +68,44 @@ export class CheckoutService {
         );
       }
 
+      // Chỉ metadata server-side của variant được quyết định đây là hàng in.
+      // Client không thể biến một SKU thường thành CUP_BLANK bằng cách tự gắn
+      // designFile/designId vào request.
       const isPrintItem =
-        variant.fulfillmentType === FulfillmentType.CUSTOM_PRINT ||
-        !!dto.directItem.designFile ||
-        !!dto.directItem.designId;
+        variant.fulfillmentType === FulfillmentType.CUSTOM_PRINT;
+      if (
+        !isPrintItem &&
+        (dto.directItem.designFile || dto.directItem.designId)
+      ) {
+        throw new AppException(
+          'VALIDATION_FAILED',
+          'Chỉ sản phẩm CUSTOM_PRINT mới được đính kèm thiết kế',
+        );
+      }
+
+      let designFile: string | undefined;
+      if (isPrintItem) {
+        designFile = dto.directItem.designFile?.trim();
+        if (dto.directItem.designId) {
+          if (!Types.ObjectId.isValid(dto.directItem.designId)) {
+            throw new AppException(
+              'VALIDATION_FAILED',
+              'ID mẫu thiết kế không hợp lệ',
+            );
+          }
+          const design = await this.catalogService.findDesign(
+            dto.directItem.designId,
+            customerId,
+          );
+          if (!design) {
+            throw new AppException('CATALOG_DESIGN_NOT_FOUND');
+          }
+          designFile = design.file;
+        }
+      }
+      if (isPrintItem && !designFile) {
+        throw new AppException('CART_PRINT_ITEM_REQUIRES_DESIGN');
+      }
 
       itemsToBuy = [
         {
@@ -77,7 +113,7 @@ export class CheckoutService {
           quantity: dto.directItem.quantity,
           unitPrice: variant.price,
           isPrintItem,
-          designFile: dto.directItem.designFile,
+          designFile,
           designId: dto.directItem.designId,
         },
       ];
@@ -200,6 +236,7 @@ export class CheckoutService {
       code,
       customerId: new Types.ObjectId(customerId),
       items: itemsToBuy.map((i) => ({
+        orderItemId: new Types.ObjectId().toString(),
         sku: i.sku,
         name: i.sku, // v1: dùng sku làm tên
         unitPrice: i.unitPrice,
@@ -207,6 +244,9 @@ export class CheckoutService {
         isPrintItem: i.isPrintItem,
         designFile: i.designFile,
         designId: i.designId,
+        // CUSTOM_PRINT.sku là SKU CUP_BLANK do WMS quản lý. Snapshot
+        // server-side để event in không tin dữ liệu blankSku từ client.
+        blankSku: i.isPrintItem ? i.sku : undefined,
       })),
       shippingAddress,
       subtotal,
@@ -232,13 +272,25 @@ export class CheckoutService {
       }
     }
 
-    // Gửi yêu cầu kiểm kho và giữ tồn kho vật lý sang WMS
-    await this.orderQueue.add(EVENTS.STOCK_RESERVE_REQUESTED, {
-      orderId: order._id.toString(),
-      items: itemsToBuy.map((i) => ({ sku: i.sku, quantity: i.quantity })),
-    });
+    // Hàng thường được GoodsIssue xuất đúng SKU đã reserve tại checkout.
+    // CUSTOM_PRINT lại xuất printedSku; blankSku do từng PrintJob SAMPLE /
+    // PRODUCTION tự reserve để không giữ trùng và không tạo reservation mồ côi.
+    const reservableItems = itemsToBuy.filter((item) => !item.isPrintItem);
+    if (reservableItems.length > 0) {
+      await this.orderQueue.add(EVENTS.STOCK_RESERVE_REQUESTED, {
+        orderId: order._id.toString(),
+        items: reservableItems.map((item) => ({
+          sku: item.sku,
+          quantity: item.quantity,
+        })),
+      });
+    }
 
-    this.logger.log(`Đặt đơn tạm thời thành công: ${code} -> Chờ WMS giữ kho`);
+    this.logger.log(
+      reservableItems.length > 0
+        ? `Đặt đơn tạm thời thành công: ${code} -> Chờ WMS giữ kho`
+        : `Đặt đơn in tạm thời thành công: ${code} -> Chờ thanh toán để tạo lệnh in`,
+    );
 
     // Thiết lập tiến trình tự động hủy đơn hàng ONLINE sau 30 phút nếu chưa trả tiền
     if (dto.paymentMethod === PaymentMethod.ONLINE) {

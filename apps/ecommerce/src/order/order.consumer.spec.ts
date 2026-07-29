@@ -36,4 +36,28 @@ describe('ShipmentConsumer', () => {
     await consumer.process(job);
     expect(orderService.onReturned).not.toHaveBeenCalled();
   });
+
+  it('truyền nguyên canonical print.completed payload sang OrderService', async () => {
+    const data = {
+      orderId: 'order-1',
+      printJobId: 'print-job-1',
+      stage: 'PRODUCTION',
+      items: [
+        {
+          orderItemId: 'line-1',
+          printedSku: 'CUP-HRT-PET-500-CLR-DSG001',
+          quantity: 10,
+        },
+      ],
+      proofImage: 'https://cdn.example.com/proof.jpg',
+    };
+    const job = {
+      name: EVENTS.PRINT_COMPLETED,
+      data,
+    } as never;
+
+    await consumer.process(job);
+
+    expect(orderService.onPrintCompleted).toHaveBeenCalledWith(data);
+  });
 });

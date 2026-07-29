@@ -1,10 +1,12 @@
 import { Types } from 'mongoose';
+import { createHash } from 'node:crypto';
+import { PrintStage } from '@app/events';
 import { PrintJobService } from './print-job.service';
 import { PrintJobStatus, PrintJobLineStatus } from './schemas/print-job.schema';
 import { ItemType } from '../stock/schemas/warehouse-item.schema';
 
 const makeRepo = () => ({
-  findByOrderId: jest.fn(),
+  findByOrderAndStage: jest.fn(),
   findById: jest.fn(),
   createPrintJob: jest.fn(),
   findAll: jest.fn(),
@@ -18,6 +20,7 @@ const makeStockRepo = () => ({
   findItemBySku: jest.fn(),
   findItemByIdDocument: jest.fn(),
   findBalance: jest.fn(),
+  reserveIfAvailable: jest.fn(),
   upsertBalance: jest.fn(),
   findInventory: jest.fn(),
   upsertInventory: jest.fn(),
@@ -49,6 +52,13 @@ const makeStockService = () => ({
 const makeStockQueue = () => ({ add: jest.fn() });
 const makeShipmentQueue = () => ({ add: jest.fn() });
 
+const printedSkuFor = (blankSku: string, identity: string) =>
+  `${blankSku}-DSG${createHash('sha256')
+    .update(identity)
+    .digest('hex')
+    .slice(0, 24)
+    .toUpperCase()}`;
+
 describe('PrintJobService', () => {
   let svc: PrintJobService;
   let repo: ReturnType<typeof makeRepo>;
@@ -74,6 +84,7 @@ describe('PrintJobService', () => {
     barcodeSvc = makeBarcodeService();
     stockQueue = makeStockQueue();
     shipmentQueue = makeShipmentQueue();
+    stockRepo.reserveIfAvailable.mockResolvedValue(true);
     svc = new PrintJobService(
       repo as never,
       stockRepo as never,
@@ -87,219 +98,159 @@ describe('PrintJobService', () => {
   });
 
   describe('createFromPrintRequested', () => {
-    it('bỏ qua nếu đã có PrintJob cho orderId này (idempotent)', async () => {
-      repo.findByOrderId.mockResolvedValue({ _id: 'pj1' });
-      await svc.createFromPrintRequested(orderId, [
-        { sku: 'CUP-PRINTED-1', quantity: 5 },
-      ]);
-      expect(repo.createPrintJob).not.toHaveBeenCalled();
+    const canonicalRequest = (overrides: Record<string, unknown> = {}) => ({
+      orderId,
+      stage: PrintStage.PRODUCTION,
+      items: [
+        {
+          orderItemId: 'order-item-1',
+          blankSku: 'CUP-HRT-PET-500-CLR',
+          quantity: 10,
+          designFile: 'https://cdn.example/design-042.png',
+          designId: '042',
+        },
+      ],
+      ...overrides,
     });
 
-    it('design đã có CUP_PRINTED với blankItemId sẵn — dùng luôn, reserve đủ khi available đủ', async () => {
-      repo.findByOrderId.mockResolvedValue(null);
-      stockRepo.findItemBySku.mockImplementation((sku: string) =>
-        sku === 'CUP-PRINTED-1'
-          ? Promise.resolve({
-              _id: printedItemId,
-              sku: 'CUP-PRINTED-1',
-              type: ItemType.CUP_PRINTED,
-              blankItemId,
-            })
-          : Promise.resolve(null),
-      );
+    const mockBlankAndNewOutput = () => {
+      stockRepo.findItemBySku.mockImplementation((sku: string) => {
+        if (sku === 'CUP-HRT-PET-500-CLR') {
+          return Promise.resolve({
+            _id: blankItemId,
+            sku,
+            type: ItemType.CUP_BLANK,
+          });
+        }
+        return Promise.resolve(null);
+      });
+      stockRepo.createItem.mockResolvedValue({
+        _id: printedItemId,
+        sku: printedSkuFor('CUP-HRT-PET-500-CLR', '042'),
+      });
       stockRepo.findBalance.mockResolvedValue({
         onHand: 100,
         reserved: 20,
         expired: 0,
       });
-      stockRepo.findSkuById.mockResolvedValue({ sku: 'CUP-BLANK-500' });
+      stockRepo.findSkuById.mockResolvedValue({
+        sku: 'CUP-HRT-PET-500-CLR',
+      });
+    };
 
-      await svc.createFromPrintRequested(orderId, [
-        { sku: 'CUP-PRINTED-1', quantity: 10 },
-      ]);
+    it('bỏ qua đúng khóa orderId + stage khi event được giao lại', async () => {
+      repo.findByOrderAndStage.mockResolvedValue({ _id: 'pj1' });
 
-      // available = 100 - 20 - 0 = 80 ≥ 10 → reservedQty = 10
-      expect(stockRepo.upsertBalance).toHaveBeenCalledWith(
-        blankItemId,
-        0,
-        10,
-        0,
-        expect.anything(),
-      );
-      expect(repo.createPrintJob).toHaveBeenCalledWith(
+      await svc.createFromPrintRequested(canonicalRequest());
+
+      expect(repo.findByOrderAndStage).toHaveBeenCalledWith(
         orderId,
-        [
+        PrintStage.PRODUCTION,
+      );
+      expect(repo.createPrintJob).not.toHaveBeenCalled();
+    });
+
+    it('event giao lại cho job đã lưu sẽ đối soát stock.changed từng bị lỗi sau commit', async () => {
+      repo.findByOrderAndStage.mockResolvedValue({
+        _id: 'pj1',
+        orderId,
+        stage: PrintStage.PRODUCTION,
+        items: [
           {
             inputItemId: blankItemId,
-            outputItemId: printedItemId,
-            sku: 'CUP-PRINTED-1',
-            designFile: undefined,
-            quantity: 10,
-            reservedQty: 10,
+            reservedQty: 5,
           },
         ],
-        expect.anything(),
-      );
+      });
+      stockRepo.findSkuById.mockResolvedValue({
+        sku: 'CUP-HRT-PET-500-CLR',
+      });
+
+      await svc.createFromPrintRequested(canonicalRequest());
+
+      expect(repo.createPrintJob).not.toHaveBeenCalled();
       expect(stockQueue.add).toHaveBeenCalledWith(
         'stock.changed',
-        { sku: expect.any(String), delta: -10 },
-        expect.objectContaining({ jobId: expect.any(String) }),
-      );
-    });
-
-    it('reserve min(quantity, available) khi CUP_BLANK không đủ tồn, vẫn tạo job', async () => {
-      repo.findByOrderId.mockResolvedValue(null);
-      stockRepo.findItemBySku.mockResolvedValue({
-        _id: printedItemId,
-        sku: 'CUP-PRINTED-1',
-        type: ItemType.CUP_PRINTED,
-        blankItemId,
-      });
-      stockRepo.findBalance.mockResolvedValue({
-        onHand: 5,
-        reserved: 0,
-        expired: 0,
-      });
-
-      await svc.createFromPrintRequested(orderId, [
-        { sku: 'CUP-PRINTED-1', quantity: 10 },
-      ]);
-
-      // available = 5 → reservedQty = min(10, 5) = 5
-      expect(repo.createPrintJob).toHaveBeenCalledWith(
-        orderId,
-        [expect.objectContaining({ quantity: 10, reservedQty: 5 })],
-        expect.anything(),
-      );
-    });
-
-    it('design mới (chưa có CUP_PRINTED) + có blankSku → tạo item mới với blankItemId', async () => {
-      repo.findByOrderId.mockResolvedValue(null);
-      const newBlankItemId = new Types.ObjectId();
-      stockRepo.findItemBySku.mockImplementation((sku: string) => {
-        if (sku === 'CUP-PRINTED-NEW') return Promise.resolve(null);
-        if (sku === 'CUP-BLANK-500')
-          return Promise.resolve({
-            _id: newBlankItemId,
-            sku: 'CUP-BLANK-500',
-            type: ItemType.CUP_BLANK,
-          });
-        return Promise.resolve(null);
-      });
-      stockRepo.createItem.mockResolvedValue({
-        _id: printedItemId,
-        sku: 'CUP-PRINTED-NEW',
-      });
-      stockRepo.findBalance.mockResolvedValue({
-        onHand: 100,
-        reserved: 0,
-        expired: 0,
-      });
-
-      await svc.createFromPrintRequested(orderId, [
+        { sku: 'CUP-HRT-PET-500-CLR', delta: -5 },
         {
-          sku: 'CUP-PRINTED-NEW',
-          quantity: 3,
-          blankSku: 'CUP-BLANK-500',
-          designFile: 'design-042.png',
+          jobId: 'print-job-reserve-order-1-PRODUCTION-CUP-HRT-PET-500-CLR',
         },
-      ]);
+      );
+      expect(stockService.checkAndEmitStockLow).toHaveBeenCalledWith(
+        blankItemId,
+      );
+    });
 
+    it('không xem SAMPLE và PRODUCTION của cùng orderId là cùng một job', async () => {
+      repo.findByOrderAndStage.mockResolvedValue(null);
+      mockBlankAndNewOutput();
+
+      await svc.createFromPrintRequested(
+        canonicalRequest({ stage: PrintStage.SAMPLE }),
+      );
+
+      expect(repo.findByOrderAndStage).toHaveBeenCalledWith(
+        orderId,
+        PrintStage.SAMPLE,
+      );
+      expect(repo.createPrintJob).toHaveBeenCalled();
+    });
+
+    it('tự sinh output SKU từ blankSku + designId và lưu orderItemId', async () => {
+      repo.findByOrderAndStage.mockResolvedValue(null);
+      mockBlankAndNewOutput();
+
+      await svc.createFromPrintRequested(canonicalRequest());
+
+      expect(stockRepo.findItemBySku).toHaveBeenCalledWith(
+        printedSkuFor('CUP-HRT-PET-500-CLR', '042'),
+      );
       expect(stockRepo.createItem).toHaveBeenCalledWith(
         expect.objectContaining({
-          sku: 'CUP-PRINTED-NEW',
+          sku: printedSkuFor('CUP-HRT-PET-500-CLR', '042'),
           type: ItemType.CUP_PRINTED,
-          blankItemId: newBlankItemId,
+          blankItemId,
         }),
         expect.any(Types.ObjectId),
+        expect.anything(),
       );
       expect(repo.createPrintJob).toHaveBeenCalledWith(
         orderId,
+        PrintStage.PRODUCTION,
         [
           expect.objectContaining({
-            inputItemId: newBlankItemId,
+            orderItemId: 'order-item-1',
+            inputItemId: blankItemId,
             outputItemId: printedItemId,
-            designFile: 'design-042.png',
+            sku: printedSkuFor('CUP-HRT-PET-500-CLR', '042'),
+            designFile: 'https://cdn.example/design-042.png',
+            quantity: 10,
+            reservedQty: 10,
           }),
         ],
         expect.anything(),
+        undefined,
       );
     });
 
-    it('bỏ qua dòng design mới thiếu blankSku, vẫn tạo job với dòng hợp lệ khác', async () => {
-      repo.findByOrderId.mockResolvedValue(null);
-      stockRepo.findItemBySku.mockImplementation((sku: string) =>
-        sku === 'CUP-PRINTED-OK'
-          ? Promise.resolve({
-              _id: printedItemId,
-              sku: 'CUP-PRINTED-OK',
-              type: ItemType.CUP_PRINTED,
-              blankItemId,
-            })
-          : Promise.resolve(null),
-      );
-      stockRepo.findBalance.mockResolvedValue({
-        onHand: 100,
-        reserved: 0,
-        expired: 0,
-      });
-
-      await svc.createFromPrintRequested(orderId, [
-        { sku: 'CUP-PRINTED-OK', quantity: 5 },
-        { sku: 'CUP-PRINTED-NO-BLANK-SKU', quantity: 2 },
-      ]);
-
-      expect(repo.createPrintJob).toHaveBeenCalledWith(
-        orderId,
-        [expect.objectContaining({ sku: 'CUP-PRINTED-OK' })],
-        expect.anything(),
-      );
-      expect(stockRepo.createItem).not.toHaveBeenCalled();
-    });
-
-    it('bỏ qua dòng sku output tồn tại nhưng sai type, không throw', async () => {
-      repo.findByOrderId.mockResolvedValue(null);
-      stockRepo.findItemBySku.mockResolvedValue({
-        _id: printedItemId,
-        sku: 'CUP-PRINTED-1',
-        type: ItemType.MATERIAL,
-      });
-
-      await svc.createFromPrintRequested(orderId, [
-        { sku: 'CUP-PRINTED-1', quantity: 5 },
-      ]);
-
-      expect(repo.createPrintJob).not.toHaveBeenCalled();
-    });
-
-    it('không tạo job nếu không có dòng nào hợp lệ', async () => {
-      repo.findByOrderId.mockResolvedValue(null);
-      stockRepo.findItemBySku.mockResolvedValue(null);
-      await svc.createFromPrintRequested(orderId, [
-        { sku: 'CUP-PRINTED-UNKNOWN', quantity: 3 },
-      ]);
-      expect(repo.createPrintJob).not.toHaveBeenCalled();
-    });
-
-    it('gọi checkAndEmitStockLow cho mỗi dòng đã reserve (reservedQty > 0)', async () => {
-      repo.findByOrderId.mockResolvedValue(null);
-      const printedItemId2 = new Types.ObjectId();
-      const blankItemId2 = new Types.ObjectId();
+    it('fallback sang orderItemId và tạo cùng output SKU cho SAMPLE/PRODUCTION của cùng dòng', async () => {
+      repo.findByOrderAndStage.mockResolvedValue(null);
       stockRepo.findItemBySku.mockImplementation((sku: string) => {
-        if (sku === 'CUP-PRINTED-1')
+        if (sku === 'CUP-HRT-PET-500-CLR') {
+          return Promise.resolve({
+            _id: blankItemId,
+            sku,
+            type: ItemType.CUP_BLANK,
+          });
+        }
+        if (sku === printedSkuFor('CUP-HRT-PET-500-CLR', 'order-item-1')) {
           return Promise.resolve({
             _id: printedItemId,
-            sku: 'CUP-PRINTED-1',
+            sku,
             type: ItemType.CUP_PRINTED,
             blankItemId,
           });
-        if (sku === 'CUP-PRINTED-2')
-          return Promise.resolve({
-            _id: printedItemId2,
-            sku: 'CUP-PRINTED-2',
-            type: ItemType.CUP_PRINTED,
-            blankItemId: blankItemId2,
-          });
+        }
         return Promise.resolve(null);
       });
       stockRepo.findBalance.mockResolvedValue({
@@ -307,14 +258,291 @@ describe('PrintJobService', () => {
         reserved: 0,
         expired: 0,
       });
-      stockRepo.findSkuById.mockResolvedValue({ sku: 'CUP-BLANK-500' });
 
-      await svc.createFromPrintRequested(orderId, [
-        { sku: 'CUP-PRINTED-1', quantity: 10 },
-        { sku: 'CUP-PRINTED-2', quantity: 5 },
+      const itemWithoutDesignId = {
+        orderItemId: 'order-item-1',
+        blankSku: 'CUP-HRT-PET-500-CLR',
+        quantity: 1,
+        designFile: 'https://cdn.example/design.png',
+      };
+      await svc.createFromPrintRequested(
+        canonicalRequest({
+          stage: PrintStage.SAMPLE,
+          items: [itemWithoutDesignId],
+        }),
+      );
+
+      expect(repo.createPrintJob).toHaveBeenCalledWith(
+        orderId,
+        PrintStage.SAMPLE,
+        [
+          expect.objectContaining({
+            orderItemId: 'order-item-1',
+            sku: printedSkuFor('CUP-HRT-PET-500-CLR', 'order-item-1'),
+          }),
+        ],
+        expect.anything(),
+        undefined,
+      );
+    });
+
+    it('không làm mất thông tin identity khiến hai design khác nhau trùng output SKU', async () => {
+      repo.findByOrderAndStage.mockResolvedValue(null);
+      stockRepo.findItemBySku.mockImplementation((sku: string) => {
+        if (sku === 'CUP-HRT-PET-500-CLR') {
+          return Promise.resolve({
+            _id: blankItemId,
+            sku,
+            type: ItemType.CUP_BLANK,
+          });
+        }
+        return Promise.resolve(null);
+      });
+      stockRepo.findBalance.mockResolvedValue({
+        onHand: 100,
+        reserved: 0,
+        expired: 0,
+      });
+      stockRepo.createItem
+        .mockResolvedValueOnce({ _id: new Types.ObjectId() })
+        .mockResolvedValueOnce({ _id: new Types.ObjectId() });
+
+      await svc.createFromPrintRequested(
+        canonicalRequest({
+          items: [
+            {
+              orderItemId: 'order-item-1',
+              blankSku: 'CUP-HRT-PET-500-CLR',
+              quantity: 1,
+              designFile: 'one.png',
+              designId: 'A-B',
+            },
+            {
+              orderItemId: 'order-item-2',
+              blankSku: 'CUP-HRT-PET-500-CLR',
+              quantity: 1,
+              designFile: 'two.png',
+              designId: 'A_B',
+            },
+          ],
+        }),
+      );
+
+      const persistedLines = repo.createPrintJob.mock.calls[0][2] as {
+        sku: string;
+      }[];
+      expect(persistedLines.map((line) => line.sku)).toEqual([
+        printedSkuFor('CUP-HRT-PET-500-CLR', 'A-B'),
+        printedSkuFor('CUP-HRT-PET-500-CLR', 'A_B'),
       ]);
+      expect(new Set(persistedLines.map((line) => line.sku)).size).toBe(2);
+    });
 
-      expect(stockService.checkAndEmitStockLow).toHaveBeenCalledTimes(2);
+    it.each([
+      ['orderId', canonicalRequest({ orderId: '' })],
+      ['stage', canonicalRequest({ stage: 'UNKNOWN' })],
+      ['items', canonicalRequest({ items: [] })],
+      [
+        'orderItemId',
+        canonicalRequest({
+          items: [
+            {
+              blankSku: 'CUP-HRT-PET-500-CLR',
+              quantity: 1,
+              designFile: 'd.png',
+            },
+          ],
+        }),
+      ],
+      [
+        'blankSku',
+        canonicalRequest({
+          items: [
+            {
+              orderItemId: 'order-item-1',
+              blankSku: '',
+              quantity: 1,
+              designFile: 'd.png',
+            },
+          ],
+        }),
+      ],
+      [
+        'quantity',
+        canonicalRequest({
+          items: [
+            {
+              orderItemId: 'order-item-1',
+              blankSku: 'CUP-HRT-PET-500-CLR',
+              quantity: 0,
+              designFile: 'd.png',
+            },
+          ],
+        }),
+      ],
+      [
+        'designFile',
+        canonicalRequest({
+          items: [
+            {
+              orderItemId: 'order-item-1',
+              blankSku: 'CUP-HRT-PET-500-CLR',
+              quantity: 1,
+              designFile: '',
+            },
+          ],
+        }),
+      ],
+    ])('reject malformed %s trước mọi mutation', async (_field, payload) => {
+      await expect(
+        svc.createFromPrintRequested(payload as never),
+      ).rejects.toMatchObject({ code: 'VALIDATION_FAILED' });
+
+      expect(repo.createPrintJob).not.toHaveBeenCalled();
+      expect(stockRepo.createItem).not.toHaveBeenCalled();
+      expect(stockRepo.upsertBalance).not.toHaveBeenCalled();
+    });
+
+    it('reject segment không an toàn thay vì ghép thẳng vào output SKU', async () => {
+      await expect(
+        svc.createFromPrintRequested(
+          canonicalRequest({
+            items: [
+              {
+                orderItemId: 'order/item/1',
+                blankSku: 'CUP-HRT-PET-500-CLR',
+                quantity: 1,
+                designFile: 'd.png',
+              },
+            ],
+          }) as never,
+        ),
+      ).rejects.toMatchObject({ code: 'VALIDATION_FAILED' });
+      expect(stockRepo.findItemBySku).not.toHaveBeenCalled();
+    });
+
+    it('reject toàn request nếu một blank master không tồn tại, không silent skip dòng', async () => {
+      repo.findByOrderAndStage.mockResolvedValue(null);
+      stockRepo.findItemBySku.mockResolvedValue(null);
+
+      await expect(
+        svc.createFromPrintRequested(canonicalRequest() as never),
+      ).rejects.toThrow('CUP_BLANK');
+
+      expect(repo.createPrintJob).not.toHaveBeenCalled();
+      expect(stockRepo.createItem).not.toHaveBeenCalled();
+      expect(stockRepo.upsertBalance).not.toHaveBeenCalled();
+    });
+
+    it('preflight mọi dòng: dòng sau thiếu master thì dòng output mới trước đó cũng chưa được tạo', async () => {
+      repo.findByOrderAndStage.mockResolvedValue(null);
+      stockRepo.findItemBySku.mockImplementation((sku: string) => {
+        if (sku === 'CUP-HRT-PET-500-CLR') {
+          return Promise.resolve({
+            _id: blankItemId,
+            sku,
+            type: ItemType.CUP_BLANK,
+          });
+        }
+        return Promise.resolve(null);
+      });
+      stockRepo.findBalance.mockResolvedValue({
+        onHand: 100,
+        reserved: 0,
+        expired: 0,
+      });
+
+      await expect(
+        svc.createFromPrintRequested(
+          canonicalRequest({
+            items: [
+              {
+                orderItemId: 'order-item-1',
+                blankSku: 'CUP-HRT-PET-500-CLR',
+                quantity: 1,
+                designFile: 'one.png',
+                designId: '001',
+              },
+              {
+                orderItemId: 'order-item-2',
+                blankSku: 'CUP-MISSING',
+                quantity: 1,
+                designFile: 'two.png',
+                designId: '002',
+              },
+            ],
+          }) as never,
+        ),
+      ).rejects.toThrow('CUP_BLANK');
+
+      expect(stockRepo.createItem).not.toHaveBeenCalled();
+      expect(stockRepo.upsertBalance).not.toHaveBeenCalled();
+      expect(repo.createPrintJob).not.toHaveBeenCalled();
+    });
+
+    it('reject toàn request nếu output SKU đã tồn tại nhưng sai type', async () => {
+      repo.findByOrderAndStage.mockResolvedValue(null);
+      stockRepo.findItemBySku.mockImplementation((sku: string) => {
+        if (sku === 'CUP-HRT-PET-500-CLR') {
+          return Promise.resolve({
+            _id: blankItemId,
+            sku,
+            type: ItemType.CUP_BLANK,
+          });
+        }
+        return Promise.resolve({
+          _id: printedItemId,
+          sku,
+          type: ItemType.MATERIAL,
+        });
+      });
+
+      await expect(
+        svc.createFromPrintRequested(canonicalRequest() as never),
+      ).rejects.toThrow('CUP_PRINTED');
+
+      expect(repo.createPrintJob).not.toHaveBeenCalled();
+      expect(stockRepo.upsertBalance).not.toHaveBeenCalled();
+    });
+
+    it('không tạo PrintJob nửa vời khi không đủ toàn bộ CUP_BLANK', async () => {
+      repo.findByOrderAndStage.mockResolvedValue(null);
+      mockBlankAndNewOutput();
+      stockRepo.reserveIfAvailable.mockResolvedValue(false);
+
+      await expect(
+        svc.createFromPrintRequested(canonicalRequest()),
+      ).rejects.toMatchObject({ code: 'STOCK_INSUFFICIENT' });
+
+      expect(repo.createPrintJob).not.toHaveBeenCalled();
+      expect(stockRepo.createItem).not.toHaveBeenCalled();
+      expect(stockQueue.add).not.toHaveBeenCalled();
+    });
+
+    it('không cộng lặp line/delta khi Mongo retry callback transaction', async () => {
+      repo.findByOrderAndStage.mockResolvedValue(null);
+      mockBlankAndNewOutput();
+      txHelper.withStockTransaction.mockImplementation(
+        async (fn: (session: unknown) => Promise<unknown>) => {
+          await fn({ attempt: 1 });
+          return fn({ attempt: 2 });
+        },
+      );
+
+      await svc.createFromPrintRequested(canonicalRequest());
+
+      expect(repo.createPrintJob).toHaveBeenLastCalledWith(
+        orderId,
+        PrintStage.PRODUCTION,
+        [expect.objectContaining({ orderItemId: 'order-item-1' })],
+        { attempt: 2 },
+        undefined,
+      );
+      expect(stockQueue.add).toHaveBeenCalledWith(
+        'stock.changed',
+        { sku: 'CUP-HRT-PET-500-CLR', delta: -10 },
+        expect.anything(),
+      );
     });
   });
 
@@ -325,8 +553,10 @@ describe('PrintJobService', () => {
     const baseJob = () => ({
       _id: pjId,
       orderId,
+      stage: PrintStage.PRODUCTION,
       items: [
         {
+          orderItemId: 'order-item-1',
           inputItemId: blankItemId,
           outputItemId: printedItemId,
           sku: 'CUP-PRINTED-1',
@@ -348,6 +578,30 @@ describe('PrintJobService', () => {
           actorId,
         ),
       ).rejects.toMatchObject({ code: 'PRINT_JOB_NOT_FOUND' });
+    });
+
+    it('reject job legacy thiếu orderItemId trước khi consume tồn', async () => {
+      repo.findById.mockResolvedValue({
+        ...baseJob(),
+        items: [
+          {
+            ...baseJob().items[0],
+            orderItemId: undefined,
+          },
+        ],
+      });
+
+      await expect(
+        svc.consumeItem(
+          pjId,
+          blankItemId.toString(),
+          { itemBarcode: 'X', shelfCode: 'A1', quantity: 5 },
+          actorId,
+        ),
+      ).rejects.toMatchObject({ code: 'VALIDATION_FAILED' });
+
+      expect(barcodeSvc.findItemIdByCode).not.toHaveBeenCalled();
+      expect(stockRepo.upsertBalance).not.toHaveBeenCalled();
     });
 
     it('throw PRINT_JOB_ITEM_NOT_FOUND khi barcode không khớp item nào', async () => {
@@ -513,8 +767,10 @@ describe('PrintJobService', () => {
     const consumedJob = () => ({
       _id: pjId,
       orderId,
+      stage: PrintStage.PRODUCTION,
       items: [
         {
+          orderItemId: 'order-item-1',
           inputItemId: blankItemId,
           outputItemId: printedItemId,
           sku: 'CUP-PRINTED-1',
@@ -586,6 +842,38 @@ describe('PrintJobService', () => {
       expect(stockRepo.upsertBalance).not.toHaveBeenCalled();
     });
 
+    it('job đã COMPLETED sẽ phát lại print.completed nếu lần enqueue trước lỗi sau commit', async () => {
+      repo.findById.mockResolvedValue({
+        ...consumedJob(),
+        status: PrintJobStatus.COMPLETED,
+        items: [
+          {
+            ...consumedJob().items[0],
+            lineStatus: PrintJobLineStatus.COMPLETED,
+          },
+        ],
+      });
+
+      await svc.completeItem(
+        pjId,
+        blankItemId.toString(),
+        { shelfCode: 'A1', quantity: 10 },
+        actorId,
+      );
+
+      expect(stockRepo.upsertInventory).not.toHaveBeenCalled();
+      expect(repo.markLineCompleted).not.toHaveBeenCalled();
+      expect(shipmentQueue.add).toHaveBeenCalledWith(
+        'print.completed',
+        expect.objectContaining({
+          orderId,
+          printJobId: pjId,
+          stage: PrintStage.PRODUCTION,
+        }),
+        { jobId: `print-job-${pjId}` },
+      );
+    });
+
     it('throw PRINT_JOB_SHELF_NOT_FOUND khi shelf không khớp', async () => {
       repo.findById.mockResolvedValue(consumedJob());
       locationRepo.findShelfByCode.mockResolvedValue(null);
@@ -612,6 +900,51 @@ describe('PrintJobService', () => {
           actorId,
         ),
       ).rejects.toMatchObject({ code: 'PRINT_JOB_QTY_EXCEEDS' });
+    });
+
+    it('reject job legacy thiếu orderItemId trước khi ghi output hoặc mark complete', async () => {
+      repo.findById.mockResolvedValue({
+        ...consumedJob(),
+        items: [
+          {
+            ...consumedJob().items[0],
+            orderItemId: undefined,
+          },
+        ],
+      });
+
+      await expect(
+        svc.completeItem(
+          pjId,
+          blankItemId.toString(),
+          { shelfCode: 'A1', quantity: 10 },
+          actorId,
+        ),
+      ).rejects.toMatchObject({ code: 'VALIDATION_FAILED' });
+
+      expect(stockRepo.upsertInventory).not.toHaveBeenCalled();
+      expect(repo.markLineCompleted).not.toHaveBeenCalled();
+      expect(shipmentQueue.add).not.toHaveBeenCalled();
+    });
+
+    it('SAMPLE hoàn tất bắt buộc proofImage trước mọi mutation', async () => {
+      repo.findById.mockResolvedValue({
+        ...consumedJob(),
+        stage: PrintStage.SAMPLE,
+      });
+
+      await expect(
+        svc.completeItem(
+          pjId,
+          blankItemId.toString(),
+          { shelfCode: 'A1', quantity: 10 },
+          actorId,
+        ),
+      ).rejects.toMatchObject({ code: 'VALIDATION_FAILED' });
+
+      expect(stockRepo.upsertInventory).not.toHaveBeenCalled();
+      expect(repo.markLineCompleted).not.toHaveBeenCalled();
+      expect(shipmentQueue.add).not.toHaveBeenCalled();
     });
 
     it('cộng onHand+reserved của CUP_PRINTED, ghi movement PRINT_OUTPUT dương, KHÔNG bắn stock.changed, KHÔNG emit khi còn dòng khác chưa xong', async () => {
@@ -660,6 +993,60 @@ describe('PrintJobService', () => {
       expect(shipmentQueue.add).not.toHaveBeenCalled();
     });
 
+    it('SAMPLE nhập mẫu vật lý nhưng không reserve thành phẩm giao hàng', async () => {
+      const sampleJob = {
+        ...consumedJob(),
+        stage: PrintStage.SAMPLE,
+      };
+      repo.findById.mockResolvedValueOnce(sampleJob).mockResolvedValueOnce({
+        ...sampleJob,
+        status: PrintJobStatus.COMPLETED,
+      });
+      locationRepo.findShelfByCode.mockResolvedValue({ _id: shelfId });
+      repo.markLineCompleted.mockResolvedValue({ allDone: true });
+
+      await svc.completeItem(
+        pjId,
+        blankItemId.toString(),
+        {
+          shelfCode: 'A1',
+          quantity: 10,
+          proofImage: 'https://cdn.example.com/proof.png',
+        },
+        actorId,
+      );
+
+      expect(stockRepo.upsertInventory).toHaveBeenCalledWith(
+        printedItemId,
+        shelfId,
+        null,
+        10,
+        expect.anything(),
+      );
+      expect(stockRepo.upsertBalance).toHaveBeenCalledWith(
+        printedItemId,
+        10,
+        0,
+        0,
+        expect.anything(),
+      );
+      expect(stockRepo.insertMovement).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: 'PRINT_OUTPUT',
+          quantity: 10,
+        }),
+        expect.anything(),
+      );
+      expect(shipmentQueue.add).toHaveBeenCalledWith(
+        'print.completed',
+        expect.objectContaining({
+          stage: PrintStage.SAMPLE,
+          proofImage: 'https://cdn.example.com/proof.png',
+        }),
+        { jobId: `print-job-${pjId}` },
+      );
+    });
+
     it('emit print.completed đúng 1 lần khi markLineCompleted trả allDone=true', async () => {
       repo.findById.mockResolvedValueOnce(consumedJob()).mockResolvedValueOnce({
         ...consumedJob(),
@@ -685,9 +1072,47 @@ describe('PrintJobService', () => {
       expect(shipmentQueue.add).toHaveBeenCalledTimes(1);
       expect(shipmentQueue.add).toHaveBeenCalledWith(
         'print.completed',
-        { orderId, printJobId: pjId },
-        { jobId: `print_job:${pjId}` },
+        {
+          orderId,
+          printJobId: pjId,
+          stage: PrintStage.PRODUCTION,
+          items: [
+            {
+              orderItemId: 'order-item-1',
+              printedSku: 'CUP-PRINTED-1',
+              quantity: 10,
+            },
+          ],
+        },
+        { jobId: `print-job-${pjId}` },
       );
+    });
+
+    it('reject job legacy reserve partial trước mọi output mutation', async () => {
+      const partialJob = {
+        ...consumedJob(),
+        items: [
+          {
+            ...consumedJob().items[0],
+            quantity: 10,
+            reservedQty: 5,
+          },
+        ],
+      };
+      repo.findById.mockResolvedValueOnce(partialJob);
+
+      await expect(
+        svc.completeItem(
+          pjId,
+          blankItemId.toString(),
+          { shelfCode: 'A1', quantity: 5 },
+          actorId,
+        ),
+      ).rejects.toMatchObject({ code: 'VALIDATION_FAILED' });
+
+      expect(stockRepo.upsertInventory).not.toHaveBeenCalled();
+      expect(stockRepo.upsertBalance).not.toHaveBeenCalled();
+      expect(shipmentQueue.add).not.toHaveBeenCalled();
     });
 
     it('gọi checkAndEmitStockLow(line.outputItemId) sau khi commit', async () => {

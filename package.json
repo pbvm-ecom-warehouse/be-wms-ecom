@@ -30,7 +30,8 @@
     "cleanup:test-sync": "ts-node -r tsconfig-paths/register apps/wms/src/seed/test-sync-cleanup.ts",
     "cleanup:seed-materials": "ts-node -r tsconfig-paths/register apps/wms/src/seed/clean-seed-materials.ts",
     "backfill:barcode-registry": "ts-node -r tsconfig-paths/register apps/wms/scripts/backfill-barcode-registry.ts",
-    "migrate:storage-cells": "ts-node -r tsconfig-paths/register apps/wms/scripts/migrate-storage-cells.ts"
+    "migrate:storage-cells": "ts-node -r tsconfig-paths/register apps/wms/scripts/migrate-storage-cells.ts",
+    "migrate:print-job-stage": "ts-node -r tsconfig-paths/register apps/wms/scripts/migrate-print-job-stage.ts"
   },
   "dependencies": {
     "@nestjs/bullmq": "^11.0.4",
