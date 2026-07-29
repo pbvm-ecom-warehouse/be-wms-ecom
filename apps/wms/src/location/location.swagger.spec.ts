@@ -76,6 +76,17 @@ describe('LocationController Swagger layout contract', () => {
         }),
       );
       expect(operation?.responses['422']).toBeDefined();
+      expect(resetOperation?.requestBody).toEqual(
+        expect.objectContaining({
+          content: expect.objectContaining({
+            'application/json': expect.objectContaining({
+              schema: {
+                $ref: '#/components/schemas/ResetWarehouseLayoutDto',
+              },
+            }),
+          }),
+        }),
+      );
       expect(resetOperation?.responses['200']).toEqual(
         expect.objectContaining({
           content: expect.objectContaining({
@@ -90,6 +101,9 @@ describe('LocationController Swagger layout contract', () => {
       expect(resetOperation?.responses['409']).toBeDefined();
       expect(
         document.components?.schemas?.SaveWarehouseLayoutDto,
+      ).toBeDefined();
+      expect(
+        document.components?.schemas?.ResetWarehouseLayoutDto,
       ).toBeDefined();
       expect(
         document.components?.schemas?.SaveWarehouseLayoutResponseDto,

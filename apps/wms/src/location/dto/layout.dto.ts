@@ -1,11 +1,22 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Expose, Type } from 'class-transformer';
+import { IsInt, Min } from 'class-validator';
 import { ZoneResponseDto } from './zone.dto';
 import { RackResponseDto } from './rack.dto';
 import { ShelfResponseDto } from './shelf.dto';
 import { AisleResponseDto } from './aisle.dto';
 import { GateResponseDto } from './gate.dto';
 import { RackTemplateResponseDto } from './rack-template.dto';
+
+export class ResetWarehouseLayoutDto {
+  @ApiProperty({
+    example: 8,
+    description: 'Revision canonical mà người dùng vừa xác nhận reset',
+  })
+  @IsInt()
+  @Min(1)
+  expectedRevision!: number;
+}
 
 export class WarehouseLayoutCanvasResponseDto {
   @Expose()
@@ -166,6 +177,7 @@ export class LayoutConflictErrorBodyDto {
       'STAGING_SHELF_CANNOT_DELETE',
       'SHELF_HAS_STOCK',
       'LAYOUT_RESET_REQUIRES_EMPTY_STOCK',
+      'RACK_TEMPLATE_STOCK_CONFLICT',
     ],
     example: 'RACK_HAS_SHELVES',
   })

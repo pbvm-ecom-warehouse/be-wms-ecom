@@ -14,8 +14,9 @@ export interface NavigationPath {
   distanceM: number;
 }
 
-interface AisleGeometry {
+export interface AisleGeometry {
   id: string;
+  type?: 'MAIN' | 'RACK';
   xM: number;
   yM: number;
   widthM: number;
@@ -46,6 +47,42 @@ type Edge = { to: string; distance: number };
 
 const EPSILON = 0.001;
 const CONNECTION_TOLERANCE_M = 0.35;
+
+export function findNearestAisleAccessPoint(
+  rack: { xM: number; yM: number; widthM: number; heightM: number },
+  aisles: AisleGeometry[],
+): NavigationPoint | null {
+  const center = {
+    xM: rack.xM + rack.widthM / 2,
+    yM: rack.yM + rack.heightM / 2,
+  };
+  const candidates = aisles.map((aisle) => {
+    const point = {
+      xM: Math.min(Math.max(center.xM, aisle.xM), aisle.xM + aisle.widthM),
+      yM: Math.min(Math.max(center.yM, aisle.yM), aisle.yM + aisle.heightM),
+    };
+    const deltaX = Math.max(
+      aisle.xM - (rack.xM + rack.widthM),
+      rack.xM - (aisle.xM + aisle.widthM),
+      0,
+    );
+    const deltaY = Math.max(
+      aisle.yM - (rack.yM + rack.heightM),
+      rack.yM - (aisle.yM + aisle.heightM),
+      0,
+    );
+    return {
+      point,
+      distance: Math.hypot(deltaX, deltaY),
+      priority: aisle.type === 'RACK' ? 0 : 1,
+    };
+  });
+  candidates.sort(
+    (left, right) =>
+      left.distance - right.distance || left.priority - right.priority,
+  );
+  return candidates[0]?.point ?? null;
+}
 
 function round(value: number): number {
   return Math.round(value * 1000) / 1000;
@@ -160,7 +197,21 @@ function aisleBridge(
   right: CenterLine,
 ): { left: NavigationPoint; right: NavigationPoint } | null {
   if (!rectanglesTouchOrOverlap(left.rect, right.rect)) return null;
-  if (left.orientation === right.orientation) return null;
+  if (left.orientation === right.orientation) {
+    const sharedAxisStart = Math.max(left.min, right.min);
+    const sharedAxisEnd = Math.min(left.max, right.max);
+    if (sharedAxisStart > sharedAxisEnd + EPSILON) return null;
+    const sharedAxis = sharedAxisStart;
+    return left.orientation === 'H'
+      ? {
+          left: { xM: sharedAxis, yM: left.fixed },
+          right: { xM: sharedAxis, yM: right.fixed },
+        }
+      : {
+          left: { xM: left.fixed, yM: sharedAxis },
+          right: { xM: right.fixed, yM: sharedAxis },
+        };
+  }
   const horizontal = left.orientation === 'H' ? left : right;
   const vertical = left.orientation === 'V' ? left : right;
   const horizontalPoint = {

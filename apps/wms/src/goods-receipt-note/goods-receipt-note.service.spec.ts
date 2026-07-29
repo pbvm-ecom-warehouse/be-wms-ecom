@@ -23,6 +23,11 @@ const resolvedPackageSpec = {
   heightCm: 20,
   volumeCm3: 24000,
 };
+const proofImage = {
+  buffer: Buffer.from('proof'),
+  mimetype: 'image/jpeg',
+  size: 5,
+};
 
 describe('GoodsReceiptNoteService - duyệt trước khi ghi tồn', () => {
   const actorId = new Types.ObjectId().toString();
@@ -121,6 +126,9 @@ describe('GoodsReceiptNoteService - duyệt trước khi ghi tồn', () => {
     repo.countByGrnNumberPrefix.mockResolvedValue(0);
     poService.getPurchaseOrder.mockResolvedValue(purchaseOrder());
     stockRepo.findItemById.mockResolvedValue(warehouseItem);
+    cloudinary.uploadImage.mockResolvedValue({
+      url: 'https://example.com/grn-proof.jpg',
+    });
     locationService.findStagingShelf.mockResolvedValue({ _id: stagingShelfId });
     supplierService.getSupplier.mockResolvedValue({
       name: 'NCC Test',
@@ -131,6 +139,20 @@ describe('GoodsReceiptNoteService - duyệt trước khi ghi tồn', () => {
     });
   });
 
+  it('không cho tạo GRN khi thiếu ảnh minh chứng', async () => {
+    await expect(
+      service.createGoodsReceiptNote(
+        {
+          purchaseOrderId,
+          items: [{ itemId, actualQty: 2, manufacturedDate: '2026-07-28' }],
+        },
+        actorId,
+        [],
+      ),
+    ).rejects.toMatchObject({ code: 'GRN_IMAGE_REQUIRED' });
+    expect(repo.createGoodsReceiptNote).not.toHaveBeenCalled();
+  });
+
   it('tạo GRN với actualQty là số thùng nguyên, không còn packageCount/unit riêng', async () => {
     repo.createGoodsReceiptNote.mockResolvedValue({
       status: GoodsReceiptNoteStatus.DRAFT,
@@ -139,9 +161,10 @@ describe('GoodsReceiptNoteService - duyệt trước khi ghi tồn', () => {
     await service.createGoodsReceiptNote(
       {
         purchaseOrderId,
-        items: [{ itemId, actualQty: 2 }],
+        items: [{ itemId, actualQty: 2, manufacturedDate: '2026-07-28' }],
       },
       actorId,
+      [proofImage],
     );
 
     expect(repo.createGoodsReceiptNote).toHaveBeenCalledWith(
@@ -155,7 +178,108 @@ describe('GoodsReceiptNoteService - duyệt trước khi ghi tồn', () => {
         }),
       ],
       actorId,
+      ['https://example.com/grn-proof.jpg'],
     );
+  });
+
+  it('tạo GRN với expiryDate/lotNumber được parse đúng thành Date và lưu vào item', async () => {
+    repo.createGoodsReceiptNote.mockResolvedValue({
+      status: GoodsReceiptNoteStatus.DRAFT,
+    });
+    stockRepo.findItemById.mockResolvedValue({
+      ...warehouseItem,
+      isPerishable: true,
+    });
+
+    await service.createGoodsReceiptNote(
+      {
+        purchaseOrderId,
+        items: [
+          {
+            itemId,
+            actualQty: 2,
+            lotNumber: 'LOT-20260728-001',
+            manufacturedDate: '2026-07-28',
+            expiryDate: '2027-01-01',
+          },
+        ],
+      },
+      actorId,
+      [proofImage],
+    );
+
+    expect(repo.createGoodsReceiptNote).toHaveBeenCalledWith(
+      purchaseOrderId,
+      expect.stringMatching(/^GRN-/),
+      [
+        expect.objectContaining({
+          itemId,
+          actualQty: 2,
+          lotNumber: 'LOT-20260728-001',
+          manufacturedDate: new Date('2026-07-28'),
+          expiryDate: new Date('2027-01-01'),
+        }),
+      ],
+      actorId,
+      ['https://example.com/grn-proof.jpg'],
+    );
+  });
+
+  it('expiryDate/lotNumber lưu lúc tạo GRN round-trip đúng qua attachDisplayInfo (không bị mất khi đọc lại)', async () => {
+    // Mô phỏng document ĐÃ LƯU sau khi tạo — expiryDate là Date thật (như service
+    // parse ở createGoodsReceiptNote), items là Mongoose EmbeddedDocument (field
+    // thật nằm sau getter trên prototype, không phải own-enumerable) — đúng hành
+    // vi Mongoose thật, để bài test này bắt được bug nếu attachDisplayInfo lại
+    // vô tình spread nhầm doc.items thay vì plain.items.
+    const savedItem = {
+      itemId: new Types.ObjectId(itemId),
+      sku: 'SKU-1',
+      expectedQty: 100,
+      actualQty: 2,
+      lotNumber: 'LOT-260728-001',
+      manufacturedDate: new Date('2026-07-28'),
+      expiryDate: new Date('2027-01-01'),
+    };
+    class EmbeddedDocumentStub {
+      _doc: typeof savedItem;
+      constructor(doc: typeof savedItem) {
+        this._doc = doc;
+      }
+    }
+    for (const key of Object.keys(savedItem)) {
+      Object.defineProperty(EmbeddedDocumentStub.prototype, key, {
+        enumerable: false,
+        get(this: EmbeddedDocumentStub) {
+          return this._doc[key as keyof typeof savedItem];
+        },
+      });
+    }
+    const savedDoc = {
+      _id: grnId,
+      purchaseOrderId: new Types.ObjectId(purchaseOrderId),
+      items: [new EmbeddedDocumentStub(savedItem)],
+      toObject: () => ({
+        _id: grnId,
+        purchaseOrderId: new Types.ObjectId(purchaseOrderId),
+        items: [{ ...savedItem }],
+      }),
+    };
+
+    stockRepo.findItemsByIds.mockResolvedValue([
+      { _id: new Types.ObjectId(itemId), name: 'Ly nhựa 500ml' },
+    ]);
+    poService.listPurchaseOrdersByIds.mockResolvedValue([purchaseOrder()]);
+    supplierService.listSuppliersByIds.mockResolvedValue([
+      { _id: new Types.ObjectId(supplierId), name: 'NCC Test' },
+    ]);
+
+    const [result] = await service.attachDisplayInfo([savedDoc as never]);
+    const items = result.items as Record<string, unknown>[];
+
+    expect(items[0].expiryDate).toEqual(new Date('2027-01-01'));
+    expect(items[0].lotNumber).toBe('LOT-260728-001');
+    expect(items[0].manufacturedDate).toEqual(new Date('2026-07-28'));
+    expect(items[0].actualQty).toBe(2);
   });
 
   it('submit bắt buộc ít nhất một ảnh', async () => {
@@ -224,7 +348,7 @@ describe('GoodsReceiptNoteService - duyệt trước khi ghi tồn', () => {
     });
 
     await service.updateGoodsReceiptNoteItems(grnId.toString(), [
-      { itemId, actualQty: 2 },
+      { itemId, actualQty: 2, manufacturedDate: '2026-07-28' },
     ]);
     const submitted = await service.submitGoodsReceiptNote(
       grnId.toString(),
@@ -364,5 +488,67 @@ describe('GoodsReceiptNoteService - duyệt trước khi ghi tồn', () => {
       'Ảnh chưa rõ',
     );
     expect(result.status).toBe(GoodsReceiptNoteStatus.REJECTED);
+  });
+
+  it('attachDisplayInfo trả đúng actualQty/lotNumber/expiryDate — không lấy nhầm từ doc.items (Mongoose EmbeddedDocument) mà phải lấy từ doc.toObject().items (plain object)', async () => {
+    stockRepo.findItemsByIds.mockResolvedValue([
+      { _id: new Types.ObjectId(itemId), name: 'Ly nhựa 500ml' },
+    ]);
+    poService.listPurchaseOrdersByIds.mockResolvedValue([purchaseOrder()]);
+    supplierService.listSuppliersByIds.mockResolvedValue([
+      { _id: new Types.ObjectId(supplierId), name: 'NCC Test' },
+    ]);
+
+    // Mô phỏng đúng hành vi Mongoose thật: doc.items[i] là EmbeddedDocument —
+    // field thật (actualQty/lotNumber/expiryDate/sku/expectedQty) nằm trong
+    // `_doc` nội bộ, truy cập qua getter khai báo trên PROTOTYPE (không phải
+    // own-enumerable property của instance). Spread `{...instance}` chỉ copy
+    // own-enumerable properties nên bỏ sót toàn bộ field thật — đây chính là
+    // bug đã sửa (dùng nhầm doc.items thay vì plain.items khi spread).
+    const rawItem = {
+      itemId: new Types.ObjectId(itemId),
+      sku: 'SKU-1',
+      expectedQty: 100,
+      actualQty: 7,
+      lotNumber: 'LOT-260728-001',
+      expiryDate: new Date('2027-01-01'),
+    };
+    class EmbeddedDocumentStub {
+      _doc: typeof rawItem;
+      constructor(doc: typeof rawItem) {
+        this._doc = doc;
+      }
+    }
+    for (const key of Object.keys(rawItem)) {
+      Object.defineProperty(EmbeddedDocumentStub.prototype, key, {
+        enumerable: false,
+        get(this: EmbeddedDocumentStub) {
+          return this._doc[key as keyof typeof rawItem];
+        },
+      });
+    }
+    const embeddedDocumentStub = new EmbeddedDocumentStub(
+      rawItem,
+    ) as unknown as { itemId: Types.ObjectId };
+    const doc = {
+      _id: grnId,
+      purchaseOrderId: new Types.ObjectId(purchaseOrderId),
+      items: [embeddedDocumentStub],
+      toObject: () => ({
+        _id: grnId,
+        purchaseOrderId: new Types.ObjectId(purchaseOrderId),
+        items: [{ ...rawItem }],
+      }),
+    };
+
+    const [result] = await service.attachDisplayInfo([doc as never]);
+    const items = result.items as Record<string, unknown>[];
+
+    expect(items[0].actualQty).toBe(7);
+    expect(items[0].lotNumber).toBe('LOT-260728-001');
+    expect(items[0].manufacturedDate).toEqual(
+      new Date('2026-07-28T00:00:00.000Z'),
+    );
+    expect(items[0].expiryDate).toEqual(new Date('2027-01-01'));
   });
 });

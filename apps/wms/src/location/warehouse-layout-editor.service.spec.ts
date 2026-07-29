@@ -146,6 +146,7 @@ describe('WarehouseLayoutEditorService', () => {
     repo.getRackTemplate.mockResolvedValue({
       widthM: 4,
       depthM: 1.5,
+      heightM: 3,
       levelCount: 3,
       bayCount: 2,
     });
@@ -416,6 +417,7 @@ describe('WarehouseLayoutEditorService', () => {
     repo.getRackTemplate.mockResolvedValue({
       widthM: 4,
       depthM: 1.5,
+      heightM: 3,
       levelCount: 3,
       bayCount: 2,
     });
@@ -502,6 +504,7 @@ describe('WarehouseLayoutEditorService', () => {
     repo.getRackTemplate.mockResolvedValue({
       widthM: 4,
       depthM: 1.5,
+      heightM: 3,
       levelCount: 3,
       bayCount: 2,
     });
@@ -568,6 +571,7 @@ describe('WarehouseLayoutEditorService', () => {
     repo.getRackTemplate.mockResolvedValue({
       widthM: 4,
       depthM: 1.5,
+      heightM: 3,
       levelCount: 3,
       bayCount: 2,
     });
@@ -606,6 +610,41 @@ describe('WarehouseLayoutEditorService', () => {
     );
     expect(repo.syncStorageCellsForShelf).not.toHaveBeenCalled();
   });
+
+  it('chặn thu nhỏ kích thước tầng đang có tồn kho', async () => {
+    repo.getLayoutConfig.mockResolvedValue({ revision: 5 });
+    repo.findShelfById.mockResolvedValue({
+      _id: shelfId,
+      rackId,
+      innerWidth: 1000,
+      innerDepth: 150,
+      innerHeight: 100,
+      isStaging: false,
+    });
+    repo.findCellsByShelfId.mockResolvedValue([{ _id: new Types.ObjectId() }]);
+    stockRepo.hasPositiveInventoryOnCells.mockResolvedValue(true);
+
+    await expect(
+      service.saveLayout(
+        {
+          expectedRevision: 5,
+          operations: [
+            {
+              op: LayoutOperation.UPDATE,
+              entity: LayoutEntity.SHELF,
+              id: shelfId.toString(),
+              patch: { innerHeight: 80 },
+            },
+          ],
+        },
+        actorId,
+      ),
+    ).rejects.toMatchObject({ code: 'RACK_TEMPLATE_STOCK_CONFLICT' });
+
+    expect(repo.updateShelf).not.toHaveBeenCalled();
+    expect(repo.incrementLayoutRevision).not.toHaveBeenCalled();
+  });
+
   it('cho phép nhiều tầng nhận tạm trong cùng một rack nhưng chặn trải qua nhiều rack', async () => {
     const otherRackId = new Types.ObjectId();
     repo.getLayoutConfig.mockResolvedValue({
@@ -618,6 +657,7 @@ describe('WarehouseLayoutEditorService', () => {
     repo.getRackTemplate.mockResolvedValue({
       widthM: 4,
       depthM: 1.5,
+      heightM: 3,
       levelCount: 3,
       bayCount: 2,
     });
@@ -718,12 +758,13 @@ describe('WarehouseLayoutEditorService', () => {
     );
 
     expect(maxActiveReads).toBe(1);
-    expect(observedSessions).toEqual(Array(7).fill(session));
+    expect(observedSessions).toEqual(Array(10).fill(session));
   });
   it('cho phép patch một phần rack template và lưu canonical template đầy đủ', async () => {
     const currentTemplate = {
       widthM: 4,
       depthM: 1.5,
+      heightM: 3,
       levelCount: 3,
       bayCount: 2,
     };
@@ -780,6 +821,95 @@ describe('WarehouseLayoutEditorService', () => {
       session,
     );
   });
+
+  it('chuẩn hóa access point của rack vào aisle gần nhất trước khi validate', async () => {
+    const localZoneId = new Types.ObjectId();
+    const localRackId = new Types.ObjectId();
+    const rack = {
+      _id: localRackId,
+      zoneId: localZoneId,
+      code: 'RACK-01',
+      name: 'Rack 01',
+      xM: 2,
+      yM: 2,
+      rotation: 0,
+      accessPointXM: 2,
+      accessPointYM: 2,
+    };
+    const aisle = {
+      _id: new Types.ObjectId(),
+      code: 'AISLE-RACK',
+      type: 'RACK',
+      xM: 20,
+      yM: 0,
+      widthM: 2,
+      heightM: 20,
+    };
+    repo.getLayoutConfig.mockResolvedValue({
+      revision: 3,
+      widthM: 40,
+      heightM: 24,
+      gridM: 0.5,
+      updatedAt: new Date(),
+    });
+    repo.getRackTemplate.mockResolvedValue({
+      widthM: 4,
+      depthM: 2,
+      heightM: 3,
+      levelCount: 3,
+      bayCount: 2,
+    });
+    repo.updateLayoutConfig.mockResolvedValue({});
+    repo.findAllZones.mockResolvedValue([
+      {
+        _id: localZoneId,
+        code: 'ZONE-01',
+        xM: 0,
+        yM: 0,
+        widthM: 40,
+        heightM: 24,
+        rotation: 0,
+      },
+    ]);
+    repo.findAllRacks.mockImplementation(() => [rack]);
+    repo.findAllShelves.mockResolvedValue([]);
+    repo.findAllAisles.mockResolvedValue([aisle]);
+    repo.findAllGates.mockResolvedValue([]);
+    repo.updateRack.mockImplementation(
+      (_id, patch: { accessPointXM: number; accessPointYM: number }) => {
+        Object.assign(rack, patch);
+        return rack;
+      },
+    );
+    repo.incrementLayoutRevision.mockResolvedValue({
+      revision: 4,
+      widthM: 40,
+      heightM: 24,
+      gridM: 0.5,
+      updatedAt: new Date(),
+    });
+
+    await service.saveLayout(
+      {
+        expectedRevision: 3,
+        operations: [
+          {
+            op: LayoutOperation.UPDATE,
+            entity: LayoutEntity.CANVAS,
+            patch: { gridM: 0.5 },
+          },
+        ],
+      },
+      actorId,
+    );
+
+    expect(repo.updateRack).toHaveBeenCalledWith(
+      localRackId.toString(),
+      { accessPointXM: 20, accessPointYM: 3 },
+      actorId,
+      session,
+    );
+  });
   it('không tăng revision khi final geometry không hợp lệ', async () => {
     repo.getLayoutConfig.mockResolvedValue({
       revision: 2,
@@ -790,6 +920,7 @@ describe('WarehouseLayoutEditorService', () => {
     repo.getRackTemplate.mockResolvedValue({
       widthM: 4,
       depthM: 1.5,
+      heightM: 3,
       levelCount: 3,
       bayCount: 2,
     });

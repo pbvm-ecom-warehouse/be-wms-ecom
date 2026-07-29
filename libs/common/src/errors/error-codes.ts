@@ -284,7 +284,11 @@ export const ERROR_CATALOG = {
   },
   GRN_IMAGE_REQUIRED: {
     status: HttpStatus.BAD_REQUEST,
-    message: 'Cần ít nhất 1 ảnh minh chứng trước khi gửi duyệt',
+    message: 'Bắt buộc có ít nhất 1 ảnh minh chứng khi tạo phiếu nhập',
+  },
+  GRN_MANUFACTURED_DATE_INVALID: {
+    status: HttpStatus.BAD_REQUEST,
+    message: 'Ngày sản xuất không hợp lệ hoặc nằm trong tương lai',
   },
   GRN_ITEM_REQUIRED: {
     status: HttpStatus.BAD_REQUEST,

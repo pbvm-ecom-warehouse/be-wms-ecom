@@ -26,6 +26,9 @@ export class Lot {
   @Prop({ type: Date, required: true })
   expiryDate!: Date;
 
+  @Prop({ type: Date })
+  manufacturedDate?: Date;
+
   @Prop({ type: Date, required: true })
   receivedDate!: Date;
 

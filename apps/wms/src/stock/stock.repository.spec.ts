@@ -751,4 +751,45 @@ describe('StockRepository', () => {
       ]);
     });
   });
+
+  describe('findInventoryByCellId', () => {
+    it('trả đủ kích thước thùng để mô phỏng tồn kho 3D theo kích thước thật', async () => {
+      const cellId = new Types.ObjectId();
+      const rowId = new Types.ObjectId();
+      inventoryModel.aggregate = jest.fn().mockResolvedValue([
+        {
+          _id: rowId,
+          sku: 'SKU-BOX',
+          itemName: 'Thùng nhựa',
+          unit: 'thùng',
+          quantity: 3,
+          packageFactor: 1,
+          packageVolumeCm3Snapshot: 50000,
+          packageDepthCm: 40,
+          packageWidthCm: 50,
+          packageHeightCm: 25,
+          lotNumber: 'LOT-260728-001',
+          expiryDate: null,
+        },
+      ]);
+
+      const rows = await repo.findInventoryByCellId(cellId);
+
+      expect(rows[0]).toMatchObject({
+        packageDepthCm: 40,
+        packageWidthCm: 50,
+        packageHeightCm: 25,
+      });
+      const pipeline = (inventoryModel.aggregate as jest.Mock).mock
+        .calls[0][0] as Record<string, unknown>[];
+      const project = pipeline.find((stage) => '$project' in stage)?.[
+        '$project'
+      ] as Record<string, unknown>;
+      expect(project).toMatchObject({
+        packageDepthCm: '$item.depth',
+        packageWidthCm: '$item.width',
+        packageHeightCm: '$item.height',
+      });
+    });
+  });
 });

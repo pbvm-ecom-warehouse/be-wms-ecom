@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { Expose, Transform, Type } from 'class-transformer';
+import { Expose, plainToInstance, Transform, Type } from 'class-transformer';
 import {
   ArrayMinSize,
   IsArray,
@@ -17,6 +17,15 @@ import {
 import { Types } from 'mongoose';
 import { GoodsReceiptNoteStatus } from '../schemas/goods-receipt-note.schema';
 import { ItemType } from '../../stock/schemas/warehouse-item.schema';
+
+function parseJsonArrayIfString({ value }: { value: unknown }): unknown {
+  if (typeof value !== 'string') return value;
+  try {
+    return JSON.parse(value);
+  } catch {
+    return value;
+  }
+}
 
 export class CreateGoodsReceiptNoteItemDto {
   @ApiProperty({
@@ -42,6 +51,13 @@ export class CreateGoodsReceiptNoteItemDto {
   @IsOptional()
   @IsString()
   lotNumber?: string;
+
+  @ApiProperty({
+    example: '2026-07-28',
+    description: 'Ngày sản xuất của lô, bắt buộc với mọi dòng hàng',
+  })
+  @IsDateString()
+  manufacturedDate!: string;
 
   @ApiPropertyOptional({
     example: '2026-12-01',
@@ -72,6 +88,14 @@ export class CreateGoodsReceiptNoteDto {
       'Dòng hàng perishable vẫn cần gửi tay kèm lotNumber/expiryDate vì server không tự đoán được.',
   })
   @IsOptional()
+  @Transform(({ value }: { value: unknown }) => {
+    const parsed = parseJsonArrayIfString({ value });
+    return Array.isArray(parsed)
+      ? parsed.map((item) =>
+          plainToInstance(CreateGoodsReceiptNoteItemDto, item),
+        )
+      : parsed;
+  })
   @IsArray()
   @ArrayMinSize(1)
   @ValidateNested({ each: true })
@@ -177,7 +201,7 @@ export class GoodsReceiptNoteItemResponseDto {
   @ApiPropertyOptional()
   unitPrice?: number;
 
-  /** Tổng đã nhận của PO tính đến hiện tại (mọi GRN đã CONFIRMED) — không phải riêng GRN này. */
+  /** Tổng đã nhận của PO tính đến hiện tại (mọi GRN đã APPROVED) — không phải riêng GRN này. */
   @Expose()
   @ApiPropertyOptional()
   receivedQty?: number;
@@ -195,6 +219,10 @@ export class GoodsReceiptNoteItemResponseDto {
   @Expose()
   @ApiPropertyOptional()
   lotNumber?: string;
+
+  @Expose()
+  @ApiProperty()
+  manufacturedDate!: Date;
 
   @Expose()
   @ApiPropertyOptional()
@@ -283,10 +311,6 @@ export class GoodsReceiptNoteResponseDto {
   @Expose()
   @ApiPropertyOptional()
   totalPackageCount?: number;
-
-  @Expose()
-  @ApiPropertyOptional()
-  totalVolumeCm3?: number;
 
   @Expose()
   @ApiProperty()

@@ -345,7 +345,7 @@ export class PurchaseOrderService {
   }
 
   /**
-   * GRN CONFIRMED gọi hàm này (trong cùng transaction Mongo) để cộng dồn receivedQty
+   * GRN APPROVED gọi hàm này (trong cùng transaction Mongo) để cộng dồn receivedQty
    * và tính lại status PO. deltaBaseQty đã quy đổi đơn vị cơ sở từ trước (ở GRN service).
    */
   async applyReceivedQty(

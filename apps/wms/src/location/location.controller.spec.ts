@@ -121,14 +121,18 @@ describe('LocationController layout endpoints', () => {
       rackTemplate: doc({
         widthM: 10,
         depthM: 1.5,
+        heightM: 1,
         levelCount: 1,
         bayCount: 1,
       }),
     });
 
-    const result = await controller.resetLayout(actorId);
+    const result = await controller.resetLayout(
+      { expectedRevision: 1 },
+      actorId,
+    );
 
-    expect(locationService.resetLayout).toHaveBeenCalledWith(actorId);
+    expect(locationService.resetLayout).toHaveBeenCalledWith(1, actorId);
     expect(result).toMatchObject({
       revision: 2,
       canvas: { widthM: 40, heightM: 24, gridM: 0.5 },

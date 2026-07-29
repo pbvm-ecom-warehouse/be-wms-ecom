@@ -5,6 +5,7 @@ describe('RackTemplate schema', () => {
     const paths = RackTemplateSchema.paths;
     expect(paths['widthM']).toBeDefined();
     expect(paths['depthM']).toBeDefined();
+    expect(paths['heightM']).toBeDefined();
     expect(paths['levelCount']).toBeDefined();
     expect(paths['bayCount']).toBeDefined();
   });
@@ -14,6 +15,7 @@ describe('RackTemplate schema', () => {
   });
 
   it('levelCount và bayCount mặc định 1', () => {
+    expect(RackTemplateSchema.path('heightM').getDefault()).toBe(1);
     expect(RackTemplateSchema.path('levelCount').getDefault()).toBe(1);
     expect(RackTemplateSchema.path('bayCount').getDefault()).toBe(1);
   });

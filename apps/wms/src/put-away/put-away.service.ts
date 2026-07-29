@@ -47,7 +47,7 @@ export class PutAwayService {
     private readonly barcodeSvc: BarcodeService,
   ) {}
 
-  /** Gọi từ GoodsReceiptNoteService.confirmGoodsReceiptNote, cùng transaction cộng tồn 2 lớp. */
+  /** Gọi từ GoodsReceiptNoteService.approveGoodsReceiptNote, cùng transaction cộng tồn 2 lớp. */
   async createTaskFromGrn(
     grnId: Types.ObjectId,
     lines: CreatePutAwayLineFromGrnInput[],

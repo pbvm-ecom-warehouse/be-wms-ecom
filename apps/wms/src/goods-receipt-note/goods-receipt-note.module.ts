@@ -22,7 +22,7 @@ import { SupplierModule } from '../supplier/supplier.module';
     PurchaseOrderModule, // getPurchaseOrder + applyReceivedQty
     LocationModule, // findStagingShelf
     StockModule, // StockRepository/StockService/StockTransactionHelper — cộng tồn 2 lớp
-    PutAwayModule, // createTaskFromGrn — sinh việc put-away khi GRN CONFIRMED
+    PutAwayModule, // createTaskFromGrn — sinh việc put-away khi GRN APPROVED
     SupplierModule, // getSupplier — cảnh báo khi confirm GRN cho NCC không còn ACTIVE (issue #34)
   ],
   providers: [GoodsReceiptNoteRepository, GoodsReceiptNoteService],

@@ -11,10 +11,11 @@ import {
   Post,
   Query,
   UploadedFile,
+  UploadedFiles,
   UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
-import { FileInterceptor } from '@nestjs/platform-express';
+import { FileInterceptor, FilesInterceptor } from '@nestjs/platform-express';
 import {
   ApiBearerAuth,
   ApiBody,
@@ -44,6 +45,8 @@ import {
 } from './dto/goods-receipt-note.dto';
 
 const TO_OPTS = { excludeExtraneousValues: true } as const;
+const MAX_GRN_IMAGE_SIZE_BYTES = 5 * 1024 * 1024;
+const MAX_GRN_IMAGE_COUNT = 10;
 
 @ApiTags('goods-receipt-note')
 @ApiBearerAuth()
@@ -54,15 +57,46 @@ export class GoodsReceiptNoteController {
 
   @Post()
   @Roles(WmsRole.RECEIVER, WmsRole.ADMIN)
+  @UseInterceptors(
+    FilesInterceptor('images', MAX_GRN_IMAGE_COUNT, {
+      limits: { fileSize: MAX_GRN_IMAGE_SIZE_BYTES },
+    }),
+  )
   @ApiOperation({
-    summary: 'Tạo phiếu nhập kho (GRN) theo PO — [RECEIVER, ADMIN]',
+    summary:
+      'Tạo phiếu nhập kho (GRN) theo PO, bắt buộc ảnh minh chứng — [RECEIVER, ADMIN]',
+  })
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      required: ['purchaseOrderId', 'items', 'images'],
+      properties: {
+        purchaseOrderId: { type: 'string' },
+        items: {
+          type: 'string',
+          description: 'JSON array các dòng hàng thực nhận',
+        },
+        images: {
+          type: 'array',
+          minItems: 1,
+          items: { type: 'string', format: 'binary' },
+        },
+      },
+    },
   })
   @ApiCreatedResponse({ type: GoodsReceiptNoteResponseDto })
   async createGoodsReceiptNote(
     @Body() dto: CreateGoodsReceiptNoteDto,
     @CurrentUser('sub') actorId: string,
+    @UploadedFiles() files?: Express.Multer.File[],
   ): Promise<GoodsReceiptNoteResponseDto> {
-    const doc = await this.svc.createGoodsReceiptNote(dto, actorId);
+    const imageFiles = (files ?? []).map((file) => ({
+      buffer: file.buffer,
+      mimetype: file.mimetype,
+      size: file.size,
+    }));
+    const doc = await this.svc.createGoodsReceiptNote(dto, actorId, imageFiles);
     const [plain] = await this.svc.attachDisplayInfo([doc]);
     return plainToInstance(GoodsReceiptNoteResponseDto, plain, TO_OPTS);
   }
@@ -110,22 +144,6 @@ export class GoodsReceiptNoteController {
     const [plain] = await this.svc.attachDisplayInfo([doc]);
     return plainToInstance(GoodsReceiptNoteResponseDto, plain, TO_OPTS);
   }
-  @Post(':id/confirm')
-  @Roles(WmsRole.RECEIVER, WmsRole.ADMIN)
-  @ApiOperation({
-    summary:
-      'Xác nhận nhận hàng — cộng tồn 2 lớp + cập nhật PO — [RECEIVER, ADMIN]',
-  })
-  @ApiOkResponse({ type: GoodsReceiptNoteResponseDto })
-  async confirmGoodsReceiptNote(
-    @Param('id') id: string,
-    @CurrentUser('sub') actorId: string,
-  ): Promise<GoodsReceiptNoteResponseDto> {
-    const doc = await this.svc.confirmGoodsReceiptNote(id, actorId);
-    const [plain] = await this.svc.attachDisplayInfo([doc]);
-    return plainToInstance(GoodsReceiptNoteResponseDto, plain, TO_OPTS);
-  }
-
   @Post(':id/approve')
   @Roles(WmsRole.MANAGER, WmsRole.ADMIN)
   @ApiOperation({ summary: 'Duyệt phiếu nhập kho (audit) — [MANAGER, ADMIN]' })
@@ -141,7 +159,10 @@ export class GoodsReceiptNoteController {
 
   @Post(':id/reject')
   @Roles(WmsRole.MANAGER, WmsRole.ADMIN)
-  @ApiOperation({ summary: 'Từ chối phiếu nhập kho, trả về Receiver sửa và gửi lại — [MANAGER, ADMIN]' })
+  @ApiOperation({
+    summary:
+      'Từ chối phiếu nhập kho, trả về Receiver sửa và gửi lại — [MANAGER, ADMIN]',
+  })
   @ApiOkResponse({ type: GoodsReceiptNoteResponseDto })
   async rejectGoodsReceiptNote(
     @Param('id') id: string,
@@ -154,7 +175,11 @@ export class GoodsReceiptNoteController {
   }
   @Post(':id/images')
   @Roles(WmsRole.RECEIVER, WmsRole.ADMIN)
-  @UseInterceptors(FileInterceptor('file'))
+  @UseInterceptors(
+    FileInterceptor('file', {
+      limits: { fileSize: MAX_GRN_IMAGE_SIZE_BYTES },
+    }),
+  )
   @ApiOperation({
     summary:
       'Upload ảnh minh chứng nhập kho lên Cloudinary — [RECEIVER, ADMIN]',

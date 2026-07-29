@@ -36,6 +36,13 @@ const NON_RECEIVABLE_STATUSES = new Set([
 const ALLOWED_IMAGE_MIMETYPES = ['image/jpeg', 'image/png', 'image/webp'];
 const MAX_IMAGE_SIZE_BYTES = 5 * 1024 * 1024;
 
+function manufacturedDateFromLotNumber(lotNumber?: string): Date | undefined {
+  const match = /^LOT-(\d{2})(\d{2})(\d{2})-\d{3}$/.exec(lotNumber ?? '');
+  if (!match) return undefined;
+  const date = new Date(`20${match[1]}-${match[2]}-${match[3]}T00:00:00.000Z`);
+  return Number.isNaN(date.getTime()) ? undefined : date;
+}
+
 export interface UploadedImageFile {
   buffer: Buffer;
   mimetype: string;
@@ -61,7 +68,13 @@ export class GoodsReceiptNoteService {
   async createGoodsReceiptNote(
     dto: CreateGoodsReceiptNoteDto,
     actorId: string,
+    imageFiles: UploadedImageFile[],
   ): Promise<GoodsReceiptNoteDocument> {
+    if (imageFiles.length === 0) {
+      throw new AppException('GRN_IMAGE_REQUIRED');
+    }
+    imageFiles.forEach((file) => this.validateImageFile(file));
+
     const po = await this.purchaseOrderService.getPurchaseOrder(
       dto.purchaseOrderId,
     );
@@ -69,24 +82,21 @@ export class GoodsReceiptNoteService {
       throw new AppException('PO_NOT_RECEIVABLE');
     }
 
-    // items để trống → RECEIVER xác nhận "nhận đủ theo PO": tự lấy các dòng còn thiếu
-    // (expectedQty - receivedQty), actualQty mặc định = phần còn thiếu. Dòng perishable
-    // vẫn thiếu lotNumber/expiryDate (không thể tự đoán) nên GRN_LOT_INFO_MISSING sẽ chặn
-    // ngay dưới, buộc client gửi lại kèm items đầy đủ cho riêng dòng đó.
-    const items: CreateGoodsReceiptNoteItemDto[] =
-      dto.items && dto.items.length > 0
-        ? dto.items
-        : po.items
-            .filter((poItem) => poItem.receivedQty < poItem.expectedQty)
-            .map((poItem) => ({
-              itemId: poItem.itemId.toString(),
-              actualQty: poItem.expectedQty - poItem.receivedQty,
-            }));
-    if (items.length === 0) {
-      throw new AppException('PO_NOT_RECEIVABLE');
+    // Mỗi dòng GRN phải mang ngày sản xuất và thông tin lô do Receiver xác nhận.
+    // Backend không thể tự suy đoán các dữ liệu này từ PO khi client bỏ trống items.
+    if (!dto.items?.length) {
+      throw new AppException('GRN_LOT_INFO_MISSING');
     }
+    const items: CreateGoodsReceiptNoteItemDto[] = dto.items;
 
     const resolvedItems = await this.resolveAndValidateItems(po, items);
+
+    // Chỉ upload sau khi PO và toàn bộ dòng hàng đã hợp lệ để hạn chế ảnh mồ côi.
+    const images: string[] = [];
+    for (const file of imageFiles) {
+      const { url } = await this.cloudinary.uploadImage(file.buffer, 'wms/grn');
+      images.push(url);
+    }
 
     const grnNumber = await this.generateGrnNumber();
     return this.repo.createGoodsReceiptNote(
@@ -94,6 +104,7 @@ export class GoodsReceiptNoteService {
       grnNumber,
       resolvedItems,
       actorId,
+      images,
     );
   }
 
@@ -122,16 +133,24 @@ export class GoodsReceiptNoteService {
         throw new AppException('GRN_ITEM_NOT_IN_PO');
       }
 
-      // Chặn ngay lúc tạo/sửa (không đợi tới confirm) nếu dòng PO này đã nhận đủ hoặc
+      // Chặn ngay lúc tạo/sửa (không đợi tới approve) nếu dòng PO này đã nhận đủ hoặc
       // actualQty client gửi vượt phần còn thiếu — tránh tạo/sửa GRN DRAFT "vô nghĩa"
-      // chắc chắn sẽ bị GRN_QTY_EXCEEDS_PO chặn lại lúc confirm, đỡ tốn công RECEIVER
-      // nhập lô/hạn dùng/ảnh minh chứng cho một phiếu không thể xác nhận được.
+      // chắc chắn sẽ bị GRN_QTY_EXCEEDS_PO chặn lại lúc approve, đỡ tốn công RECEIVER
+      // nhập lô/hạn dùng/ảnh minh chứng cho một phiếu không thể duyệt được.
       const remainingQty = poItem.expectedQty - poItem.receivedQty;
       if (remainingQty <= 0 || item.actualQty > remainingQty) {
         throw new AppException('GRN_QTY_EXCEEDS_PO');
       }
 
       const warehouseItem = await this.stockRepo.findItemById(item.itemId);
+      const manufacturedDate = new Date(item.manufacturedDate);
+      if (
+        !item.manufacturedDate ||
+        Number.isNaN(manufacturedDate.getTime()) ||
+        manufacturedDate > new Date()
+      ) {
+        throw new AppException('GRN_MANUFACTURED_DATE_INVALID');
+      }
       if (
         warehouseItem?.isPerishable &&
         (!item.lotNumber || !item.expiryDate)
@@ -148,6 +167,7 @@ export class GoodsReceiptNoteService {
         // actualQty luôn là số thùng nguyên — không còn quy đổi qua đơn vị lẻ.
         actualQty: item.actualQty,
         lotNumber: item.lotNumber,
+        manufacturedDate,
         expiryDate: item.expiryDate ? new Date(item.expiryDate) : undefined,
         wholePackageOnly: true,
         note: item.note,
@@ -158,7 +178,7 @@ export class GoodsReceiptNoteService {
 
   /**
    * Sửa toàn bộ items của 1 GRN còn DRAFT — thay thế hoàn toàn (không merge),
-   * chạy lại đúng validate như lúc tạo. Chỉ cho phép khi DRAFT vì sau CONFIRMED
+   * chạy lại đúng validate như lúc tạo. Chỉ cho phép khi DRAFT/REJECTED vì sau APPROVED
    * đã cộng tồn kho thật, sửa items sẽ làm lệch số liệu đã ghi sổ.
    */
   async updateGoodsReceiptNoteItems(
@@ -186,7 +206,7 @@ export class GoodsReceiptNoteService {
 
   /**
    * Xóa vật lý 1 GRN còn DRAFT — chưa cộng tồn kho/PO nên xóa cứng an toàn,
-   * khác với chứng từ đã CONFIRMED/APPROVED (hủy bằng status, không soft-delete).
+   * khác với chứng từ đã APPROVED (hủy bằng status, không soft-delete).
    */
   async deleteGoodsReceiptNote(id: string): Promise<void> {
     const grn = await this.repo.findGoodsReceiptNoteById(id);
@@ -213,14 +233,6 @@ export class GoodsReceiptNoteService {
     const submitted = await this.repo.updateStatusSubmitted(id, actorId);
     if (!submitted) throw new AppException('GRN_INVALID_STATUS_TRANSITION');
     return submitted;
-  }
-
-  /** Deprecated: giữ alias để client cũ không gãy, nhưng không còn cộng tồn. */
-  async confirmGoodsReceiptNote(
-    id: string,
-    actorId: string,
-  ): Promise<GoodsReceiptNoteDocument> {
-    return this.submitGoodsReceiptNote(id, actorId);
   }
 
   async approveGoodsReceiptNote(
@@ -254,6 +266,7 @@ export class GoodsReceiptNoteService {
         volumeCm3: number;
       };
       lotNumber?: string;
+      manufacturedDate: Date;
       expiryDate?: Date;
     }[] = [];
 
@@ -290,6 +303,7 @@ export class GoodsReceiptNoteService {
         baseQty,
         packageSpec,
         lotNumber: line.lotNumber,
+        manufacturedDate: line.manufacturedDate,
         expiryDate: line.expiryDate,
       });
     }
@@ -345,6 +359,7 @@ export class GoodsReceiptNoteService {
                   {
                     itemId: itemObjectId,
                     lotNumber: line.lotNumber,
+                    manufacturedDate: line.manufacturedDate,
                     expiryDate: line.expiryDate,
                     receivedDate: new Date(),
                   },
@@ -567,32 +582,32 @@ export class GoodsReceiptNoteService {
         (sum, item) => sum + item.actualQty,
         0,
       );
-      const totalVolumeCm3 = doc.items.reduce((sum, item) => {
-        const warehouseItem = itemById.get(item.itemId.toString());
-        const volumeCm3 =
-          warehouseItem?.depth && warehouseItem?.width && warehouseItem?.height
-            ? warehouseItem.depth * warehouseItem.width * warehouseItem.height
-            : 0;
-        return sum + item.actualQty * volumeCm3;
-      }, 0);
+      // plain.items đã qua doc.toObject() — dùng làm nguồn spread thay vì doc.items
+      // trực tiếp: doc.items[i] là Mongoose EmbeddedDocument, field thật nằm sau getter/
+      // `_doc` chứ không phải own-enumerable property, nên `{...doc.items[i]}` chỉ copy
+      // được các key nội bộ Mongoose (`_doc`, `$__`...) và làm mất actualQty/lotNumber/
+      // expiryDate trong response — plain.items[i] là plain object nên spread đúng.
+      const plainItems = plain.items as Record<string, unknown>[];
       return {
         ...plain,
         totalPackageCount,
-        totalVolumeCm3,
         purchaseOrderNumber: po?.poNumber,
         supplierName: po
           ? supplierNameById.get(po.supplierId.toString())
           : undefined,
-        items: doc.items.map((item) => {
+        items: doc.items.map((item, index) => {
           const warehouseItem = itemById.get(item.itemId.toString());
           // receivedQty/remainingQty lấy TẠI THỜI ĐIỂM trả response (không phải
-          // lúc tạo GRN) — phản ánh tổng đã nhận từ MỌI GRN đã CONFIRMED của PO
+          // lúc tạo GRN) — phản ánh tổng đã nhận từ MỌI GRN đã APPROVED của PO
           // này, để FE đối chiếu còn thiếu bao nhiêu so với PO.
           const poItem = po?.items.find(
             (i) => i.itemId.toString() === item.itemId.toString(),
           );
           return {
-            ...(item as unknown as Record<string, unknown>),
+            ...plainItems[index],
+            manufacturedDate:
+              item.manufacturedDate ??
+              manufacturedDateFromLotNumber(item.lotNumber),
             itemName: warehouseItem?.name,
             barcode: warehouseItem?.barcode,
             category: warehouseItem?.category,
@@ -617,7 +632,7 @@ export class GoodsReceiptNoteService {
   /**
    * PO chỉ chặn tạo mới nếu NCC không ACTIVE (assertSupplierActive lúc createPurchaseOrder);
    * PO đã đặt/đang giao dở vẫn cho nhận hàng tiếp để tránh tồn kho treo hoặc tranh chấp hợp
-   * đồng đã ký (issue #34 — quyết định nghiệp vụ: cảnh báo, không chặn confirm GRN).
+   * đồng đã ký (issue #34 — quyết định nghiệp vụ: cảnh báo, không chặn approve GRN).
    */
   private async warnIfSupplierNotActive(
     supplierId: string,

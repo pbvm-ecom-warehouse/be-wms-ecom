@@ -13,6 +13,14 @@ export class UpdateRackTemplateDto {
   @Min(0.1)
   depthM!: number;
 
+  @ApiProperty({
+    example: 3,
+    description: 'Tổng chiều cao chuẩn của mọi rack (mét)',
+  })
+  @IsNumber()
+  @Min(0.1)
+  heightM!: number;
+
   @ApiProperty({ example: 3, description: 'Số tầng chuẩn mọi rack' })
   @IsInt()
   @Min(1)
@@ -32,6 +40,10 @@ export class RackTemplateResponseDto {
   @Expose()
   @ApiProperty()
   depthM!: number;
+
+  @Expose()
+  @ApiProperty()
+  heightM!: number;
 
   @Expose()
   @ApiProperty()
