@@ -115,8 +115,26 @@ export class GoodsIssueResponseDto {
   id!: string;
 
   @Expose()
+  @Transform(({ value }: { value?: string }) => value ?? null)
+  @ApiPropertyOptional({
+    example: 'GI-20260730-0001',
+    nullable: true,
+    description: 'Null với chứng từ legacy chưa backfill',
+  })
+  goodsIssueNumber!: string | null;
+
+  @Expose()
   @ApiProperty()
   orderId!: string;
+
+  @Expose()
+  @Transform(({ value }: { value?: string }) => value ?? null)
+  @ApiPropertyOptional({
+    example: 'ORD-20260730-0001',
+    nullable: true,
+    description: 'Snapshot mã đơn Ecommerce; null với dữ liệu legacy',
+  })
+  orderCode!: string | null;
 
   @Expose()
   @ApiProperty({ enum: GoodsIssueStatus })

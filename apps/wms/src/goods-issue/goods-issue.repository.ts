@@ -15,6 +15,8 @@ export interface CreateGoodsIssueLineInput {
 
 export interface CreateGoodsIssueInput {
   orderId: string;
+  orderCode: string;
+  goodsIssueNumber: string;
   lines: CreateGoodsIssueLineInput[];
   shippingAddress: Record<string, unknown>;
   recipient: { name: string; phone: string };
@@ -47,23 +49,30 @@ export class GoodsIssueRepository {
   async createGoodsIssue(
     input: CreateGoodsIssueInput,
   ): Promise<GoodsIssueDocument> {
-    const [doc] = await this.model.create([
-      {
-        orderId: input.orderId,
-        status: GoodsIssueStatus.PENDING,
-        shippingAddress: input.shippingAddress,
-        recipient: input.recipient,
-        paymentMethod: input.paymentMethod,
-        codAmount: input.codAmount,
-        items: input.lines.map((l) => ({
-          itemId: l.itemId,
-          sku: l.sku,
-          quantity: l.quantity,
-          remainingQty: l.quantity,
-        })),
-      },
-    ]);
-    return doc;
+    return this.model
+      .findOneAndUpdate(
+        { orderId: input.orderId },
+        {
+          $setOnInsert: {
+            orderId: input.orderId,
+            orderCode: input.orderCode,
+            goodsIssueNumber: input.goodsIssueNumber,
+            status: GoodsIssueStatus.PENDING,
+            shippingAddress: input.shippingAddress,
+            recipient: input.recipient,
+            paymentMethod: input.paymentMethod,
+            codAmount: input.codAmount,
+            items: input.lines.map((l) => ({
+              itemId: l.itemId,
+              sku: l.sku,
+              quantity: l.quantity,
+              remainingQty: l.quantity,
+            })),
+          },
+        },
+        { upsert: true, new: true, setDefaultsOnInsert: true },
+      )
+      .exec();
   }
 
   async findAll(

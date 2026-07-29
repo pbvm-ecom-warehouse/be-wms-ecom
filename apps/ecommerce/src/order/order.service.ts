@@ -85,6 +85,7 @@ export class OrderService {
       EVENTS.ORDER_READY_TO_FULFILL,
       {
         orderId,
+        orderCode: order.code,
         items: this.buildFulfillmentItems(items),
         shippingAddress: order.shippingAddress,
         recipient: {
@@ -401,19 +402,9 @@ export class OrderService {
         fulfillmentStatus: FulfillmentStatus.READY_TO_PICK,
       });
 
-      // Báo kho đóng gói xuất hàng
-      await this.orderQueue.add(EVENTS.ORDER_READY_TO_FULFILL, {
-        orderId,
-        items: order.items.map((i) => ({ sku: i.sku, quantity: i.quantity })),
-        shippingAddress: order.shippingAddress,
-        recipient: {
-          name: order.shippingAddress.recipientName,
-          phone: order.shippingAddress.phone,
-        },
-        paymentMethod: 'COD',
-        codAmount: order.total,
-        orderDetail: this.toOrderDetail(order),
-      });
+      // Dùng cùng helper để payload có orderCode và jobId idempotent như mọi
+      // nhánh READY_TO_PICK khác.
+      await this.enqueueOrderReady(orderId, order);
 
       this.logger.log(
         `Đơn COD ${orderId} -> CONFIRMED & READY_TO_PICK -> Đã phát lệnh xuất kho`,

@@ -35,9 +35,17 @@ const GoodsIssueItemSchema = SchemaFactory.createForClass(GoodsIssueItem);
  */
 @Schema({ collection: 'goods_issues', timestamps: true })
 export class GoodsIssue {
+  /** Mã nghiệp vụ mới; sparse để dữ liệu legacy chưa backfill vẫn đọc được. */
+  @Prop({ unique: true, sparse: true })
+  goodsIssueNumber?: string;
+
   /** id đơn hàng bên Ecom — KHÔNG phải ObjectId nội bộ WMS */
   @Prop({ required: true, unique: true })
   orderId!: string;
+
+  /** Snapshot mã đơn từ Ecommerce, không query chéo ecom_db. */
+  @Prop()
+  orderCode?: string;
 
   /** Snapshot địa chỉ giao — từ payload order.ready_to_fulfill, không đổi theo thời gian */
   @Prop({ type: Object, required: true })

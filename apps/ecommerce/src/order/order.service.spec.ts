@@ -79,6 +79,36 @@ describe('OrderService.onReturned', () => {
   });
 });
 
+describe('OrderService.onStockReserved', () => {
+  it('phát order.ready_to_fulfill kèm orderCode và jobId idempotent cho COD', async () => {
+    const repo = makeRepo();
+    const { service, orderQueue } = createService(repo);
+    const orderId = new Types.ObjectId().toString();
+    repo.findById.mockResolvedValue({
+      code: 'ORD-20260730-0001',
+      paymentMethod: PaymentMethod.COD,
+      total: 250000,
+      items: [{ sku: 'SKU-1', quantity: 2 }],
+      shippingAddress: {
+        recipientName: 'A',
+        phone: '0900000000',
+        street: '123 Le Loi',
+      },
+    });
+
+    await service.onStockReserved(orderId);
+
+    expect(orderQueue.add).toHaveBeenCalledWith(
+      'order.ready_to_fulfill',
+      expect.objectContaining({
+        orderId,
+        orderCode: 'ORD-20260730-0001',
+      }),
+      { jobId: `order-ready-${orderId}` },
+    );
+  });
+});
+
 describe('OrderService.onPaymentSuccess', () => {
   let svc: OrderService;
   let repo: ReturnType<typeof makeRepo>;
@@ -89,6 +119,7 @@ describe('OrderService.onPaymentSuccess', () => {
 
   const baseOrder = {
     _id: orderId,
+    code: 'ORD-20260730-0001',
     customerId,
     total: 100000,
     paymentStatus: PaymentStatus.UNPAID,
@@ -353,6 +384,7 @@ describe('OrderService print contract', () => {
       'order.ready_to_fulfill',
       expect.objectContaining({
         orderId,
+        orderCode: basePrintOrder.code,
         items: [
           { sku: 'CUP-HRT-PET-500-CLR-DSG001', quantity: printItem.quantity },
         ],

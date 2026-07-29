@@ -49,6 +49,7 @@ describe('GoodsIssueService theo khoang và thùng nguyên', () => {
   };
   const barcode = { findItemIdByCode: jest.fn() };
   const navigation = { getPath: jest.fn() };
+  const documentNumber = { next: jest.fn() };
   const shipmentQueue = { add: jest.fn() };
   const internalQueue = { add: jest.fn() };
 
@@ -77,10 +78,14 @@ describe('GoodsIssueService theo khoang và thùng nguyên', () => {
       tx as never,
       barcode as never,
       navigation as never,
+      documentNumber as never,
       shipmentQueue as never,
       internalQueue as never,
     );
     repo.findById.mockResolvedValue(goodsIssue());
+    repo.findByOrderId.mockResolvedValue(null);
+    repo.createGoodsIssue.mockResolvedValue(goodsIssue());
+    documentNumber.next.mockResolvedValue('GI-20260730-0001');
     stockRepo.findItemById.mockResolvedValue({ isPerishable: false });
     stockRepo.findItemByIdDocument.mockResolvedValue({ _id: itemId });
     barcode.findItemIdByCode.mockResolvedValue(itemId);
@@ -92,6 +97,46 @@ describe('GoodsIssueService theo khoang và thùng nguyên', () => {
     stockRepo.issueReservedIfAvailable.mockResolvedValue(true);
     repo.decrementRemainingQty.mockResolvedValue(goodsIssue());
     repo.markConfirmedIfAllDone.mockResolvedValue(false);
+  });
+
+  it('tạo mã phiếu atomic và lưu snapshot orderCode khi nhận event', async () => {
+    stockRepo.findItemBySku.mockResolvedValue({ _id: itemId });
+
+    await service.createFromOrderReady(
+      orderId,
+      'ORD-20260730-0001',
+      [{ sku: 'SKU-1', quantity: 5 }],
+      { street: '123 Le Loi' },
+      { name: 'A', phone: '0900000000' },
+      'ONLINE',
+      0,
+    );
+
+    expect(documentNumber.next).toHaveBeenCalledWith('GI');
+    expect(repo.createGoodsIssue).toHaveBeenCalledWith(
+      expect.objectContaining({
+        orderId,
+        orderCode: 'ORD-20260730-0001',
+        goodsIssueNumber: 'GI-20260730-0001',
+      }),
+    );
+  });
+
+  it('event retry dùng phiếu đã có và không cấp mã mới', async () => {
+    repo.findByOrderId.mockResolvedValue(goodsIssue());
+
+    await service.createFromOrderReady(
+      orderId,
+      'ORD-20260730-0001',
+      [{ sku: 'SKU-1', quantity: 5 }],
+      {},
+      { name: 'A', phone: '0900000000' },
+      'ONLINE',
+      0,
+    );
+
+    expect(documentNumber.next).not.toHaveBeenCalled();
+    expect(repo.createGoodsIssue).not.toHaveBeenCalled();
   });
 
   it('gợi ý pick theo FEFO trước, rồi khoảng cách cho cùng hạn dùng', async () => {

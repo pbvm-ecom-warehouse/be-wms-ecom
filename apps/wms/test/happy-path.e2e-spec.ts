@@ -380,6 +380,7 @@ describe('WMS happy-path (e2e)', () => {
     orderId = `e2e-order-${uniqueSuffix}`;
     const payload: OrderReadyToFulfillPayload = {
       orderId,
+      orderCode: `ORD-E2E-${uniqueSuffix}`,
       items: [{ sku: itemSku, quantity: ISSUE_QTY }],
       shippingAddress: { line1: 'test' },
       recipient: { name: 'E2E Recipient', phone: '0900000000' },
@@ -401,6 +402,8 @@ describe('WMS happy-path (e2e)', () => {
       goodsIssue = await goodsIssueRepo.findByOrderId(orderId);
     }
     expect(goodsIssue).not.toBeNull();
+    expect(goodsIssue!.goodsIssueNumber).toMatch(/^GI-\d{8}-\d{4}$/);
+    expect(goodsIssue!.orderCode).toBe(payload.orderCode);
     goodsIssueId = goodsIssue!._id.toString();
   }, 10000);
 

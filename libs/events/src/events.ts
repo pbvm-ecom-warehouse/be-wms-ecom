@@ -84,6 +84,8 @@ export interface StockReserveFailedPayload {
 
 export interface OrderReadyToFulfillPayload {
   orderId: string;
+  /** Mã đơn nghiệp vụ từ Ecommerce; WMS lưu snapshot, không đọc chéo DB. */
+  orderCode: string;
   items: { sku: string; quantity: number }[];
   shippingAddress: Record<string, unknown>;
   recipient: { name: string; phone: string };

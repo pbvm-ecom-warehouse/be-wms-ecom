@@ -31,6 +31,16 @@ describe('GoodsIssueSchema', () => {
     expect(statusIndex).toBeDefined();
   });
 
+  it('có mã phiếu unique sparse và orderCode snapshot nullable cho dữ liệu cũ', () => {
+    const paths = GoodsIssueSchema.paths;
+    expect(paths['goodsIssueNumber']).toBeDefined();
+    expect(paths['orderCode']).toBeDefined();
+    const numberIndex = GoodsIssueSchema.indexes().find(
+      ([def]) => def['goodsIssueNumber'] === 1,
+    );
+    expect(numberIndex?.[1]).toMatchObject({ unique: true, sparse: true });
+  });
+
   it('export GoodsIssue class dùng được với SchemaFactory (smoke test)', () => {
     expect(GoodsIssue).toBeDefined();
   });
