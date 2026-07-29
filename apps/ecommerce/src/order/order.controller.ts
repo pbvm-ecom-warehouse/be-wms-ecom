@@ -6,6 +6,7 @@ import {
   Param,
   Query,
   Post,
+  Patch,
   UseGuards,
 } from '@nestjs/common';
 import {
@@ -28,6 +29,7 @@ import { OrderService } from './order.service';
 import { CheckoutDto } from './dto/checkout.dto';
 import {
   CancelOrderDto,
+  ManualPaymentDto,
   OrderFilterQueryDto,
   OrderResponseDto,
   SuccessResponseDto,
@@ -174,6 +176,33 @@ export class OrderAdminController {
       throw new AppException('VALIDATION_FAILED', 'ID đơn hàng không hợp lệ');
     }
     const order = await this.orderService.findById(id);
+    return plainToInstance(OrderResponseDto, order, {
+      excludeExtraneousValues: true,
+    });
+  }
+
+  @Patch(':id/manual-payment')
+  @ApiOperation({
+    summary:
+      '[Admin] Xác nhận thanh toán thủ công cho đợt hiện tại (Dùng làm backup khi PayOS lỗi)',
+  })
+  @ApiParam({ name: 'id', description: 'ID đơn hàng' })
+  @ApiOkResponse({ type: OrderResponseDto })
+  async manualPayment(
+    @Param('id') id: string,
+    @Body() dto: ManualPaymentDto,
+  ) {
+    if (!Types.ObjectId.isValid(id)) {
+      throw new AppException('VALIDATION_FAILED', 'ID đơn hàng không hợp lệ');
+    }
+    const txnId = dto.providerTxnId || `MANUAL_${Date.now()}`;
+    const order = await this.orderService.onPaymentSuccess(
+      id,
+      txnId,
+      dto.amount,
+      'MANUAL_ADMIN',
+      { reason: 'Admin xác nhận thủ công' },
+    );
     return plainToInstance(OrderResponseDto, order, {
       excludeExtraneousValues: true,
     });

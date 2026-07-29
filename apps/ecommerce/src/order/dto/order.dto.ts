@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsEnum, IsOptional, IsString } from 'class-validator';
+import { IsEnum, IsOptional, IsString, IsNumber, Min } from 'class-validator';
 import { Expose, Transform, Type } from 'class-transformer';
 import { Types } from 'mongoose';
 import {
@@ -183,4 +183,19 @@ export class OrderFilterQueryDto {
   @IsOptional()
   @IsEnum(FulfillmentStatus)
   fulfillmentStatus?: FulfillmentStatus;
+}
+
+export class ManualPaymentDto {
+  @ApiProperty({ example: 12000, description: 'Số tiền thực nhận thanh toán' })
+  @IsNumber()
+  @Min(1)
+  amount!: number;
+
+  @ApiPropertyOptional({
+    example: 'BANK_TRANS_9999',
+    description: 'Mã tham chiếu giao dịch ngân hàng (tùy chọn)',
+  })
+  @IsString()
+  @IsOptional()
+  providerTxnId?: string;
 }
