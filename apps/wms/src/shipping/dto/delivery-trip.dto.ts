@@ -143,6 +143,25 @@ export class DeliveryTripResponseDto {
 
   @Expose()
   @ApiProperty()
+  cashCollectedAmount!: number;
+
+  @Expose()
+  @ApiProperty()
+  cashSettledAmount!: number;
+
+  @Expose()
+  @ApiPropertyOptional()
+  settledAt?: Date;
+
+  @Expose()
+  @Transform(({ obj }: { obj: { settledBy?: Types.ObjectId } }) =>
+    obj.settledBy?.toString(),
+  )
+  @ApiPropertyOptional()
+  settledBy?: string;
+
+  @Expose()
+  @ApiProperty()
   createdAt!: Date;
 
   @Expose()

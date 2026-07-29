@@ -37,6 +37,13 @@ export class ShipmentRepository {
     return this.model.findOne({ _id: id }).exec();
   }
 
+  findByIdWithDeliveryOtp(id: string): Promise<ShipmentDocument | null> {
+    return this.model
+      .findOne({ _id: id })
+      .select('+deliveryOtpHash +deliveryOtpSalt')
+      .exec();
+  }
+
   findManyByIds(ids: string[]): Promise<ShipmentDocument[]> {
     return this.model.find({ _id: { $in: ids } }).exec();
   }
@@ -176,6 +183,211 @@ export class ShipmentRepository {
           },
         },
         { new: true },
+      )
+      .exec();
+  }
+
+  setDeliveryOtp(
+    id: string,
+    expectedLastSentAt: Date | undefined,
+    input: {
+      tripId: Types.ObjectId;
+      hash: string;
+      salt: string;
+      sentAt: Date;
+      expiresAt: Date;
+    },
+  ): Promise<ShipmentDocument | null> {
+    const lastSentFilter = expectedLastSentAt
+      ? { deliveryOtpLastSentAt: expectedLastSentAt }
+      : { deliveryOtpLastSentAt: { $exists: false } };
+    return this.model
+      .findOneAndUpdate(
+        {
+          _id: id,
+          activeTripId: input.tripId,
+          shipmentStatus: ShipmentStatus.IN_TRANSIT,
+          ...lastSentFilter,
+        },
+        {
+          $set: {
+            deliveryOtpHash: input.hash,
+            deliveryOtpSalt: input.salt,
+            deliveryOtpLastSentAt: input.sentAt,
+            deliveryOtpExpiresAt: input.expiresAt,
+            deliveryOtpFailedAttempts: 0,
+          },
+          $unset: { deliveryOtpLockedUntil: 1 },
+        },
+        { new: true },
+      )
+      .exec();
+  }
+
+  recordDeliveryOtpFailure(
+    id: string,
+    tripId: Types.ObjectId,
+    expectedAttempts: number,
+    input: { failedAttempts: number; lockedUntil?: Date },
+  ): Promise<ShipmentDocument | null> {
+    return this.model
+      .findOneAndUpdate(
+        {
+          _id: id,
+          activeTripId: tripId,
+          shipmentStatus: ShipmentStatus.IN_TRANSIT,
+          deliveryOtpFailedAttempts: expectedAttempts,
+        },
+        {
+          $set: {
+            deliveryOtpFailedAttempts: input.failedAttempts,
+            ...(input.lockedUntil
+              ? { deliveryOtpLockedUntil: input.lockedUntil }
+              : {}),
+          },
+        },
+        { new: true },
+      )
+      .exec();
+  }
+
+  completeDelivery(
+    id: string,
+    tripId: Types.ObjectId,
+    input: {
+      deliveredAt: Date;
+      actorId: Types.ObjectId;
+      podImages: string[];
+      codCollectionMethod?: string;
+      codCollectedAmount: number;
+    },
+  ): Promise<ShipmentDocument | null> {
+    return this.model
+      .findOneAndUpdate(
+        {
+          _id: id,
+          activeTripId: tripId,
+          shipmentStatus: ShipmentStatus.IN_TRANSIT,
+        },
+        {
+          $set: {
+            shipmentStatus: ShipmentStatus.DELIVERED,
+            deliveredAt: input.deliveredAt,
+            codCollectionMethod: input.codCollectionMethod,
+            codCollectedAmount: input.codCollectedAmount,
+          },
+          $unset: {
+            deliveryOtpHash: 1,
+            deliveryOtpSalt: 1,
+            deliveryOtpExpiresAt: 1,
+            deliveryOtpLockedUntil: 1,
+          },
+          $push: {
+            statusHistory: {
+              status: ShipmentStatus.DELIVERED,
+              at: input.deliveredAt,
+              by: input.actorId,
+              note: 'Giao thành công, đã xác thực OTP và POD',
+              images: input.podImages,
+            },
+          },
+        },
+        { new: true },
+      )
+      .exec();
+  }
+
+  recordFailedDeliveryAttempt(
+    id: string,
+    tripId: Types.ObjectId,
+    expectedAttempts: number,
+    input: {
+      attemptedAt: Date;
+      actorId: Types.ObjectId;
+      reason: string;
+      nextAttempts: number;
+      returnToWarehouse: boolean;
+    },
+  ): Promise<ShipmentDocument | null> {
+    const nextStatus = input.returnToWarehouse
+      ? ShipmentStatus.RETURNING
+      : ShipmentStatus.IN_TRANSIT;
+    return this.model
+      .findOneAndUpdate(
+        {
+          _id: id,
+          activeTripId: tripId,
+          shipmentStatus: ShipmentStatus.IN_TRANSIT,
+          attempts: expectedAttempts,
+        },
+        {
+          $set: {
+            shipmentStatus: nextStatus,
+            attempts: input.nextAttempts,
+            failReason: input.reason,
+          },
+          $push: {
+            statusHistory: {
+              status: input.returnToWarehouse
+                ? ShipmentStatus.RETURNING
+                : ShipmentStatus.FAILED,
+              at: input.attemptedAt,
+              by: input.actorId,
+              note: input.reason,
+              images: [],
+            },
+          },
+        },
+        { new: true },
+      )
+      .exec();
+  }
+
+  scanReturnedPackage(
+    id: string,
+    barcode: string,
+    tripId: Types.ObjectId,
+    actorId: Types.ObjectId,
+    returnedAt: Date,
+  ): Promise<ShipmentDocument | null> {
+    return this.model
+      .findOneAndUpdate(
+        {
+          _id: id,
+          activeTripId: tripId,
+          shipmentStatus: ShipmentStatus.RETURNING,
+          packages: {
+            $elemMatch: {
+              barcode,
+              loadedTripId: tripId,
+              returnedAt: { $exists: false },
+            },
+          },
+        },
+        {
+          $set: {
+            'packages.$.returnedAt': returnedAt,
+            'packages.$.returnedBy': actorId,
+          },
+        },
+        { new: true },
+      )
+      .exec();
+  }
+
+  reassignActiveTripShipments(
+    tripId: Types.ObjectId,
+    assignedShipperId: Types.ObjectId,
+  ): Promise<unknown> {
+    return this.model
+      .updateMany(
+        {
+          activeTripId: tripId,
+          shipmentStatus: {
+            $in: [ShipmentStatus.READY, ShipmentStatus.IN_TRANSIT],
+          },
+        },
+        { $set: { assignedShipperId } },
       )
       .exec();
   }

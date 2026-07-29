@@ -5,12 +5,23 @@ import { AppException, CloudinaryService } from '@app/common';
 import { WmsRole } from '@app/auth';
 import { EVENTS, QUEUES, type ShipmentEventPayload } from '@app/events';
 import { Types } from 'mongoose';
+import { ConfigService } from '@nestjs/config';
+import {
+  createHmac,
+  randomBytes,
+  randomInt,
+  timingSafeEqual,
+} from 'node:crypto';
 import {
   ShipmentRepository,
   QueryShipmentInput,
   CreateShipmentFromGoodsIssueInput,
 } from './shipment.repository';
-import { ShipmentDocument, ShipmentStatus } from './schemas/shipment.schema';
+import {
+  CodCollectionMethod,
+  ShipmentDocument,
+  ShipmentStatus,
+} from './schemas/shipment.schema';
 import { CarrierService } from './carrier.service';
 import { CarrierStatus } from './schemas/carrier.schema';
 import { DocumentNumberService } from '../document-number/document-number.service';
@@ -21,6 +32,10 @@ import type { CreateShipmentPackageDto } from './dto/shipment.dto';
 // Giới hạn upload ảnh POD — theo đúng ràng buộc thiết kế IMG-01/IMG-09.
 const ALLOWED_IMAGE_MIMETYPES = ['image/jpeg', 'image/png', 'image/webp'];
 const MAX_IMAGE_SIZE_BYTES = 5 * 1024 * 1024;
+const DELIVERY_OTP_TTL_MS = 10 * 60 * 1000;
+const DELIVERY_OTP_RESEND_COOLDOWN_MS = 60 * 1000;
+const DELIVERY_OTP_MAX_FAILURES = 5;
+const DELIVERY_OTP_LOCK_MS = 15 * 60 * 1000;
 
 export interface UploadedImageFile {
   buffer: Buffer;
@@ -51,6 +66,12 @@ export interface UpdateStatusOptions {
   failReason?: string;
 }
 
+export interface DeliveryForTripResult {
+  shipment: ShipmentDocument;
+  /** Chỉ >0 ở lần CAS DELIVERED đầu tiên của COD CASH. */
+  cashCollectedAmount: number;
+}
+
 @Injectable()
 export class ShipmentService {
   constructor(
@@ -59,7 +80,9 @@ export class ShipmentService {
     private readonly documentNumberService: DocumentNumberService,
     private readonly goodsIssueRepo: GoodsIssueRepository,
     @InjectQueue(QUEUES.SHIPMENT) private readonly shipmentQueue: Queue,
+    @InjectQueue(QUEUES.NOTIFICATION) private readonly notificationQueue: Queue,
     private readonly cloudinary: CloudinaryService,
+    private readonly config: ConfigService,
   ) {}
 
   async createFromGoodsIssue(input: {
@@ -223,6 +246,12 @@ export class ShipmentService {
     const shipment = await this.repo.findById(id);
     if (!shipment) throw new AppException('SHIPMENT_NOT_FOUND');
 
+    // Shipment thuộc chuyến giao nội bộ phải đi qua API last-mile để không thể
+    // bỏ qua OTP, POD, sổ COD hoặc quy trình quét hoàn bằng endpoint legacy.
+    if (shipment.activeTripId) {
+      throw new AppException('SHIPMENT_INVALID_TRANSITION');
+    }
+
     const fromStatus = shipment.shipmentStatus;
     const allowed = VALID_TRANSITIONS[fromStatus] ?? [];
     if (!allowed.includes(toStatus)) {
@@ -380,6 +409,403 @@ export class ShipmentService {
       jobId: `${EVENTS.SHIPMENT_SHIPPED}:${id}`,
     });
     return current;
+  }
+
+  async requestDeliveryOtp(
+    id: string,
+    tripId: string,
+    actorId: string,
+  ): Promise<{ expiresAt: Date; resendAvailableAt: Date }> {
+    const shipment = await this.repo.findByIdWithDeliveryOtp(id);
+    if (!shipment) throw new AppException('SHIPMENT_NOT_FOUND');
+    this.assertTripOwner(shipment, tripId, actorId);
+    if (shipment.shipmentStatus !== ShipmentStatus.IN_TRANSIT) {
+      throw new AppException('SHIPMENT_INVALID_TRANSITION');
+    }
+
+    const now = new Date();
+    if (
+      shipment.deliveryOtpLockedUntil &&
+      shipment.deliveryOtpLockedUntil.getTime() > now.getTime()
+    ) {
+      throw new AppException('SHIPMENT_DELIVERY_OTP_LOCKED');
+    }
+    if (
+      shipment.deliveryOtpLastSentAt &&
+      now.getTime() - shipment.deliveryOtpLastSentAt.getTime() <
+        DELIVERY_OTP_RESEND_COOLDOWN_MS
+    ) {
+      throw new AppException('SHIPMENT_DELIVERY_OTP_COOLDOWN');
+    }
+
+    const code = String(randomInt(0, 1_000_000)).padStart(6, '0');
+    const salt = randomBytes(16).toString('hex');
+    const expiresAt = new Date(now.getTime() + DELIVERY_OTP_TTL_MS);
+    const updated = await this.repo.setDeliveryOtp(
+      id,
+      shipment.deliveryOtpLastSentAt,
+      {
+        tripId: new Types.ObjectId(tripId),
+        hash: this.hashDeliveryOtp(id, salt, code),
+        salt,
+        sentAt: now,
+        expiresAt,
+      },
+    );
+    if (!updated) throw new AppException('SHIPMENT_DELIVERY_OTP_COOLDOWN');
+
+    await this.notificationQueue.add(
+      EVENTS.SHIPMENT_DELIVERY_OTP_REQUESTED,
+      {
+        shipmentId: id,
+        orderId: shipment.orderId,
+        phone: shipment.recipient.phone,
+        code,
+        expiresInSeconds: DELIVERY_OTP_TTL_MS / 1000,
+      },
+      {
+        jobId: `${EVENTS.SHIPMENT_DELIVERY_OTP_REQUESTED}:${id}:${now.getTime()}`,
+      },
+    );
+    return {
+      expiresAt,
+      resendAvailableAt: new Date(
+        now.getTime() + DELIVERY_OTP_RESEND_COOLDOWN_MS,
+      ),
+    };
+  }
+
+  async deliverForTrip(
+    id: string,
+    tripId: string,
+    actorId: string,
+    otp: string,
+    codCollectionMethod: CodCollectionMethod | undefined,
+    imageFiles: UploadedImageFile[],
+  ): Promise<DeliveryForTripResult> {
+    if (imageFiles.length === 0) {
+      throw new AppException('SHIPMENT_POD_REQUIRED');
+    }
+    for (const file of imageFiles) this.validateImageFile(file);
+
+    const shipment = await this.repo.findByIdWithDeliveryOtp(id);
+    if (!shipment) throw new AppException('SHIPMENT_NOT_FOUND');
+    this.assertTripOwner(shipment, tripId, actorId);
+    if (shipment.shipmentStatus === ShipmentStatus.DELIVERED) {
+      await this.shipmentQueue.add(
+        EVENTS.SHIPMENT_DELIVERED,
+        {
+          orderId: shipment.orderId,
+          shipmentId: id,
+          trackingNumber: shipment.trackingNumber,
+        },
+        { jobId: `${EVENTS.SHIPMENT_DELIVERED}:${id}` },
+      );
+      return {
+        shipment,
+        cashCollectedAmount:
+          shipment.codCollectionMethod === CodCollectionMethod.CASH
+            ? shipment.codCollectedAmount
+            : 0,
+      };
+    }
+    if (shipment.shipmentStatus !== ShipmentStatus.IN_TRANSIT) {
+      throw new AppException('SHIPMENT_INVALID_TRANSITION');
+    }
+
+    const now = new Date();
+    if (
+      shipment.deliveryOtpLockedUntil &&
+      shipment.deliveryOtpLockedUntil.getTime() > now.getTime()
+    ) {
+      throw new AppException('SHIPMENT_DELIVERY_OTP_LOCKED');
+    }
+    if (
+      !shipment.deliveryOtpHash ||
+      !shipment.deliveryOtpSalt ||
+      !shipment.deliveryOtpExpiresAt ||
+      shipment.deliveryOtpExpiresAt.getTime() <= now.getTime()
+    ) {
+      throw new AppException('SHIPMENT_DELIVERY_OTP_EXPIRED');
+    }
+    if (
+      !this.deliveryOtpMatches(
+        id,
+        shipment.deliveryOtpSalt,
+        otp,
+        shipment.deliveryOtpHash,
+      )
+    ) {
+      const currentFailures = shipment.deliveryOtpFailedAttempts ?? 0;
+      const failedAttempts = currentFailures + 1;
+      const lockedUntil =
+        failedAttempts >= DELIVERY_OTP_MAX_FAILURES
+          ? new Date(now.getTime() + DELIVERY_OTP_LOCK_MS)
+          : undefined;
+      await this.repo.recordDeliveryOtpFailure(
+        id,
+        new Types.ObjectId(tripId),
+        currentFailures,
+        { failedAttempts, lockedUntil },
+      );
+      throw new AppException(
+        lockedUntil
+          ? 'SHIPMENT_DELIVERY_OTP_LOCKED'
+          : 'SHIPMENT_DELIVERY_OTP_INVALID',
+      );
+    }
+
+    const isCollectibleCod =
+      shipment.paymentMethod === 'COD' && shipment.codAmount > 0;
+    if (isCollectibleCod && !codCollectionMethod) {
+      throw new AppException('SHIPMENT_COD_METHOD_REQUIRED');
+    }
+    if (!isCollectibleCod && codCollectionMethod) {
+      throw new AppException('SHIPMENT_COD_METHOD_NOT_ALLOWED');
+    }
+
+    const podImages: string[] = [];
+    for (const file of imageFiles) {
+      const { url } = await this.cloudinary.uploadImage(
+        file.buffer,
+        'wms/shipment-pod',
+      );
+      podImages.push(url);
+    }
+    const cashCollectedAmount =
+      codCollectionMethod === CodCollectionMethod.CASH ? shipment.codAmount : 0;
+    const updated = await this.repo.completeDelivery(
+      id,
+      new Types.ObjectId(tripId),
+      {
+        deliveredAt: now,
+        actorId: new Types.ObjectId(actorId),
+        podImages,
+        codCollectionMethod,
+        codCollectedAmount: cashCollectedAmount,
+      },
+    );
+    if (!updated) {
+      const raced = await this.repo.findById(id);
+      if (raced?.shipmentStatus === ShipmentStatus.DELIVERED) {
+        await this.shipmentQueue.add(
+          EVENTS.SHIPMENT_DELIVERED,
+          {
+            orderId: raced.orderId,
+            shipmentId: id,
+            trackingNumber: raced.trackingNumber,
+          },
+          { jobId: `${EVENTS.SHIPMENT_DELIVERED}:${id}` },
+        );
+        return {
+          shipment: raced,
+          cashCollectedAmount:
+            raced.codCollectionMethod === CodCollectionMethod.CASH
+              ? raced.codCollectedAmount
+              : 0,
+        };
+      }
+      throw new AppException('SHIPMENT_INVALID_TRANSITION');
+    }
+
+    await this.shipmentQueue.add(
+      EVENTS.SHIPMENT_DELIVERED,
+      {
+        orderId: updated.orderId,
+        shipmentId: id,
+        trackingNumber: updated.trackingNumber,
+      },
+      { jobId: `${EVENTS.SHIPMENT_DELIVERED}:${id}` },
+    );
+    return { shipment: updated, cashCollectedAmount };
+  }
+
+  async recordFailedAttemptForTrip(
+    id: string,
+    tripId: string,
+    actorId: string,
+    reason: string,
+  ): Promise<ShipmentDocument> {
+    const shipment = await this.repo.findById(id);
+    if (!shipment) throw new AppException('SHIPMENT_NOT_FOUND');
+    this.assertTripOwner(shipment, tripId, actorId);
+    if (shipment.shipmentStatus !== ShipmentStatus.IN_TRANSIT) {
+      throw new AppException('SHIPMENT_INVALID_TRANSITION');
+    }
+    const currentAttempts = shipment.attempts ?? 0;
+    const nextAttempts = currentAttempts + 1;
+    const updated = await this.repo.recordFailedDeliveryAttempt(
+      id,
+      new Types.ObjectId(tripId),
+      currentAttempts,
+      {
+        attemptedAt: new Date(),
+        actorId: new Types.ObjectId(actorId),
+        reason,
+        nextAttempts,
+        returnToWarehouse: nextAttempts >= 3,
+      },
+    );
+    if (!updated) throw new AppException('SHIPMENT_INVALID_TRANSITION');
+    return updated;
+  }
+
+  async forceReturnForTrip(
+    id: string,
+    tripId: string,
+    actorId: string,
+    reason: string,
+  ): Promise<ShipmentDocument> {
+    const shipment = await this.repo.findById(id);
+    if (!shipment) throw new AppException('SHIPMENT_NOT_FOUND');
+    this.assertTripOwner(shipment, tripId, actorId);
+    if (
+      [ShipmentStatus.RETURNING, ShipmentStatus.RETURNED].includes(
+        shipment.shipmentStatus,
+      )
+    ) {
+      return shipment;
+    }
+    if (shipment.shipmentStatus !== ShipmentStatus.IN_TRANSIT) {
+      throw new AppException('SHIPMENT_INVALID_TRANSITION');
+    }
+    const now = new Date();
+    const updated = await this.repo.pushStatus(id, ShipmentStatus.IN_TRANSIT, {
+      shipmentStatus: ShipmentStatus.RETURNING,
+      historyEntry: {
+        status: ShipmentStatus.RETURNING,
+        at: now,
+        by: new Types.ObjectId(actorId),
+        note: reason,
+        images: [],
+      },
+    });
+    if (!updated) throw new AppException('SHIPMENT_INVALID_TRANSITION');
+    return updated;
+  }
+
+  async scanReturnPackage(
+    id: string,
+    tripId: string,
+    actorId: string,
+    barcode: string,
+  ): Promise<ShipmentDocument> {
+    const shipment = await this.repo.findById(id);
+    if (!shipment) throw new AppException('SHIPMENT_NOT_FOUND');
+    this.assertTripOwner(shipment, tripId, actorId);
+    if (shipment.shipmentStatus !== ShipmentStatus.RETURNING) {
+      throw new AppException('SHIPMENT_INVALID_TRANSITION');
+    }
+    const shipmentPackage = shipment.packages.find(
+      (candidate) => candidate.barcode === barcode,
+    );
+    if (
+      !shipmentPackage ||
+      shipmentPackage.loadedTripId?.toString() !== tripId
+    ) {
+      throw new AppException('DELIVERY_TRIP_PACKAGE_MISMATCH');
+    }
+    if (shipmentPackage.returnedAt) return shipment;
+    const updated = await this.repo.scanReturnedPackage(
+      id,
+      barcode,
+      new Types.ObjectId(tripId),
+      new Types.ObjectId(actorId),
+      new Date(),
+    );
+    if (updated) return updated;
+    const raced = await this.repo.findById(id);
+    const racedPackage = raced?.packages.find(
+      (candidate) => candidate.barcode === barcode,
+    );
+    if (racedPackage?.returnedAt) return raced!;
+    throw new AppException('SHIPMENT_RETURN_SCAN_CONFLICT');
+  }
+
+  async completeReturnForTrip(
+    id: string,
+    tripId: string,
+    actorId: string,
+  ): Promise<ShipmentDocument> {
+    const shipment = await this.repo.findById(id);
+    if (!shipment) throw new AppException('SHIPMENT_NOT_FOUND');
+    this.assertTripOwner(shipment, tripId, actorId);
+    if (shipment.shipmentStatus === ShipmentStatus.RETURNED) {
+      await this.shipmentQueue.add(
+        EVENTS.SHIPMENT_RETURNED,
+        {
+          orderId: shipment.orderId,
+          shipmentId: id,
+          trackingNumber: shipment.trackingNumber,
+        },
+        { jobId: `${EVENTS.SHIPMENT_RETURNED}:${id}` },
+      );
+      return shipment;
+    }
+    if (shipment.shipmentStatus !== ShipmentStatus.RETURNING) {
+      throw new AppException('SHIPMENT_INVALID_TRANSITION');
+    }
+    if (
+      shipment.packages.length === 0 ||
+      shipment.packages.some((shipmentPackage) => !shipmentPackage.returnedAt)
+    ) {
+      throw new AppException('SHIPMENT_RETURN_PACKAGES_INCOMPLETE');
+    }
+    const now = new Date();
+    const updated = await this.repo.pushStatus(id, ShipmentStatus.RETURNING, {
+      shipmentStatus: ShipmentStatus.RETURNED,
+      historyEntry: {
+        status: ShipmentStatus.RETURNED,
+        at: now,
+        by: new Types.ObjectId(actorId),
+        note: 'Đã bàn giao đủ kiện hoàn về kho',
+        images: [],
+      },
+    });
+    if (!updated) throw new AppException('SHIPMENT_INVALID_TRANSITION');
+    await this.shipmentQueue.add(
+      EVENTS.SHIPMENT_RETURNED,
+      {
+        orderId: updated.orderId,
+        shipmentId: id,
+        trackingNumber: updated.trackingNumber,
+      },
+      { jobId: `${EVENTS.SHIPMENT_RETURNED}:${id}` },
+    );
+    return updated;
+  }
+
+  private assertTripOwner(
+    shipment: ShipmentDocument,
+    tripId: string,
+    actorId: string,
+  ): void {
+    if (shipment.activeTripId?.toString() !== tripId) {
+      throw new AppException('DELIVERY_TRIP_SHIPMENT_CONFLICT');
+    }
+    if (shipment.assignedShipperId?.toString() !== actorId) {
+      throw new AppException('SHIPMENT_NOT_OWNER');
+    }
+  }
+
+  private hashDeliveryOtp(id: string, salt: string, code: string): string {
+    const pepper = this.config.getOrThrow<string>('WMS_JWT_SECRET');
+    return createHmac('sha256', pepper)
+      .update(`${id}:${salt}:${code}`)
+      .digest('hex');
+  }
+
+  private deliveryOtpMatches(
+    id: string,
+    salt: string,
+    code: string,
+    expectedHash: string,
+  ): boolean {
+    const actual = Buffer.from(this.hashDeliveryOtp(id, salt, code), 'hex');
+    const expected = Buffer.from(expectedHash, 'hex');
+    return (
+      actual.length === expected.length && timingSafeEqual(actual, expected)
+    );
   }
 
   private validateImageFile(file: UploadedImageFile): void {

@@ -101,6 +101,87 @@ export class DeliveryTripRepository {
       .exec();
   }
 
+  postShipmentCash(
+    id: string,
+    shipmentId: Types.ObjectId,
+    amount: number,
+  ): Promise<DeliveryTripDocument | null> {
+    return this.model
+      .findOneAndUpdate(
+        {
+          _id: id,
+          status: {
+            $in: [DeliveryTripStatus.IN_TRANSIT, DeliveryTripStatus.PAUSED],
+          },
+          cashPostedShipmentIds: { $ne: shipmentId },
+        },
+        {
+          $inc: { cashCollectedAmount: amount },
+          $addToSet: { cashPostedShipmentIds: shipmentId },
+        },
+        { new: true },
+      )
+      .exec();
+  }
+
+  settleCash(
+    id: string,
+    expectedAmount: number,
+    actorId: Types.ObjectId,
+    settledAt: Date,
+  ): Promise<DeliveryTripDocument | null> {
+    return this.model
+      .findOneAndUpdate(
+        {
+          _id: id,
+          status: DeliveryTripStatus.AWAITING_SETTLEMENT,
+          cashCollectedAmount: expectedAmount,
+        },
+        {
+          $set: {
+            status: DeliveryTripStatus.COMPLETED,
+            cashSettledAmount: expectedAmount,
+            settledAt,
+            settledBy: actorId,
+            completedAt: settledAt,
+          },
+          $push: {
+            statusHistory: {
+              status: DeliveryTripStatus.COMPLETED,
+              at: settledAt,
+              by: actorId,
+              note: `Đã đối soát tiền mặt: ${expectedAmount}`,
+            },
+          },
+        },
+        { new: true },
+      )
+      .exec();
+  }
+
+  reassign(
+    id: string,
+    expectedShipperId: Types.ObjectId,
+    newShipperId: Types.ObjectId,
+  ): Promise<DeliveryTripDocument | null> {
+    return this.model
+      .findOneAndUpdate(
+        {
+          _id: id,
+          status: DeliveryTripStatus.PAUSED,
+          assignedShipperId: expectedShipperId,
+        },
+        {
+          $set: {
+            assignedShipperId: newShipperId,
+            status: DeliveryTripStatus.IN_TRANSIT,
+          },
+        },
+        { new: true },
+      )
+      .exec();
+  }
+
   async findAll(
     query: QueryDeliveryTripInput,
   ): Promise<{ data: DeliveryTripDocument[]; total: number }> {

@@ -2,7 +2,11 @@ import { EVENTS } from '@app/events';
 import { NotificationConsumer } from './notification.consumer';
 
 describe('NotificationConsumer', () => {
-  function make(opts?: { alertEmail?: string; firebaseEnabled?: boolean }) {
+  function make(opts?: {
+    alertEmail?: string;
+    firebaseEnabled?: boolean;
+    smsWebhook?: string;
+  }) {
     const email = {
       send: jest.fn().mockResolvedValue(undefined),
       isEnabled: jest.fn().mockReturnValue(true),
@@ -16,13 +20,12 @@ describe('NotificationConsumer', () => {
     // (test case "không có WAREHOUSE_ALERT_EMAIL") với "không truyền opts" —
     // ?? sẽ gộp cả 2 trường hợp về default, làm test case đó không thể fail đúng ý.
     const config = {
-      get: jest
-        .fn()
-        .mockReturnValue(
-          opts && Object.prototype.hasOwnProperty.call(opts, 'alertEmail')
-            ? opts.alertEmail
-            : 'manager@x.com',
-        ),
+      get: jest.fn((key: string) => {
+        if (key === 'DELIVERY_SMS_WEBHOOK_URL') return opts?.smsWebhook;
+        return opts && Object.prototype.hasOwnProperty.call(opts, 'alertEmail')
+          ? opts.alertEmail
+          : 'manager@x.com';
+      }),
     };
     const consumer = new NotificationConsumer(
       email as never,
@@ -52,6 +55,36 @@ describe('NotificationConsumer', () => {
       data: {},
     } as never);
     expect(email.send).not.toHaveBeenCalled();
+  });
+
+  it('delivery OTP → gửi SMS webhook, không trả/log OTP qua API WMS', async () => {
+    const fetchSpy = jest
+      .spyOn(global, 'fetch')
+      .mockResolvedValue({ ok: true, status: 200 } as Response);
+    const { consumer } = make({
+      smsWebhook: 'https://sms.example.com/send',
+    });
+
+    await consumer.process({
+      id: 'otp-job-1',
+      name: EVENTS.SHIPMENT_DELIVERY_OTP_REQUESTED,
+      data: {
+        shipmentId: 'shipment-1',
+        orderId: 'order-1',
+        phone: '0901234567',
+        code: '123456',
+        expiresInSeconds: 600,
+      },
+    } as never);
+
+    expect(fetchSpy).toHaveBeenCalledWith(
+      'https://sms.example.com/send',
+      expect.objectContaining({
+        method: 'POST',
+        body: expect.stringContaining('0901234567'),
+      }),
+    );
+    fetchSpy.mockRestore();
   });
 
   describe('stock.low', () => {

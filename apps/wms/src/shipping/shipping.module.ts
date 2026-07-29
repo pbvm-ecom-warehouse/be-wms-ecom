@@ -20,6 +20,15 @@ import {
 import { DeliveryTripRepository } from './delivery-trip.repository';
 import { DeliveryTripService } from './delivery-trip.service';
 import { DeliveryTripController } from './delivery-trip.controller';
+import {
+  DeliveryIncident,
+  DeliveryIncidentSchema,
+} from './schemas/delivery-incident.schema';
+import { DeliveryIncidentRepository } from './delivery-incident.repository';
+import { LastMileDeliveryService } from './last-mile-delivery.service';
+import { LastMileDeliveryController } from './last-mile-delivery.controller';
+import { GoodsReturnModule } from '../goods-return/goods-return.module';
+import { UsersModule } from '../users/users.module';
 
 @Module({
   imports: [
@@ -29,14 +38,18 @@ import { DeliveryTripController } from './delivery-trip.controller';
     BullModule.registerQueue(
       { name: QUEUES.SHIPMENT },
       { name: QUEUES.SHIPMENT_INTERNAL },
+      { name: QUEUES.NOTIFICATION },
     ),
     MongooseModule.forFeature([
       { name: Carrier.name, schema: CarrierSchema },
       { name: Shipment.name, schema: ShipmentSchema },
       { name: DeliveryTrip.name, schema: DeliveryTripSchema },
+      { name: DeliveryIncident.name, schema: DeliveryIncidentSchema },
     ]),
     GoodsIssueModule, // GoodsIssueRepository — đọc snapshot recipient/paymentMethod/codAmount
     DocumentNumberModule,
+    GoodsReturnModule,
+    UsersModule,
   ],
   providers: [
     CarrierRepository,
@@ -45,9 +58,16 @@ import { DeliveryTripController } from './delivery-trip.controller';
     ShipmentService,
     DeliveryTripRepository,
     DeliveryTripService,
+    DeliveryIncidentRepository,
+    LastMileDeliveryService,
     GoodsIssuedConsumer,
   ],
-  controllers: [CarrierController, ShipmentController, DeliveryTripController],
+  controllers: [
+    CarrierController,
+    ShipmentController,
+    DeliveryTripController,
+    LastMileDeliveryController,
+  ],
   exports: [CarrierService, ShipmentService, DeliveryTripService],
 })
 export class ShippingModule {}

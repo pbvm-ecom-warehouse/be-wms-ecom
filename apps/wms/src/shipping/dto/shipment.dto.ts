@@ -13,7 +13,10 @@ import {
   ValidateNested,
 } from 'class-validator';
 import { Types } from 'mongoose';
-import { ShipmentStatus } from '../schemas/shipment.schema';
+import {
+  CodCollectionMethod,
+  ShipmentStatus,
+} from '../schemas/shipment.schema';
 
 export class AssignShipmentDto {
   @ApiProperty({ description: 'ObjectId của carrier (phải đang ACTIVE)' })
@@ -186,6 +189,17 @@ class ShipmentPackageResponseDto {
   @Expose()
   @ApiPropertyOptional()
   loadedAt?: Date;
+
+  @Expose()
+  @ApiPropertyOptional()
+  returnedAt?: Date;
+
+  @Expose()
+  @Transform(({ obj }: { obj: { returnedBy?: Types.ObjectId } }) =>
+    obj.returnedBy?.toString(),
+  )
+  @ApiPropertyOptional()
+  returnedBy?: string;
 }
 
 export class ShipmentResponseDto {
@@ -267,6 +281,14 @@ export class ShipmentResponseDto {
   codAmount!: number;
 
   @Expose()
+  @ApiPropertyOptional({ enum: CodCollectionMethod })
+  codCollectionMethod?: CodCollectionMethod;
+
+  @Expose()
+  @ApiProperty()
+  codCollectedAmount!: number;
+
+  @Expose()
   @Type(() => ShipmentPackageResponseDto)
   @ApiProperty({ type: [ShipmentPackageResponseDto] })
   packages!: ShipmentPackageResponseDto[];
@@ -291,6 +313,18 @@ export class ShipmentResponseDto {
   @Expose()
   @ApiPropertyOptional()
   deliveredAt?: Date;
+
+  @Expose()
+  @ApiPropertyOptional()
+  deliveryOtpExpiresAt?: Date;
+
+  @Expose()
+  @ApiPropertyOptional()
+  deliveryOtpLastSentAt?: Date;
+
+  @Expose()
+  @ApiPropertyOptional()
+  deliveryOtpLockedUntil?: Date;
 
   @Expose()
   @ApiProperty()
