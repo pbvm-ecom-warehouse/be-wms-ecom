@@ -78,4 +78,60 @@ describe('ShipmentRepository', () => {
       { new: true },
     );
   });
+
+  it('khóa Shipment READY vào đúng một trip bằng owner + activeTripId CAS', async () => {
+    const exec = jest.fn().mockResolvedValue({ _id: 'shipment-1' });
+    const model = {
+      findOneAndUpdate: jest.fn().mockReturnValue({ exec }),
+    };
+    const repo = new ShipmentRepository(model as never);
+    const shipperId = new Types.ObjectId();
+    const tripId = new Types.ObjectId();
+
+    await repo.reserveForTrip('shipment-1', shipperId, tripId);
+
+    expect(model.findOneAndUpdate).toHaveBeenCalledWith(
+      {
+        _id: 'shipment-1',
+        shipmentStatus: ShipmentStatus.READY,
+        assignedShipperId: shipperId,
+        activeTripId: { $exists: false },
+      },
+      { $set: { activeTripId: tripId } },
+      { new: true },
+    );
+  });
+
+  it('scan package chỉ khi Shipment thuộc trip, READY và package chưa load', async () => {
+    const exec = jest.fn().mockResolvedValue({ _id: 'shipment-1' });
+    const model = {
+      findOneAndUpdate: jest.fn().mockReturnValue({ exec }),
+    };
+    const repo = new ShipmentRepository(model as never);
+    const tripId = new Types.ObjectId();
+    const loadedAt = new Date();
+
+    await repo.loadPackage('shipment-1', 'PKG-20260730-0001', tripId, loadedAt);
+
+    expect(model.findOneAndUpdate).toHaveBeenCalledWith(
+      {
+        _id: 'shipment-1',
+        activeTripId: tripId,
+        shipmentStatus: ShipmentStatus.READY,
+        packages: {
+          $elemMatch: {
+            barcode: 'PKG-20260730-0001',
+            loadedTripId: { $exists: false },
+          },
+        },
+      },
+      {
+        $set: {
+          'packages.$.loadedTripId': tripId,
+          'packages.$.loadedAt': loadedAt,
+        },
+      },
+      { new: true },
+    );
+  });
 });

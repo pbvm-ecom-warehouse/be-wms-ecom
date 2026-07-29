@@ -312,6 +312,76 @@ export class ShipmentService {
     return updated;
   }
 
+  /**
+   * Phase chuyến giao: chỉ owner, đúng trip và đã scan đủ package mới đưa
+   * Shipment READY → IN_TRANSIT. Retry vẫn đối soát event bằng jobId ổn định.
+   */
+  async startForTrip(
+    id: string,
+    tripId: string,
+    actorId: string,
+  ): Promise<ShipmentDocument> {
+    const shipment = await this.repo.findById(id);
+    if (!shipment) throw new AppException('SHIPMENT_NOT_FOUND');
+    if (shipment.assignedShipperId?.toString() !== actorId) {
+      throw new AppException('SHIPMENT_NOT_OWNER');
+    }
+    if (shipment.activeTripId?.toString() !== tripId) {
+      throw new AppException('DELIVERY_TRIP_SHIPMENT_CONFLICT');
+    }
+    if (
+      ![ShipmentStatus.READY, ShipmentStatus.IN_TRANSIT].includes(
+        shipment.shipmentStatus,
+      )
+    ) {
+      throw new AppException('SHIPMENT_INVALID_TRANSITION');
+    }
+    if (
+      shipment.packages.length === 0 ||
+      shipment.packages.some(
+        (shipmentPackage) =>
+          shipmentPackage.loadedTripId?.toString() !== tripId,
+      )
+    ) {
+      throw new AppException('DELIVERY_TRIP_PACKAGES_INCOMPLETE');
+    }
+
+    let current = shipment;
+    if (shipment.shipmentStatus === ShipmentStatus.READY) {
+      const now = new Date();
+      const updated = await this.repo.pushStatus(id, ShipmentStatus.READY, {
+        shipmentStatus: ShipmentStatus.IN_TRANSIT,
+        historyEntry: {
+          status: ShipmentStatus.IN_TRANSIT,
+          at: now,
+          by: new Types.ObjectId(actorId),
+          note: 'Bắt đầu giao theo chuyến nội bộ',
+          images: [],
+        },
+        extra: { shippedAt: now },
+      });
+      if (!updated) {
+        const raced = await this.repo.findById(id);
+        if (raced?.shipmentStatus !== ShipmentStatus.IN_TRANSIT) {
+          throw new AppException('SHIPMENT_INVALID_TRANSITION');
+        }
+        current = raced;
+      } else {
+        current = updated;
+      }
+    }
+
+    const payload: ShipmentEventPayload = {
+      orderId: current.orderId,
+      shipmentId: id,
+      trackingNumber: current.trackingNumber,
+    };
+    await this.shipmentQueue.add(EVENTS.SHIPMENT_SHIPPED, payload, {
+      jobId: `${EVENTS.SHIPMENT_SHIPPED}:${id}`,
+    });
+    return current;
+  }
+
   private validateImageFile(file: UploadedImageFile): void {
     if (!ALLOWED_IMAGE_MIMETYPES.includes(file.mimetype)) {
       throw new AppException(

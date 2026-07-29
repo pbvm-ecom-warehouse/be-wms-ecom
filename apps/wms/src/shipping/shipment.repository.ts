@@ -37,6 +37,14 @@ export class ShipmentRepository {
     return this.model.findOne({ _id: id }).exec();
   }
 
+  findManyByIds(ids: string[]): Promise<ShipmentDocument[]> {
+    return this.model.find({ _id: { $in: ids } }).exec();
+  }
+
+  findByPackageBarcode(barcode: string): Promise<ShipmentDocument | null> {
+    return this.model.findOne({ 'packages.barcode': barcode }).exec();
+  }
+
   findByGoodsIssueId(goodsIssueId: string): Promise<ShipmentDocument | null> {
     return this.model.findOne({ goodsIssueId }).exec();
   }
@@ -101,6 +109,72 @@ export class ShipmentRepository {
       .findOneAndUpdate(
         { _id: id, shipmentStatus: fromStatus },
         { $set: { shipmentStatus: ShipmentStatus.READY } },
+        { new: true },
+      )
+      .exec();
+  }
+
+  reserveForTrip(
+    id: string,
+    assignedShipperId: Types.ObjectId,
+    tripId: Types.ObjectId,
+  ): Promise<ShipmentDocument | null> {
+    return this.model
+      .findOneAndUpdate(
+        {
+          _id: id,
+          shipmentStatus: ShipmentStatus.READY,
+          assignedShipperId,
+          activeTripId: { $exists: false },
+        },
+        { $set: { activeTripId: tripId } },
+        { new: true },
+      )
+      .exec();
+  }
+
+  releaseTripReservation(
+    id: string,
+    tripId: Types.ObjectId,
+  ): Promise<ShipmentDocument | null> {
+    return this.model
+      .findOneAndUpdate(
+        {
+          _id: id,
+          shipmentStatus: ShipmentStatus.READY,
+          activeTripId: tripId,
+        },
+        { $unset: { activeTripId: 1 } },
+        { new: true },
+      )
+      .exec();
+  }
+
+  loadPackage(
+    shipmentId: string,
+    barcode: string,
+    tripId: Types.ObjectId,
+    loadedAt: Date,
+  ): Promise<ShipmentDocument | null> {
+    return this.model
+      .findOneAndUpdate(
+        {
+          _id: shipmentId,
+          activeTripId: tripId,
+          shipmentStatus: ShipmentStatus.READY,
+          packages: {
+            $elemMatch: {
+              barcode,
+              loadedTripId: { $exists: false },
+            },
+          },
+        },
+        {
+          $set: {
+            'packages.$.loadedTripId': tripId,
+            'packages.$.loadedAt': loadedAt,
+          },
+        },
         { new: true },
       )
       .exec();

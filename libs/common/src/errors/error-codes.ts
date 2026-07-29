@@ -633,6 +633,51 @@ export const ERROR_CATALOG = {
     status: HttpStatus.CONFLICT,
     message: 'Kiện vừa được cập nhật bởi thao tác khác, vui lòng tải lại',
   },
+  SHIPMENT_PACKAGE_NOT_FOUND: {
+    status: HttpStatus.NOT_FOUND,
+    message: 'Không tìm thấy kiện theo barcode',
+  },
+  DELIVERY_TRIP_NOT_FOUND: {
+    status: HttpStatus.NOT_FOUND,
+    message: 'Không tìm thấy chuyến giao hàng',
+  },
+  DELIVERY_TRIP_NOT_OWNER: {
+    status: HttpStatus.FORBIDDEN,
+    message: 'Chuyến giao hàng không thuộc Shipper hiện tại',
+  },
+  DELIVERY_TRIP_DUPLICATE_SHIPMENT: {
+    status: HttpStatus.BAD_REQUEST,
+    message: 'Một vận đơn không được lặp trong cùng chuyến',
+  },
+  DELIVERY_TRIP_SHIPMENT_CONFLICT: {
+    status: HttpStatus.CONFLICT,
+    message:
+      'Vận đơn chưa sẵn sàng, sai Shipper hoặc đã thuộc chuyến đang hoạt động',
+  },
+  DELIVERY_TRIP_ROUTE_LOCKED: {
+    status: HttpStatus.CONFLICT,
+    message: 'Chỉ được đổi lộ trình khi chuyến còn ở trạng thái nháp',
+  },
+  DELIVERY_TRIP_ROUTE_MISMATCH: {
+    status: HttpStatus.BAD_REQUEST,
+    message: 'Thứ tự mới phải chứa đúng toàn bộ vận đơn của chuyến',
+  },
+  DELIVERY_TRIP_INVALID_TRANSITION: {
+    status: HttpStatus.CONFLICT,
+    message: 'Không thể chuyển chuyến sang trạng thái này',
+  },
+  DELIVERY_TRIP_PACKAGE_MISMATCH: {
+    status: HttpStatus.BAD_REQUEST,
+    message: 'Kiện không thuộc vận đơn nào trong chuyến này',
+  },
+  DELIVERY_TRIP_PACKAGE_ALREADY_LOADED: {
+    status: HttpStatus.CONFLICT,
+    message: 'Kiện đã được chất lên chuyến khác',
+  },
+  DELIVERY_TRIP_PACKAGES_INCOMPLETE: {
+    status: HttpStatus.CONFLICT,
+    message: 'Chưa quét đủ tất cả kiện của chuyến',
+  },
 
   // ── WMS — SKU Template / Attribute Option / Barcode Registry (issue #25) ──
   // AppException chỉ resolve status/message qua ERROR_CATALOG (xem
