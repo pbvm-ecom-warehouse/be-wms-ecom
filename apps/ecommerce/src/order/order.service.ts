@@ -144,6 +144,16 @@ export class OrderService {
     const prevPaymentStatus = order.paymentStatus as PaymentStatus;
     let nextPaymentStatus: PaymentStatus = prevPaymentStatus;
     let nextOrderStatus = order.orderStatus;
+    if (nextOrderStatus === OrderStatus.CANCELLED) {
+      if (provider === 'MANUAL_ADMIN') {
+        nextOrderStatus = OrderStatus.CONFIRMED;
+      } else {
+        this.logger.warn(
+          `Nhận thanh toán từ cổng ${provider} cho đơn hàng đã bị HỦY ${orderId} -> Bỏ qua không kích hoạt lại đơn`,
+        );
+        return order;
+      }
+    }
     let nextFulfillmentStatus = order.fulfillmentStatus;
 
     if (order.hasPrintItems) {
