@@ -103,6 +103,11 @@ export class CreateVariantDto {
   @IsBoolean()
   @IsOptional()
   isActive?: boolean = false;
+
+  @ApiPropertyOptional({ example: 'https://cloudinary.com/image.png' })
+  @IsString()
+  @IsOptional()
+  image?: string;
 }
 
 export class UpdateVariantDto extends PartialType(CreateVariantDto) {}
@@ -164,6 +169,9 @@ export class ProductVariantResponseDto {
 
   @Expose()
   isActive!: boolean;
+
+  @Expose()
+  image!: string | null;
 }
 export class ProductResponseDto {
   @Expose()

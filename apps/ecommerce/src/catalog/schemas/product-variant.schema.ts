@@ -37,6 +37,9 @@ export class ProductVariant {
 
   @Prop({ default: true })
   isActive: boolean;
+
+  @Prop({ default: null })
+  image?: string | null;
 }
 
 export type ProductVariantDocument = HydratedDocument<ProductVariant>;
