@@ -10,6 +10,7 @@ import {
 } from './scrap-note.repository';
 import type {
   CreateScrapNoteDto,
+  CreateStockCountScrapFormDto,
   RejectScrapNoteDto,
 } from './dto/scrap-note.dto';
 import {
@@ -22,6 +23,9 @@ import { LocationRepository } from '../location/location.repository';
 import { StockTransactionHelper } from '../stock/helpers/with-stock-transaction.helper';
 import { MovementType } from '../stock/schemas/stock-movement.schema';
 import { DocumentNumberService } from '../document-number/document-number.service';
+import { StockCountRepository } from '../stock-count/stock-count.repository';
+import { StockCountStatus } from '../stock-count/schemas/stock-count.schema';
+import { BarcodeService } from '../stock/barcode/barcode.service';
 
 // Giới hạn upload ảnh minh chứng hủy hàng — theo đúng ràng buộc thiết kế IMG-01/IMG-06.
 const ALLOWED_IMAGE_MIMETYPES = ['image/jpeg', 'image/png', 'image/webp'];
@@ -42,12 +46,90 @@ export class ScrapNoteService {
     private readonly locationRepo: LocationRepository,
     private readonly stockTransactionHelper: StockTransactionHelper,
     private readonly documentNumberService: DocumentNumberService,
+    private readonly stockCountRepo: StockCountRepository,
+    private readonly barcodeService: BarcodeService,
     @InjectQueue(QUEUES.STOCK) private readonly stockQueue: Queue,
     private readonly cloudinary: CloudinaryService,
   ) {}
 
   /**
-   * COUNTER/RECEIVER đề xuất hủy — tạo phiếu kèm toàn bộ dòng ngay từ đầu.
+   * COUNTER tạo/cập nhật một đề xuất hủy từ đúng dòng đã đếm. Barcode chỉ
+   * xác nhận SKU; shelf/lot phải khớp chính xác snapshot của Stock Count.
+   */
+  async createFromStockCount(
+    stockCountId: string,
+    itemId: string,
+    dto: CreateStockCountScrapFormDto,
+    actorId: string,
+    imageFiles: UploadedImageFile[] = [],
+  ): Promise<ScrapNoteDocument> {
+    const stockCount = await this.stockCountRepo.findById(stockCountId);
+    if (!stockCount) throw new AppException('STOCK_COUNT_NOT_FOUND');
+    if (stockCount.status === StockCountStatus.APPROVED) {
+      throw new AppException('STOCK_COUNT_ALREADY_APPROVED');
+    }
+
+    const lotId = dto.lotId ? new Types.ObjectId(dto.lotId) : null;
+    const line = stockCount.items.find(
+      (candidate) =>
+        candidate.itemId.toString() === itemId &&
+        candidate.shelfId.toString() === dto.shelfId &&
+        (candidate.lotId?.toString() ?? null) === (lotId?.toString() ?? null),
+    );
+    if (!line) throw new AppException('STOCK_COUNT_ITEM_MISMATCH');
+
+    const scannedItemId = await this.barcodeService.findItemIdByCode(
+      dto.itemBarcode,
+    );
+    if (!scannedItemId || scannedItemId.toString() !== itemId) {
+      throw new AppException('SCRAP_NOTE_BARCODE_MISMATCH');
+    }
+    if (line.actualQty === null) {
+      throw new AppException('SCRAP_NOTE_SOURCE_LINE_NOT_COUNTED');
+    }
+    if (dto.quantity > line.actualQty) {
+      throw new AppException('SCRAP_NOTE_QTY_EXCEEDS_ACTUAL');
+    }
+
+    const sourceId = new Types.ObjectId(stockCountId);
+    const existing = await this.repo.findBySourceStockCountId(sourceId);
+    if (existing && existing.status !== ScrapNoteStatus.DRAFT) {
+      throw new AppException('SCRAP_NOTE_ALREADY_DECIDED');
+    }
+
+    const uploadedImages: string[] = [];
+    for (const file of imageFiles) {
+      this.validateImageFile(file);
+      const { url } = await this.cloudinary.uploadImage(
+        file.buffer,
+        'wms/scrap-note',
+      );
+      uploadedImages.push(url);
+    }
+
+    const scrapNoteNumber =
+      existing?.scrapNoteNumber ??
+      (await this.documentNumberService.next('SCR'));
+    const updated = await this.repo.upsertFromStockCount({
+      sourceStockCountId: sourceId,
+      scrapNoteNumber,
+      createdBy: new Types.ObjectId(actorId),
+      line: {
+        itemId: new Types.ObjectId(itemId),
+        sku: line.sku,
+        shelfId: new Types.ObjectId(dto.shelfId),
+        lotId,
+        quantity: dto.quantity,
+        reason: dto.reason,
+        ...(imageFiles.length > 0 ? { images: uploadedImages } : {}),
+      },
+    });
+    if (!updated) throw new AppException('SCRAP_NOTE_ALREADY_DECIDED');
+    return updated;
+  }
+
+  /**
+   * ADMIN tạo phiếu hủy nội bộ độc lập — tạo kèm toàn bộ dòng ngay từ đầu.
    * Validate từng dòng: item tồn tại, isPerishable thì bắt buộc lotId, tồn
    * tại đúng vị trí (shelf+lot) phải đủ số lượng đề xuất. Không đụng tồn
    * kho thật ở bước này — chỉ MANAGER approve mới trừ.
@@ -157,6 +239,14 @@ export class ScrapNoteService {
     if (scrapNote.status !== ScrapNoteStatus.DRAFT) {
       throw new AppException('SCRAP_NOTE_ALREADY_DECIDED');
     }
+    if (scrapNote.sourceStockCountId) {
+      const source = await this.stockCountRepo.findById(
+        scrapNote.sourceStockCountId.toString(),
+      );
+      if (!source || source.status !== StockCountStatus.APPROVED) {
+        throw new AppException('SCRAP_NOTE_SOURCE_NOT_APPROVED');
+      }
+    }
 
     // S4-04: nhiều dòng scrap có thể cùng itemId (vd cùng SKU hỏng ở 2 lot khác
     // nhau) — checkAndEmitStockLow đọc lại balance sau commit nên chỉ cần gọi
@@ -164,22 +254,36 @@ export class ScrapNoteService {
     const touchedItemIds = new Set<string>();
 
     await this.stockTransactionHelper.withStockTransaction(async (session) => {
+      const claimed = await this.repo.claimApprovedIfDraft(
+        id,
+        new Types.ObjectId(actorId),
+        session,
+      );
+      if (!claimed) throw new AppException('SCRAP_NOTE_ALREADY_DECIDED');
+
       for (const line of scrapNote.items) {
-        await this.stockRepo.upsertInventory(
-          line.itemId,
-          line.shelfId,
-          line.lotId,
-          -line.quantity,
-          session,
-        );
-        const expiredDelta = line.lotId ? -line.quantity : 0;
-        await this.stockRepo.upsertBalance(
-          line.itemId,
-          -line.quantity,
-          0,
-          expiredDelta,
-          session,
-        );
+        const inventoryUpdated =
+          await this.stockRepo.decrementInventoryAtShelfIfAvailable(
+            line.itemId,
+            line.shelfId,
+            line.lotId,
+            line.quantity,
+            session,
+          );
+        if (!inventoryUpdated) {
+          throw new AppException('SCRAP_NOTE_QTY_EXCEEDS');
+        }
+
+        const balanceUpdated =
+          await this.stockRepo.decrementBalanceForScrapIfAvailable(
+            line.itemId,
+            line.quantity,
+            line.lotId ? line.quantity : 0,
+            session,
+          );
+        if (!balanceUpdated) {
+          throw new AppException('SCRAP_NOTE_QTY_EXCEEDS');
+        }
         touchedItemIds.add(line.itemId.toString());
         await this.stockRepo.insertMovement(
           {
@@ -195,7 +299,6 @@ export class ScrapNoteService {
           session,
         );
       }
-      await this.repo.setApproved(id, new Types.ObjectId(actorId), session);
     });
 
     for (const line of scrapNote.items) {

@@ -211,6 +211,38 @@ export class StockRepository {
   }
 
   /**
+   * Trừ tồn tổng cho phiếu hủy bằng một phép cập nhật có điều kiện. Không
+   * upsert và không cho onHand/expired âm khi có hai lần duyệt đồng thời.
+   */
+  async decrementBalanceForScrapIfAvailable(
+    itemId: Types.ObjectId,
+    quantity: number,
+    expiredQuantity: number,
+    session: ClientSession,
+  ): Promise<boolean> {
+    const filter: Record<string, unknown> = {
+      itemId,
+      onHand: { $gte: quantity },
+    };
+    if (expiredQuantity > 0) {
+      filter['expired'] = { $gte: expiredQuantity };
+    }
+    const updated = await this.balanceModel
+      .findOneAndUpdate(
+        filter,
+        {
+          $inc: {
+            onHand: -quantity,
+            ...(expiredQuantity > 0 ? { expired: -expiredQuantity } : {}),
+          },
+        },
+        { new: true, session },
+      )
+      .exec();
+    return updated !== null;
+  }
+
+  /**
    * Atomic check-and-reserve: tăng reserved CHỈ KHI available (onHand-reserved-expired)
    * còn đủ quantity, trong 1 query duy nhất — tránh race condition khi 2 đơn
    * checkout cùng lúc cùng sku (không tách "đọc rồi ghi").
@@ -326,6 +358,44 @@ export class StockRepository {
         { new: true, session },
       )
       .exec();
+  }
+
+  /**
+   * Trừ một lượng theo (item, shelf, lot) dù tồn đang nằm ở một hay nhiều
+   * khoang. Mọi cập nhật chạy trong transaction và từng dòng đều có guard
+   * quantity >= phần cần trừ, nên retry đồng thời không thể tạo tồn âm.
+   */
+  async decrementInventoryAtShelfIfAvailable(
+    itemId: Types.ObjectId,
+    shelfId: Types.ObjectId,
+    lotId: Types.ObjectId | null,
+    quantity: number,
+    session: ClientSession,
+  ): Promise<boolean> {
+    const rows = await this.inventoryModel
+      .find({ itemId, shelfId, lotId, quantity: { $gt: 0 } })
+      .sort({ quantity: -1, _id: 1 })
+      .session(session)
+      .exec();
+    const total = rows.reduce((sum, row) => sum + row.quantity, 0);
+    if (total < quantity) return false;
+
+    let remaining = quantity;
+    for (const row of rows) {
+      if (remaining === 0) break;
+      const decrement = Math.min(row.quantity, remaining);
+      const updated = await this.decrementInventoryIfAvailable(
+        itemId,
+        shelfId,
+        row.cellId,
+        lotId,
+        decrement,
+        session,
+      );
+      if (!updated) return false;
+      remaining -= decrement;
+    }
+    return remaining === 0;
   }
 
   /** Xuất kho chỉ được giảm khi cả onHand và reserved còn đủ. */

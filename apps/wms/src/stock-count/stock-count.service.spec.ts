@@ -10,6 +10,7 @@ const makeRepo = () => ({
   setCountedByIfDraft: jest.fn(),
   markCompletedIfAllCounted: jest.fn(),
   setApproved: jest.fn(),
+  claimApprovedIfCompleted: jest.fn(),
 });
 
 const makeStockRepo = () => ({
@@ -80,6 +81,7 @@ describe('StockCountService', () => {
     stockService = makeStockService();
     cloudinary = makeCloudinaryService();
     documentNumber = makeDocumentNumberService();
+    repo.claimApprovedIfCompleted.mockResolvedValue(true);
     svc = new StockCountService(
       repo as never,
       stockRepo as never,
@@ -410,6 +412,28 @@ describe('StockCountService', () => {
       await expect(svc.approveStockCount('sc1', {}, actorId)).rejects.toThrow();
     });
 
+    it('compare-and-set thua race không điều chỉnh tồn lần hai', async () => {
+      repo.findById.mockResolvedValue({
+        _id: 'sc1',
+        status: StockCountStatus.COMPLETED,
+        items: [
+          {
+            itemId,
+            sku: 'SKU-1',
+            shelfId,
+            lotId: null,
+            delta: 5,
+          },
+        ],
+      });
+      repo.claimApprovedIfCompleted.mockResolvedValue(false);
+
+      await expect(
+        svc.approveStockCount('sc1', {}, actorId),
+      ).rejects.toMatchObject({ code: 'STOCK_COUNT_ALREADY_APPROVED' });
+      expect(stockRepo.upsertInventory).not.toHaveBeenCalled();
+    });
+
     it('duyệt dòng lệch dương → onHand/InventoryStock += delta, ghi ADJUST, bắn stock.changed', async () => {
       repo.findById.mockResolvedValue({
         _id: new Types.ObjectId('665f1a2b3c4d5e6f7a8b9c99'),
@@ -452,7 +476,7 @@ describe('StockCountService', () => {
         { sku: 'SKU-1', delta: 5 },
         expect.objectContaining({ jobId: expect.any(String) }),
       );
-      expect(repo.setApproved).toHaveBeenCalledWith(
+      expect(repo.claimApprovedIfCompleted).toHaveBeenCalledWith(
         'sc1',
         expect.anything(),
         'Duyệt',
@@ -482,7 +506,7 @@ describe('StockCountService', () => {
       expect(stockRepo.upsertInventory).not.toHaveBeenCalled();
       expect(stockRepo.insertMovement).not.toHaveBeenCalled();
       expect(stockQueue.add).not.toHaveBeenCalled();
-      expect(repo.setApproved).toHaveBeenCalled();
+      expect(repo.claimApprovedIfCompleted).toHaveBeenCalled();
     });
 
     it('approveStockCount gọi checkAndEmitStockLow cho mỗi dòng có delta ≠ 0', async () => {

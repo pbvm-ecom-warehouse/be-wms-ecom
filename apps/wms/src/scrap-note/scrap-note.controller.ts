@@ -43,7 +43,7 @@ const TO_OPTS = { excludeExtraneousValues: true } as const;
 /**
  * Field ảnh multipart đặt tên `images_<index>` (index = vị trí dòng trong mảng
  * items) để map đúng ảnh về đúng dòng — 1 dòng có thể có nhiều ảnh. Field khác
- * (không khớp pattern) bị bỏ qua, không lỗi (COUNTER/RECEIVER có thể gửi thừa
+ * (không khớp pattern) bị bỏ qua, không lỗi (ADMIN có thể gửi thừa
  * field lạ).
  */
 const IMAGE_FIELD_PATTERN = /^images_(\d+)$/;
@@ -75,11 +75,10 @@ export class ScrapNoteController {
   constructor(private readonly svc: ScrapNoteService) {}
 
   @Post()
-  @Roles(WmsRole.COUNTER, WmsRole.RECEIVER, WmsRole.ADMIN)
+  @Roles(WmsRole.ADMIN)
   @UseInterceptors(AnyFilesInterceptor())
   @ApiOperation({
-    summary:
-      'Tạo phiếu đề xuất hủy hàng (kèm toàn bộ dòng) — [COUNTER, RECEIVER, ADMIN]',
+    summary: 'Tạo phiếu hủy nội bộ độc lập (kèm toàn bộ dòng) — [ADMIN]',
   })
   @ApiConsumes('multipart/form-data')
   @ApiBody({
@@ -150,9 +149,9 @@ export class ScrapNoteController {
   }
 
   @Get()
-  @Roles(WmsRole.COUNTER, WmsRole.RECEIVER, WmsRole.MANAGER, WmsRole.ADMIN)
+  @Roles(WmsRole.COUNTER, WmsRole.MANAGER, WmsRole.ADMIN)
   @ApiOperation({
-    summary: 'Danh sách phiếu hủy hàng — [COUNTER, RECEIVER, MANAGER, ADMIN]',
+    summary: 'Danh sách phiếu hủy hàng — [COUNTER, MANAGER, ADMIN]',
   })
   @ApiOkResponse({ type: [ScrapNoteResponseDto] })
   async listScrapNotes(@Query() query: QueryScrapNoteDto): Promise<{
@@ -179,9 +178,9 @@ export class ScrapNoteController {
   }
 
   @Get(':id')
-  @Roles(WmsRole.COUNTER, WmsRole.RECEIVER, WmsRole.MANAGER, WmsRole.ADMIN)
+  @Roles(WmsRole.COUNTER, WmsRole.MANAGER, WmsRole.ADMIN)
   @ApiOperation({
-    summary: 'Chi tiết phiếu hủy hàng — [COUNTER, RECEIVER, MANAGER, ADMIN]',
+    summary: 'Chi tiết phiếu hủy hàng — [COUNTER, MANAGER, ADMIN]',
   })
   @ApiOkResponse({ type: ScrapNoteResponseDto })
   async getScrapNote(@Param('id') id: string): Promise<ScrapNoteResponseDto> {

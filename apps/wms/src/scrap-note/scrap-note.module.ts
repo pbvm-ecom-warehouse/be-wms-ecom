@@ -9,6 +9,8 @@ import { ScrapNoteController } from './scrap-note.controller';
 import { LocationModule } from '../location/location.module';
 import { StockModule } from '../stock/stock.module';
 import { DocumentNumberModule } from '../document-number/document-number.module';
+import { StockCountModule } from '../stock-count/stock-count.module';
+import { StockCountScrapController } from './stock-count-scrap.controller';
 
 @Module({
   imports: [
@@ -20,10 +22,11 @@ import { DocumentNumberModule } from '../document-number/document-number.module'
     ]),
     LocationModule, // findShelfById
     StockModule, // StockRepository + StockTransactionHelper
+    StockCountModule, // đọc snapshot dòng kiểm kê nguồn
     DocumentNumberModule,
   ],
   providers: [ScrapNoteRepository, ScrapNoteService],
-  controllers: [ScrapNoteController],
+  controllers: [ScrapNoteController, StockCountScrapController],
   exports: [ScrapNoteService],
 })
 export class ScrapNoteModule {}

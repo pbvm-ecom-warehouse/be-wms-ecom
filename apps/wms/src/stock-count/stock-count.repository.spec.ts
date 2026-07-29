@@ -371,4 +371,34 @@ describe('StockCountRepository', () => {
       );
     });
   });
+
+  describe('claimApprovedIfCompleted', () => {
+    it('chỉ claim khi status còn COMPLETED trong cùng session', async () => {
+      const approvedBy = new Types.ObjectId();
+      const session = {} as never;
+      model.findOneAndUpdate.mockReturnValue({
+        exec: jest.fn().mockResolvedValue({ _id: 'sc1' }),
+      });
+
+      const claimed = await repo.claimApprovedIfCompleted(
+        'sc1',
+        approvedBy,
+        'Duyệt',
+        session,
+      );
+
+      expect(claimed).toBe(true);
+      expect(model.findOneAndUpdate).toHaveBeenCalledWith(
+        { _id: 'sc1', status: StockCountStatus.COMPLETED },
+        {
+          $set: {
+            status: StockCountStatus.APPROVED,
+            approvedBy,
+            approveReason: 'Duyệt',
+          },
+        },
+        { new: true, session },
+      );
+    });
+  });
 });

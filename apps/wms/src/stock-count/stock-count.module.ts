@@ -23,6 +23,6 @@ import { DocumentNumberModule } from '../document-number/document-number.module'
   ],
   providers: [StockCountRepository, StockCountService],
   controllers: [StockCountController],
-  exports: [StockCountService],
+  exports: [StockCountService, StockCountRepository],
 })
 export class StockCountModule {}
