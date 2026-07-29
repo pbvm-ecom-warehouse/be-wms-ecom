@@ -142,4 +142,87 @@ export class AnalyticsService {
       orderCount: item.orderCount,
     }));
   }
+
+  async getMonthlyComparison() {
+    const now = new Date();
+    
+    // Khởi tạo mốc thời gian cho THÁNG NÀY (Từ ngày 1 đầu tháng đến hiện tại)
+    const startOfCurrentMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    const endOfCurrentMonth = now;
+
+    // Khởi tạo mốc thời gian cho THÁNG TRƯỚC (Song song: ví dụ tháng này từ 1-29/7 thì tháng trước so sánh 1-29/6)
+    const startOfPreviousMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    const endOfPreviousMonth = new Date(now.getFullYear(), now.getMonth() - 1, now.getDate(), now.getHours(), now.getMinutes(), now.getSeconds());
+
+    // 1. Aggregation cho Đơn hàng (Doanh thu & Số lượng đơn)
+    const aggregateOrders = async (start: Date, end: Date) => {
+      const res = await this.orderModel.aggregate([
+        {
+          $match: {
+            paymentStatus: { $in: [PaymentStatus.PAID, PaymentStatus.DEPOSIT_PAID, PaymentStatus.PROGRESS_PAID] },
+            createdAt: { $gte: start, $lte: end },
+          },
+        },
+        {
+          $group: {
+            _id: null,
+            totalRevenue: { $sum: '$total' },
+            totalOrders: { $sum: 1 },
+          },
+        },
+      ]);
+      return {
+        revenue: res[0]?.totalRevenue ?? 0,
+        orders: res[0]?.totalOrders ?? 0,
+      };
+    };
+
+    // 2. Aggregation cho Khách hàng (Đăng ký mới)
+    const countNewCustomers = async (start: Date, end: Date) => {
+      return this.userModel.countDocuments({
+        type: 'customer',
+        createdAt: { $gte: start, $lte: end },
+      });
+    };
+
+    const [currentMonthData, previousMonthData, currentNewCustomers, previousNewCustomers] = await Promise.all([
+      aggregateOrders(startOfCurrentMonth, endOfCurrentMonth),
+      aggregateOrders(startOfPreviousMonth, endOfPreviousMonth),
+      countNewCustomers(startOfCurrentMonth, endOfCurrentMonth),
+      countNewCustomers(startOfPreviousMonth, endOfPreviousMonth),
+    ]);
+
+    // Tính toán AOV (Average Order Value)
+    const currentAov = currentMonthData.orders > 0 ? currentMonthData.revenue / currentMonthData.orders : 0;
+    const previousAov = previousMonthData.orders > 0 ? previousMonthData.revenue / previousMonthData.orders : 0;
+
+    // Hàm tính toán % tăng trưởng
+    const calculateGrowth = (current: number, previous: number) => {
+      if (previous === 0) return current > 0 ? 100 : 0;
+      return Math.round(((current - previous) / previous) * 10000) / 100; // Làm tròn 2 chữ số sau dấu phẩy
+    };
+
+    return {
+      revenue: {
+        currentValue: currentMonthData.revenue,
+        previousValue: previousMonthData.revenue,
+        growthPercentage: calculateGrowth(currentMonthData.revenue, previousMonthData.revenue),
+      },
+      orders: {
+        currentValue: currentMonthData.orders,
+        previousValue: previousMonthData.orders,
+        growthPercentage: calculateGrowth(currentMonthData.orders, previousMonthData.orders),
+      },
+      customers: {
+        currentValue: currentNewCustomers,
+        previousValue: previousNewCustomers,
+        growthPercentage: calculateGrowth(currentNewCustomers, previousNewCustomers),
+      },
+      aov: {
+        currentValue: Math.round(currentAov),
+        previousValue: Math.round(previousAov),
+        growthPercentage: calculateGrowth(currentAov, previousAov),
+      },
+    };
+  }
 }

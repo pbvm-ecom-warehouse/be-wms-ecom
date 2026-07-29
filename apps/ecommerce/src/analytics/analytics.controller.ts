@@ -14,6 +14,7 @@ import {
   TopSellingQueryDto,
   DailyRevenueItemResponseDto,
   RevenueTimelineQueryDto,
+  MonthlyComparisonResponseDto,
 } from './dto/analytics.dto';
 
 @ApiTags('admin-analytics')
@@ -59,6 +60,18 @@ export class AnalyticsController {
       query.toDate,
     );
     return plainToInstance(DailyRevenueItemResponseDto, data, {
+      excludeExtraneousValues: true,
+    });
+  }
+
+  @Get('monthly-comparison')
+  @ApiOperation({
+    summary: '[Admin] So sánh hiệu năng tháng này và tháng trước (doanh thu, đơn hàng, khách mới, AOV) kèm tỷ lệ tăng trưởng',
+  })
+  @ApiOkResponse({ type: MonthlyComparisonResponseDto })
+  async getMonthlyComparison() {
+    const data = await this.analyticsService.getMonthlyComparison();
+    return plainToInstance(MonthlyComparisonResponseDto, data, {
       excludeExtraneousValues: true,
     });
   }

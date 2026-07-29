@@ -130,3 +130,39 @@ export class DailyRevenueItemResponseDto {
   })
   orderCount!: number;
 }
+
+export class MetricComparisonDto {
+  @Expose()
+  @ApiProperty({ example: 15000000, description: 'Giá trị trong kỳ hiện tại (tháng này)' })
+  currentValue!: number;
+
+  @Expose()
+  @ApiProperty({ example: 12000000, description: 'Giá trị trong kỳ trước (tháng trước)' })
+  previousValue!: number;
+
+  @Expose()
+  @ApiProperty({ example: 25.0, description: 'Phần trăm tăng trưởng (tăng: dương, giảm: âm)' })
+  growthPercentage!: number;
+}
+
+export class MonthlyComparisonResponseDto {
+  @Expose()
+  @ApiProperty({ type: MetricComparisonDto })
+  @Type(() => MetricComparisonDto)
+  revenue!: MetricComparisonDto;
+
+  @Expose()
+  @ApiProperty({ type: MetricComparisonDto })
+  @Type(() => MetricComparisonDto)
+  orders!: MetricComparisonDto;
+
+  @Expose()
+  @ApiProperty({ type: MetricComparisonDto })
+  @Type(() => MetricComparisonDto)
+  customers!: MetricComparisonDto;
+
+  @Expose()
+  @ApiProperty({ type: MetricComparisonDto })
+  @Type(() => MetricComparisonDto)
+  aov!: MetricComparisonDto;
+}
