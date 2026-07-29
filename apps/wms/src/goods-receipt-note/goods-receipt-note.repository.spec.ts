@@ -11,6 +11,7 @@ const makeModel = () => ({
   findOne: jest.fn().mockReturnThis(),
   find: jest.fn().mockReturnThis(),
   countDocuments: jest.fn().mockReturnThis(),
+  exists: jest.fn().mockReturnThis(),
   create: jest.fn(),
   findOneAndUpdate: jest.fn().mockReturnThis(),
   deleteOne: jest.fn().mockReturnThis(),
@@ -119,5 +120,34 @@ describe('GoodsReceiptNoteRepository - vòng đời duyệt', () => {
       { items },
       { new: true },
     );
+  });
+
+  it('existsOpenGrnForPurchaseOrder: trả về true khi PO có GRN đang DRAFT hoặc PENDING_APPROVAL', async () => {
+    const purchaseOrderId = new Types.ObjectId().toString();
+    model.exec.mockResolvedValue({ _id: new Types.ObjectId() });
+
+    const result =
+      await repo.existsOpenGrnForPurchaseOrder(purchaseOrderId);
+
+    expect(model.exists).toHaveBeenCalledWith({
+      purchaseOrderId: new Types.ObjectId(purchaseOrderId),
+      status: {
+        $in: [
+          GoodsReceiptNoteStatus.DRAFT,
+          GoodsReceiptNoteStatus.PENDING_APPROVAL,
+        ],
+      },
+    });
+    expect(result).toBe(true);
+  });
+
+  it('existsOpenGrnForPurchaseOrder: trả về false khi PO không có GRN nào đang mở', async () => {
+    const purchaseOrderId = new Types.ObjectId().toString();
+    model.exec.mockResolvedValue(null);
+
+    const result =
+      await repo.existsOpenGrnForPurchaseOrder(purchaseOrderId);
+
+    expect(result).toBe(false);
   });
 });
