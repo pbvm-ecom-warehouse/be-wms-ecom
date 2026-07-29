@@ -81,6 +81,7 @@ export class OrderService {
         },
         paymentMethod: 'COD',
         codAmount: order.total,
+        orderDetail: JSON.parse(JSON.stringify(order)),
       });
 
       this.logger.log(
@@ -158,16 +159,28 @@ export class OrderService {
     let nextFulfillmentStatus = order.fulfillmentStatus;
 
     if (order.hasPrintItems) {
+      // Đơn ly in KHÔNG có thanh toán 100% ngay — chỉ đi qua 3 đợt: 30% → 30% → 40%
       if (paidRatio >= 0.99) {
+        // Đợt 3 (40% cuối): in chính thức đã xong, giờ có thể xuất kho
         nextPaymentStatus = PaymentStatus.PAID;
         nextOrderStatus = OrderStatus.CONFIRMED;
-        nextFulfillmentStatus = FulfillmentStatus.ISSUED;
+        if (order.fulfillmentStatus === FulfillmentStatus.READY_TO_PICK) {
+          nextFulfillmentStatus = FulfillmentStatus.ISSUED;
+        }
+        // Các trường hợp khác (AWAITING_PRINT, SAMPLE_PRINTED...): chỉ ghi nhận PAID, giữ nguyên fulfillmentStatus
       } else if (paidRatio >= 0.59) {
         nextPaymentStatus = PaymentStatus.PROGRESS_PAID;
+        // Đợt 2: chuyển từ SAMPLE_PRINTED (đã xem xét mẫu) → AWAITING_PRINT (in chính thức)
+        if (order.fulfillmentStatus === FulfillmentStatus.SAMPLE_PRINTED) {
+          nextFulfillmentStatus = FulfillmentStatus.AWAITING_PRINT;
+        }
       } else if (paidRatio >= 0.29) {
         nextPaymentStatus = PaymentStatus.DEPOSIT_PAID;
         nextOrderStatus = OrderStatus.CONFIRMED;
-        nextFulfillmentStatus = FulfillmentStatus.AWAITING_PRINT;
+        // Đợt 1: bắt đầu in mẫu
+        if (order.fulfillmentStatus === FulfillmentStatus.NONE) {
+          nextFulfillmentStatus = FulfillmentStatus.AWAITING_PRINT;
+        }
       }
     } else {
       if (paidRatio >= 0.99) {
@@ -205,26 +218,56 @@ export class OrderService {
       );
     }
 
+    const orderDetail = JSON.parse(JSON.stringify(order));
+
     // Phát lệnh in / lệnh xuất kho theo tiến trình mới
     if (order.hasPrintItems) {
-      // Đơn in đợt 1 (vừa cọc 30%): Phát lệnh in sang WMS xưởng in
-      if (nextPaymentStatus === PaymentStatus.DEPOSIT_PAID && prevPaymentStatus !== PaymentStatus.DEPOSIT_PAID) {
+      // ── Đợt 1 (DEPOSIT_PAID, ~30%): In BẢN MẪU (quantity = 1) ──
+      if (
+        nextFulfillmentStatus === FulfillmentStatus.AWAITING_PRINT &&
+        order.fulfillmentStatus === FulfillmentStatus.NONE
+      ) {
+        await this.printQueue.add(EVENTS.PRINT_REQUESTED, {
+          orderId: `${orderId}-sample`,
+          items: order.items
+            .filter((i) => i.isPrintItem)
+            .map((i) => ({
+              sku: i.sku,
+              quantity: 1,           // Chỉ in 1 bản mẫu
+              designFile: i.designFile,
+            })),
+        });
+        this.logger.log(
+          `Đơn in custom ${orderId} -> Phát lệnh in BẢN MẪU (sample) thành công`,
+        );
+      }
+
+      // ── Đợt 2 (PROGRESS_PAID, ~60%): In CHÍNH THỨC (full quantity) ──
+      if (
+        nextFulfillmentStatus === FulfillmentStatus.AWAITING_PRINT &&
+        order.fulfillmentStatus === FulfillmentStatus.SAMPLE_PRINTED
+      ) {
         await this.printQueue.add(EVENTS.PRINT_REQUESTED, {
           orderId,
           items: order.items
             .filter((i) => i.isPrintItem)
             .map((i) => ({
               sku: i.sku,
-              quantity: i.quantity,
+              quantity: i.quantity,  // In toàn bộ số lượng chính thức
               designFile: i.designFile,
             })),
         });
         this.logger.log(
-          `Đơn in custom ${orderId} -> AWAITING_PRINT -> Phát lệnh in thành công`,
+          `Đơn in custom ${orderId} -> Phát lệnh in CHÍNH THỨC thành công`,
         );
       }
-      // Đơn in đợt 3 (vừa đóng đủ 100% ONLINE): Phát lệnh xuất kho sang WMS
-      if (nextPaymentStatus === PaymentStatus.PAID && prevPaymentStatus !== PaymentStatus.PAID) {
+
+      // ── Đợt 3 (PAID, 100% ONLINE): Phát lệnh xuất kho ──
+      if (
+        nextPaymentStatus === PaymentStatus.PAID &&
+        prevPaymentStatus !== PaymentStatus.PAID &&
+        nextFulfillmentStatus === FulfillmentStatus.ISSUED
+      ) {
         await this.orderQueue.add(EVENTS.ORDER_READY_TO_FULFILL, {
           orderId,
           items: order.items.map((i) => ({ sku: i.sku, quantity: i.quantity })),
@@ -233,7 +276,8 @@ export class OrderService {
             name: order.shippingAddress.recipientName,
             phone: order.shippingAddress.phone,
           },
-          paymentMethod: order.paymentMethod,
+          paymentMethod: order.paymentMethod as any,
+          orderDetail,
         });
         this.logger.log(
           `Đơn in custom ${orderId} -> ISSUED -> Phát lệnh xuất kho thành công`,
@@ -241,10 +285,16 @@ export class OrderService {
       }
     } else {
       // Đơn thường (không in):
-      // - Nếu là COD: phát lệnh xuất kho ngay khi cọc đợt 1 (50%) thành công
-      // - Nếu là ONLINE: phát lệnh xuất kho khi đóng đủ 100% đợt 2 thành công
-      const isCodFulfill = order.paymentMethod === PaymentMethod.COD && nextPaymentStatus === PaymentStatus.DEPOSIT_PAID && prevPaymentStatus !== PaymentStatus.DEPOSIT_PAID;
-      const isOnlineFulfill = order.paymentMethod === PaymentMethod.ONLINE && nextPaymentStatus === PaymentStatus.PAID && prevPaymentStatus !== PaymentStatus.PAID;
+      // - COD: xuất kho ngay khi cọc đợt 1 (50%)
+      // - ONLINE: xuất kho khi đóng đủ 100%
+      const isCodFulfill =
+        order.paymentMethod === PaymentMethod.COD &&
+        nextPaymentStatus === PaymentStatus.DEPOSIT_PAID &&
+        prevPaymentStatus !== PaymentStatus.DEPOSIT_PAID;
+      const isOnlineFulfill =
+        order.paymentMethod === PaymentMethod.ONLINE &&
+        nextPaymentStatus === PaymentStatus.PAID &&
+        prevPaymentStatus !== PaymentStatus.PAID;
 
       if (isCodFulfill || isOnlineFulfill) {
         await this.orderQueue.add(EVENTS.ORDER_READY_TO_FULFILL, {
@@ -255,7 +305,8 @@ export class OrderService {
             name: order.shippingAddress.recipientName,
             phone: order.shippingAddress.phone,
           },
-          paymentMethod: order.paymentMethod,
+          paymentMethod: order.paymentMethod as any,
+          orderDetail,
         });
         this.logger.log(
           `Đơn hàng thường ${orderId} -> Phát lệnh xuất kho thành công`,
@@ -383,26 +434,56 @@ export class OrderService {
     );
   }
 
-  async onPrintCompleted(orderId: string, printJobId: string) {
+  async onPrintCompleted(rawOrderId: string, printJobId: string) {
+    // WMS báo về với orderId có thể kèm hậu tố "-sample" (in bản mẫu) hoặc không (in chính thức)
+    const isSample = rawOrderId.endsWith('-sample');
+    const orderId = isSample ? rawOrderId.slice(0, -7) : rawOrderId; // cắt '-sample'
+
     const order = await this.repo.findById(orderId);
     if (!order) return;
 
-    // Gán printJobId vào item tương ứng chưa in
+    const orderDetail = JSON.parse(JSON.stringify(order));
+
+    if (isSample) {
+      // ── In BẢN MẪU xong: chuyển sang SAMPLE_PRINTED, thông báo khách/admin xem mẫu ──
+      await this.repo.updateOrder(orderId, {
+        fulfillmentStatus: FulfillmentStatus.SAMPLE_PRINTED,
+      });
+
+      const customer = await this.userRepo.findActiveById(order.customerId);
+      if (customer) {
+        await this.notifyQueue.add(
+          EVENTS.PRINT_COMPLETED,
+          {
+            orderId,
+            customerEmail: customer.email,
+            customerId: order.customerId.toString(),
+          },
+          { removeOnComplete: true },
+        );
+      }
+      this.logger.log(
+        `WMS in xong BẢN MẪU đơn ${orderId} -> SAMPLE_PRINTED -> Chờ khách xác nhận & thanh toán đợt 2`,
+      );
+      return;
+    }
+
+    // ── In CHÍNH THỨC xong: cập nhật printJobId và kiểm tra toàn bộ ──
     const items = order.items.map((item) =>
       item.isPrintItem && !item.printJobId ? { ...item, printJobId } : item,
     );
-    await this.repo.updateOrder(orderId, { items: items });
+    await this.repo.updateOrder(orderId, { items });
 
-    // Nếu tất cả ly in của đơn hàng đã được in xong
     const allPrinted = items
       .filter((i) => i.isPrintItem)
       .every((i) => !!i.printJobId);
+
     if (allPrinted) {
       await this.repo.updateOrder(orderId, {
         fulfillmentStatus: FulfillmentStatus.READY_TO_PICK,
       });
 
-      // Báo khách hàng in xong ly
+      // Báo khách hàng in chính thức xong
       const customer = await this.userRepo.findActiveById(order.customerId);
       if (customer) {
         await this.notifyQueue.add(
@@ -416,9 +497,7 @@ export class OrderService {
         );
       }
 
-      // Đối với đơn hàng in:
-      // - Nếu là COD: cho phép xuất kho luôn vì đợt 3 sẽ thu COD khi giao thành công.
-      // - Nếu là ONLINE: chỉ xuất kho khi đã đóng đủ 100% (paymentStatus = PAID).
+      // COD: xuất kho luôn (thu tiền khi giao). ONLINE: chỉ xuất khi đã PAID 100%.
       if (order.paymentMethod === PaymentMethod.COD || order.paymentStatus === PaymentStatus.PAID) {
         await this.orderQueue.add(EVENTS.ORDER_READY_TO_FULFILL, {
           orderId,
@@ -428,14 +507,15 @@ export class OrderService {
             name: order.shippingAddress.recipientName,
             phone: order.shippingAddress.phone,
           },
-          paymentMethod: order.paymentMethod,
+          paymentMethod: order.paymentMethod as any,
+          orderDetail,
         });
         this.logger.log(
-          `WMS in xong ly đơn ${orderId} -> READY_TO_PICK -> Phát lệnh xuất kho`,
+          `WMS in xong CHÍNH THỨC đơn ${orderId} -> READY_TO_PICK -> Phát lệnh xuất kho`,
         );
       } else {
         this.logger.log(
-          `WMS in xong ly đơn ${orderId} -> READY_TO_PICK -> Chờ khách thanh toán nốt online đợt 3`,
+          `WMS in xong CHÍNH THỨC đơn ${orderId} -> READY_TO_PICK -> Chờ khách thanh toán nốt online đợt 3`,
         );
       }
     }

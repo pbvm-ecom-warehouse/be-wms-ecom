@@ -75,6 +75,8 @@ export class PrintJobService {
     orderId: string,
     items: PrintRequestedItem[],
   ): Promise<void> {
+    const isSample = orderId.endsWith('-sample');
+
     const existing = await this.repo.findByOrderId(orderId);
     if (existing) {
       this.logger.warn(
@@ -119,10 +121,6 @@ export class PrintJobService {
       return;
     }
 
-    // Reserve CUP_BLANK (upsertBalance) + tạo PrintJob phải atomic: nếu tạo
-    // PrintJob thất bại giữa chừng thì reserve cũng phải rollback theo, tránh
-    // giữ tồn "mồ côi" không có PrintJob nào tham chiếu tới (và bị reserve
-    // lại lần nữa khi BullMQ retry event print.requested).
     const touchedBalances = new Map<string, { itemId: Types.ObjectId }>();
     await this.stockTransactionHelper.withStockTransaction(async (session) => {
       for (const line of lines) {
@@ -139,11 +137,10 @@ export class PrintJobService {
           });
         }
       }
-      await this.repo.createPrintJob(orderId, lines, session);
+      await this.repo.createPrintJob(orderId, lines, session, isSample);
     });
 
-    // Emit stock.changed CHỈ SAU KHI transaction đã commit thành công — job
-    // BullMQ là side-effect ngoài DB, không thể rollback nếu transaction fail.
+    // Emit stock.changed CHỈ SAU KHI transaction đã commit thành công
     for (const line of lines) {
       if (line.reservedQty > 0) {
         await this.publishBlankStockChanged(
@@ -154,11 +151,13 @@ export class PrintJobService {
       }
     }
 
-    // S4-04: kiểm tra ngưỡng thấp tồn cho từng item đã reserve —
-    // sau khi transaction commit.
     for (const { itemId } of touchedBalances.values()) {
       await this.stockService.checkAndEmitStockLow(itemId);
     }
+
+    this.logger.log(
+      `PrintJob tạo thành công orderId=${orderId} isSample=${isSample} lines=${lines.length}`,
+    );
   }
 
   private async resolveOutputItem(

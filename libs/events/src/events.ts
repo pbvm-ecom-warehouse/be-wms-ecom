@@ -89,6 +89,7 @@ export interface OrderReadyToFulfillPayload {
   recipient: { name: string; phone: string };
   paymentMethod: 'COD' | 'ONLINE';
   codAmount?: number;
+  orderDetail?: Record<string, any>;
 }
 
 export interface OrderCancelledPayload {

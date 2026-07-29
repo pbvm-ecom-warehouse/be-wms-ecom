@@ -64,6 +64,11 @@ export class QueryPrintJobDto {
   @IsEnum(PrintJobStatus)
   status?: PrintJobStatus;
 
+  @ApiPropertyOptional({ description: 'Lọc lệnh in mẫu (true) hoặc chính thức (false)' })
+  @IsOptional()
+  @Transform(({ value }) => value === 'true' ? true : value === 'false' ? false : undefined)
+  isSample?: boolean;
+
   @ApiPropertyOptional({ default: 1, minimum: 1 })
   @IsOptional()
   @Type(() => Number)
@@ -131,6 +136,14 @@ export class PrintJobResponseDto {
   @Expose()
   @ApiProperty()
   orderId!: string;
+
+  /**
+   * True nếu đây là lệnh in BẢN MẪU (orderId kết thúc bằng "-sample").
+   * Được lưu trực tiếp trong DB — thợ in dùng trường này để phân biệt mục đích lệnh in.
+   */
+  @Expose()
+  @ApiProperty({ description: 'true = in bản mẫu, false = in chính thức' })
+  isSample!: boolean;
 
   @Expose()
   @ApiProperty({ enum: PrintJobStatus })

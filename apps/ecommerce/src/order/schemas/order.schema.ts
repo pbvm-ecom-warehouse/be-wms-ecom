@@ -25,6 +25,7 @@ export enum OrderStatus {
 export enum FulfillmentStatus {
   NONE = 'NONE',
   AWAITING_PRINT = 'AWAITING_PRINT',
+  SAMPLE_PRINTED = 'SAMPLE_PRINTED',
   READY_TO_PICK = 'READY_TO_PICK',
   ISSUED = 'ISSUED',
   SHIPPED = 'SHIPPED',

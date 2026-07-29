@@ -59,6 +59,13 @@ export class PrintJob {
   @Prop({ required: true, unique: true })
   orderId!: string;
 
+  /**
+   * true = lệnh in BẢN MẪU (quantity=1, chờ khách duyệt rồi mới in chính thức).
+   * false = lệnh in CHÍNH THỨC (in hàng loạt đủ số lượng đơn).
+   */
+  @Prop({ type: Boolean, default: false })
+  isSample!: boolean;
+
   @Prop({ enum: PrintJobStatus, default: PrintJobStatus.PENDING })
   status!: PrintJobStatus;
 

@@ -19,6 +19,7 @@ export interface CreatePrintJobLineInput {
 
 export interface QueryPrintJobInput {
   status?: PrintJobStatus;
+  isSample?: boolean;
   page?: number;
   limit?: number;
 }
@@ -45,11 +46,13 @@ export class PrintJobRepository {
     orderId: string,
     lines: CreatePrintJobLineInput[],
     session: ClientSession,
+    isSample = false,
   ): Promise<PrintJobDocument> {
     const [doc] = await this.model.create(
       [
         {
           orderId,
+          isSample,
           status: PrintJobStatus.PENDING,
           items: lines.map((l) => ({
             inputItemId: l.inputItemId,
@@ -75,6 +78,7 @@ export class PrintJobRepository {
     const limit = query.limit ?? 20;
     const filter: Record<string, unknown> = {};
     if (query.status) filter['status'] = query.status;
+    if (query.isSample !== undefined) filter['isSample'] = query.isSample;
 
     const [data, total] = await Promise.all([
       this.model
