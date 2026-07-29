@@ -38,7 +38,7 @@ export class ProductVariant {
   @Prop({ default: true })
   isActive: boolean;
 
-  @Prop({ default: null })
+  @Prop({ type: String, default: null })
   image?: string | null;
 }
 
