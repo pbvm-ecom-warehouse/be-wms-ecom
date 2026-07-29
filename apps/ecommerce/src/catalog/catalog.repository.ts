@@ -70,15 +70,35 @@ export class CatalogRepository {
     return created._id;
   }
 
-  async findOrCreateProductForVariant(type: string): Promise<Types.ObjectId> {
-    const slug = `san-pham-kho-${type.toLowerCase()}`;
+  async findOrCreateProductForVariant(
+    sku: string,
+    type: string,
+    attributes: Record<string, string>,
+  ): Promise<Types.ObjectId> {
+    let productName = `Sản phẩm kho - ${type}`;
+
+    if (type === 'MATERIAL') {
+      // Ví dụ: attributes.category = "Trà", "Sữa", "Đường"
+      // Lấy attributes.category làm tên sản phẩm
+      productName = attributes['category'] || 'Nguyên liệu';
+    } else if (type === 'PACKAGING') {
+      // Ví dụ: attributes.packaging = "Ống hút", "Túi", "Hộp", "Nắp ly"
+      // Lấy attributes.packaging làm tên sản phẩm
+      productName = attributes['packaging'] || 'Bao bì';
+    } else if (type === 'CUP_BLANK') {
+      productName = 'Ly trơn';
+    } else if (type === 'CUP_PRINTED') {
+      productName = 'Ly in';
+    }
+
+    const slug = `san-pham-kho-${sku.split('-').slice(0, 2).join('-').toLowerCase()}`;
     const existing = await this.productModel.findOne({ slug }).lean();
     if (existing) {
       return existing._id;
     }
     const categoryId = await this.findOrCreateDefaultCategory();
     const created = await this.productModel.create({
-      name: `Sản phẩm kho - ${type}`,
+      name: productName,
       slug,
       description: 'Sản phẩm nháp được tạo tự động từ mặt hàng kho WMS',
       categoryId,
@@ -104,7 +124,7 @@ export class CatalogRepository {
           .session(session)
           .lean();
         if (!existing) {
-          const productId = await this.findOrCreateProductForVariant(type);
+          const productId = await this.findOrCreateProductForVariant(sku, type, attributes);
           await this.variantModel.create(
             [
               {
