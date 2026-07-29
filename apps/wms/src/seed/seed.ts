@@ -546,6 +546,95 @@ async function seedZoneAndItems(
     },
     adminId,
   );
+
+  // ── THÊM CÁC ITEM MỚI ĐỂ TEST ĐỒNG BỘ NGUYÊN LIỆU (MATERIAL) ──
+  const testTeaBlack = await stockService.createWarehouseItem(
+    {
+      type: ItemType.MATERIAL,
+      templateId: 'MATERIAL',
+      attributeOptionIds: [
+        optionIds['TEA'],          // MATERIAL_CATEGORY: Trà
+        optionIds['BLK'],          // MATERIAL_TYPE: Trà đen
+        optionIds['ORG'],          // FLAVOR: Nguyên bản
+        optionIds['1KG'],          // SPEC: 1kg (Mới)
+      ],
+      name: 'Trà đen đậm vị 1KG',
+      unit: 'thùng',
+      altUnits: [{ unit: 'kg', factor: 10 }],
+      isPerishable: false,
+      minQuantity: 1,
+      depth: 30,
+      width: 20,
+      height: 20,
+    },
+    adminId,
+  ).catch(() => null);
+
+  const testTeaPeach = await stockService.createWarehouseItem(
+    {
+      type: ItemType.MATERIAL,
+      templateId: 'MATERIAL',
+      attributeOptionIds: [
+        optionIds['TEA'],          // MATERIAL_CATEGORY: Trà
+        optionIds['GRN'],          // MATERIAL_TYPE: Trà xanh
+        optionIds['PEACH'],        // FLAVOR: Vị đào (Mới)
+        optionIds['500G'],         // SPEC: 500g
+      ],
+      name: 'Trà xanh vị đào 500g',
+      unit: 'thùng',
+      altUnits: [{ unit: 'kg', factor: 10 }],
+      isPerishable: false,
+      minQuantity: 1,
+      depth: 30,
+      width: 20,
+      height: 20,
+    },
+    adminId,
+  ).catch(() => null);
+
+  const testSugarBag = await stockService.createWarehouseItem(
+    {
+      type: ItemType.MATERIAL,
+      templateId: 'MATERIAL',
+      attributeOptionIds: [
+        optionIds['SUGAR'],        // MATERIAL_CATEGORY: Đường
+        optionIds['WHITE_SUGAR'],  // MATERIAL_TYPE: Đường trắng
+        optionIds['500G'],         // SPEC: 500g (Mới)
+      ],
+      name: 'Đường cát trắng túi 500g',
+      unit: 'thùng',
+      altUnits: [{ unit: 'kg', factor: 20 }],
+      isPerishable: false,
+      minQuantity: 1,
+      depth: 30,
+      width: 20,
+      height: 20,
+    },
+    adminId,
+  ).catch(() => null);
+
+  const testMilkStrawberry = await stockService.createWarehouseItem(
+    {
+      type: ItemType.MATERIAL,
+      templateId: 'MATERIAL',
+      attributeOptionIds: [
+        optionIds['MILK'],         // MATERIAL_CATEGORY: Sữa
+        optionIds['FRESH_MILK'],   // MATERIAL_TYPE: Sữa tươi
+        optionIds['STRAWBERRY'],   // FLAVOR: Vị dâu (Mới)
+        optionIds['1L'],           // SPEC: 1 lít
+      ],
+      name: 'Sữa tươi vị dâu 1L',
+      unit: 'thùng',
+      altUnits: [{ unit: 'lít', factor: 12 }],
+      isPerishable: true,
+      nearExpiryDays: 15,
+      minQuantity: 2,
+      depth: 30,
+      width: 25,
+      height: 25,
+    },
+    adminId,
+  ).catch(() => null);
   const straw = await stockService.createWarehouseItem(
     {
       type: ItemType.PACKAGING,
