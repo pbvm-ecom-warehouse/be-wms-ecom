@@ -54,6 +54,7 @@ describe('PrintJobRepository', () => {
             orderItemId: 'order-item-1',
             inputItemId,
             outputItemId,
+            outputBarcode: '2000000000015',
             sku: 'CUP-PRINTED-1',
             quantity: 10,
             reservedQty: 8,
@@ -71,17 +72,20 @@ describe('PrintJobRepository', () => {
             orderCode: 'ORD-20260730-0001',
             stage: PrintStage.PRODUCTION,
             status: PrintJobStatus.PENDING,
+            orderDetail: undefined,
             items: [
               {
                 orderItemId: 'order-item-1',
                 inputItemId,
                 outputItemId,
+                outputBarcode: '2000000000015',
                 sku: 'CUP-PRINTED-1',
                 designFile: undefined,
                 quantity: 10,
                 reservedQty: 8,
                 remainingQty: 8,
                 lineStatus: PrintJobLineStatus.PENDING,
+                putawayRemainingQty: 0,
               },
             ],
           },
@@ -193,34 +197,97 @@ describe('PrintJobRepository', () => {
     });
   });
 
-  describe('markLineCompleted', () => {
-    it('set lineStatus=COMPLETED cho đúng dòng, trả allDone=true khi mọi dòng COMPLETED', async () => {
+  describe('production output staging', () => {
+    it('claim đúng một lần, set số lượng chờ cất và snapshot staging', async () => {
       const session = {} as never;
-      const doc = {
-        _id: 'pj1',
-        items: [{ inputItemId, lineStatus: PrintJobLineStatus.CONSUMED }],
-        save: jest.fn().mockResolvedValue(undefined),
-      };
-      model.findOne.mockResolvedValue(doc);
-      const result = await repo.markLineCompleted('pj1', inputItemId, session);
-      expect(doc.items[0].lineStatus).toBe(PrintJobLineStatus.COMPLETED);
-      expect(result).toEqual({ allDone: true });
-    });
-
-    it('trả allDone=false khi còn dòng khác chưa COMPLETED', async () => {
-      const session = {} as never;
-      const otherItemId = new Types.ObjectId();
+      const stagingShelfId = new Types.ObjectId();
       const doc = {
         _id: 'pj1',
         items: [
-          { inputItemId, lineStatus: PrintJobLineStatus.CONSUMED },
-          { inputItemId: otherItemId, lineStatus: PrintJobLineStatus.PENDING },
+          {
+            inputItemId,
+            lineStatus: PrintJobLineStatus.CONSUMED,
+            putawayRemainingQty: 0,
+          },
         ],
         save: jest.fn().mockResolvedValue(undefined),
       };
       model.findOne.mockResolvedValue(doc);
-      const result = await repo.markLineCompleted('pj1', inputItemId, session);
-      expect(result).toEqual({ allDone: false });
+
+      const result = await repo.markLineOutputStaged(
+        'pj1',
+        inputItemId,
+        8,
+        stagingShelfId,
+        session,
+      );
+
+      expect(result).toEqual({ allPrinted: true });
+      expect(doc.items[0]).toMatchObject({
+        lineStatus: PrintJobLineStatus.COMPLETED,
+        putawayRemainingQty: 8,
+      });
+      expect(doc).toMatchObject({ outputStagingShelfId: stagingShelfId });
+      expect(doc.save).toHaveBeenCalledWith({ session });
+    });
+
+    it('không claim lại dòng đã COMPLETED', async () => {
+      const session = {} as never;
+      model.findOne.mockResolvedValue({
+        items: [{ inputItemId, lineStatus: PrintJobLineStatus.COMPLETED }],
+      });
+
+      await expect(
+        repo.markLineOutputStaged(
+          'pj1',
+          inputItemId,
+          8,
+          new Types.ObjectId(),
+          session,
+        ),
+      ).resolves.toBeNull();
+    });
+
+    it('decrement putaway dùng status + elemMatch để chặn vượt số lượng/concurrent', async () => {
+      const session = {} as never;
+      const exec = jest.fn().mockResolvedValue({ _id: 'pj1' });
+      model.findOneAndUpdate.mockReturnValue({ exec });
+
+      await repo.decrementPutawayRemainingQty('pj1', inputItemId, 3, session);
+
+      expect(model.findOneAndUpdate).toHaveBeenCalledWith(
+        {
+          _id: 'pj1',
+          status: PrintJobStatus.PUTAWAY_PENDING,
+          items: {
+            $elemMatch: {
+              inputItemId,
+              putawayRemainingQty: { $gte: 3 },
+            },
+          },
+        },
+        { $inc: { 'items.$.putawayRemainingQty': -3 } },
+        { new: true, session },
+      );
+    });
+
+    it('chỉ complete khi mọi dòng đã cất hết', async () => {
+      const session = {} as never;
+      const actorId = new Types.ObjectId();
+      const doc = {
+        status: PrintJobStatus.PUTAWAY_PENDING,
+        items: [{ putawayRemainingQty: 0 }],
+        save: jest.fn().mockResolvedValue(undefined),
+      };
+      model.findOne.mockResolvedValue(doc);
+
+      await expect(
+        repo.markJobCompletedIfPutawayDone('pj1', actorId, session),
+      ).resolves.toBe(true);
+      expect(doc).toMatchObject({
+        status: PrintJobStatus.COMPLETED,
+        confirmedBy: actorId,
+      });
     });
   });
 });

@@ -51,13 +51,21 @@ describe('PrintJobSchema', () => {
     expect(statusIndex).toBeDefined();
   });
 
-  it('PrintJobStatus có đủ 4 giá trị', () => {
+  it('PrintJobStatus có trạng thái chờ cất thành phẩm', () => {
     expect(Object.values(PrintJobStatus)).toEqual([
       'PENDING',
       'IN_PROGRESS',
+      'PUTAWAY_PENDING',
       'COMPLETED',
       'CANCELLED',
     ]);
+  });
+
+  it('dòng in theo dõi riêng số lượng thành phẩm còn ở staging', () => {
+    const itemsPath = PrintJobSchema.paths['items'] as unknown as {
+      schema: { paths: Record<string, { defaultValue?: unknown }> };
+    };
+    expect(itemsPath.schema.paths['putawayRemainingQty'].defaultValue).toBe(0);
   });
 
   it('PrintJobLineStatus có đủ 3 giá trị', () => {

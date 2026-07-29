@@ -5,6 +5,7 @@ import { HydratedDocument, Types } from 'mongoose';
 export enum PrintJobStatus {
   PENDING = 'PENDING',
   IN_PROGRESS = 'IN_PROGRESS',
+  PUTAWAY_PENDING = 'PUTAWAY_PENDING',
   COMPLETED = 'COMPLETED',
   CANCELLED = 'CANCELLED',
 }
@@ -30,6 +31,10 @@ export class PrintJobItem {
   @Prop({ type: Types.ObjectId, required: true })
   outputItemId!: Types.ObjectId;
 
+  /** Barcode primary của CUP_PRINTED, snapshot để Printer quét cất hàng. */
+  @Prop()
+  outputBarcode?: string;
+
   /** Denormalized từ WarehouseItem (output).sku — để hiển thị, không dùng để tính lại */
   @Prop({ required: true })
   sku!: string;
@@ -51,6 +56,10 @@ export class PrintJobItem {
 
   @Prop({ enum: PrintJobLineStatus, default: PrintJobLineStatus.PENDING })
   lineStatus!: PrintJobLineStatus;
+
+  /** Thành phẩm PRODUCTION còn nằm ở staging, chưa cất vào khoang. */
+  @Prop({ type: Number, default: 0, min: 0 })
+  putawayRemainingQty!: number;
 }
 const PrintJobItemSchema = SchemaFactory.createForClass(PrintJobItem);
 
@@ -85,6 +94,10 @@ export class PrintJob {
 
   @Prop({ type: [PrintJobItemSchema], required: true })
   items!: PrintJobItem[];
+
+  /** Snapshot nguồn staging khi output dòng đầu tiên, không phụ thuộc layout đổi sau đó. */
+  @Prop({ type: Types.ObjectId })
+  outputStagingShelfId?: Types.ObjectId;
 
   /** Toàn bộ thông tin đơn hàng từ Ecom để thợ in xem chi tiết sản phẩm / metadata */
   @Prop({ type: Object })

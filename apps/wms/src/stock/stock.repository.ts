@@ -646,6 +646,38 @@ export class StockRepository {
     return doc;
   }
 
+  async setItemPrimaryBarcode(
+    itemId: Types.ObjectId,
+    barcode: string,
+    session: ClientSession,
+  ): Promise<void> {
+    await this.itemModel
+      .updateOne(
+        { _id: itemId, $or: [{ barcode: null }, { barcode: '' }] },
+        { $set: { barcode } },
+        { session },
+      )
+      .exec();
+  }
+
+  /** CUP_PRINTED dùng cùng quy cách vật lý với CUP_BLANK để gợi ý/capacity put-away. */
+  async syncPrintedItemStorageProfile(
+    itemId: Types.ObjectId,
+    profile: Pick<
+      CreateWarehouseItemData,
+      'unit' | 'altUnits' | 'depth' | 'width' | 'height'
+    >,
+    session: ClientSession,
+  ): Promise<void> {
+    const values = Object.fromEntries(
+      Object.entries(profile).filter(([, value]) => value !== undefined),
+    );
+    if (Object.keys(values).length === 0) return;
+    await this.itemModel
+      .updateOne({ _id: itemId }, { $set: values }, { session })
+      .exec();
+  }
+
   /**
    * Tính thể tích đã chiếm (cm³) của mọi shelf, group theo shelfId,
    * tổng hợp Σ(quantity × unitVolume) trên mọi SKU/lô của shelf đó. Dòng

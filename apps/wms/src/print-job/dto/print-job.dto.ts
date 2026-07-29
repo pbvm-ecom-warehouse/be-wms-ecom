@@ -4,6 +4,7 @@ import { Expose, Transform, Type } from 'class-transformer';
 import {
   IsEnum,
   IsInt,
+  IsMongoId,
   IsNumber,
   IsOptional,
   IsString,
@@ -41,13 +42,15 @@ export class ConsumePrintJobItemDto {
 }
 
 export class CompletePrintJobItemDto {
-  @ApiProperty({
+  @ApiPropertyOptional({
     example: 'A1-2',
-    description: 'Barcode quét vị trí shelf nhập CUP_PRINTED',
+    description:
+      'Legacy: vị trí nhập CUP_PRINTED. Output mới luôn vào staging nên field này không còn bắt buộc.',
   })
+  @IsOptional()
   @IsString()
   @MinLength(1)
-  shelfCode!: string;
+  shelfCode?: string;
 
   @ApiProperty({
     example: 20,
@@ -65,6 +68,36 @@ export class CompletePrintJobItemDto {
   @IsString()
   @IsOptional()
   proofImage?: string;
+}
+
+export class PutawayPrintJobItemDto {
+  @ApiProperty({
+    example: '2000000000015',
+    description: 'Barcode primary của CUP_PRINTED đã in',
+  })
+  @IsString()
+  @MinLength(1)
+  itemBarcode!: string;
+
+  @ApiProperty({
+    example: 'R01-T1-B1',
+    description: 'Barcode khoang đích Printer đang đứng tại đó',
+  })
+  @IsString()
+  @MinLength(1)
+  cellBarcode!: string;
+
+  @ApiProperty({ example: 20, description: 'Số lượng CUP_PRINTED cần cất' })
+  @IsInt()
+  @Min(1)
+  quantity!: number;
+
+  @ApiPropertyOptional({
+    description: 'Khoang hệ thống đã gợi ý để audit override',
+  })
+  @IsOptional()
+  @IsMongoId()
+  suggestedCellId?: string;
 }
 
 export class QueryPrintJobDto {
@@ -117,6 +150,14 @@ export class PrintJobItemResponseDto {
   outputItemId!: string;
 
   @Expose()
+  @Transform(({ value }: { value?: string }) => value ?? null)
+  @ApiProperty({
+    nullable: true,
+    description: 'Barcode primary CUP_PRINTED; null với dữ liệu legacy',
+  })
+  outputBarcode!: string | null;
+
+  @Expose()
   @ApiProperty()
   sku!: string;
 
@@ -139,6 +180,10 @@ export class PrintJobItemResponseDto {
   @Expose()
   @ApiProperty({ enum: PrintJobLineStatus })
   lineStatus!: PrintJobLineStatus;
+
+  @Expose()
+  @ApiProperty({ description: 'Số thành phẩm còn nằm ở staging' })
+  putawayRemainingQty!: number;
 }
 
 export class PrintJobResponseDto {

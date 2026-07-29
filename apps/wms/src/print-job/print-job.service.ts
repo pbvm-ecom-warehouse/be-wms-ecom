@@ -16,6 +16,7 @@ import { PrintJobRepository, QueryPrintJobInput } from './print-job.repository';
 import type {
   CompletePrintJobItemDto,
   ConsumePrintJobItemDto,
+  PutawayPrintJobItemDto,
 } from './dto/print-job.dto';
 import {
   PrintJobLineStatus,
@@ -35,14 +36,23 @@ interface ResolvedLine {
   orderItemId: string;
   inputItemId: Types.ObjectId;
   outputItemId?: Types.ObjectId;
+  outputBarcode?: string;
   sku: string;
   designFile: string;
   quantity: number;
   reservedQty: number;
+  storageProfile: {
+    unit: string;
+    altUnits?: { unit: string; factor: number }[];
+    depth?: number;
+    width?: number;
+    height?: number;
+  };
 }
 
-interface PersistableLine extends ResolvedLine {
+interface PersistableLine extends Omit<ResolvedLine, 'storageProfile'> {
   outputItemId: Types.ObjectId;
+  outputBarcode: string;
 }
 
 const PRINT_SKU_SEGMENT = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
@@ -100,7 +110,16 @@ export class PrintJobService {
     const lines: ResolvedLine[] = [];
     const blankBySku = new Map<
       string,
-      { _id: Types.ObjectId; sku: string; type: ItemType }
+      {
+        _id: Types.ObjectId;
+        sku: string;
+        type: ItemType;
+        unit: string;
+        altUnits?: { unit: string; factor: number }[];
+        depth?: number;
+        width?: number;
+        height?: number;
+      }
     >();
     const outputBySku = new Map<
       string,
@@ -108,6 +127,7 @@ export class PrintJobService {
         _id: Types.ObjectId;
         type: ItemType;
         blankItemId?: Types.ObjectId;
+        barcode?: string;
       } | null
     >();
 
@@ -126,6 +146,11 @@ export class PrintJobService {
           _id: foundBlank._id,
           sku: foundBlank.sku,
           type: foundBlank.type,
+          unit: foundBlank.unit,
+          altUnits: foundBlank.altUnits,
+          depth: foundBlank.depth,
+          width: foundBlank.width,
+          height: foundBlank.height,
         };
         blankBySku.set(item.blankSku, blank);
       }
@@ -139,6 +164,7 @@ export class PrintJobService {
               _id: foundOutput._id,
               type: foundOutput.type,
               blankItemId: foundOutput.blankItemId,
+              barcode: foundOutput.barcode,
             }
           : null;
         outputBySku.set(outputSku, output);
@@ -153,15 +179,35 @@ export class PrintJobService {
           `SKU output=${outputSku} không phải CUP_PRINTED hợp lệ của blankSku=${item.blankSku} (orderId=${orderId}).`,
         );
       }
+      let verifiedOutputBarcode = output?.barcode;
+      if (output && verifiedOutputBarcode) {
+        const registeredItemId = await this.barcodeSvc.findItemIdByCode(
+          verifiedOutputBarcode,
+        );
+        if (
+          !registeredItemId ||
+          registeredItemId.toString() !== output._id.toString()
+        ) {
+          verifiedOutputBarcode = undefined;
+        }
+      }
 
       lines.push({
         orderItemId: item.orderItemId,
         inputItemId: blank._id,
         outputItemId: output?._id,
+        outputBarcode: verifiedOutputBarcode,
         sku: outputSku,
         designFile: item.designFile,
         quantity: item.quantity,
         reservedQty: item.quantity,
+        storageProfile: {
+          unit: blank.unit,
+          altUnits: blank.altUnits,
+          depth: blank.depth,
+          width: blank.width,
+          height: blank.height,
+        },
       });
     }
 
@@ -176,6 +222,7 @@ export class PrintJobService {
           >();
           const persistedLines: PersistableLine[] = [];
           const createdOutputBySku = new Map<string, Types.ObjectId>();
+          const barcodeByOutputId = new Map<string, string>();
           for (const line of lines) {
             const key = line.inputItemId.toString();
             const aggregate = reservedByBlank.get(key);
@@ -204,16 +251,28 @@ export class PrintJobService {
 
           for (const line of lines) {
             let outputItemId = line.outputItemId;
+            let outputBarcode = line.outputBarcode;
             if (!outputItemId) {
               outputItemId = createdOutputBySku.get(line.sku);
+              outputBarcode = outputItemId
+                ? barcodeByOutputId.get(outputItemId.toString())
+                : undefined;
             }
             if (!outputItemId) {
+              outputItemId = new Types.ObjectId();
+              outputBarcode =
+                await this.barcodeSvc.generateAndReservePrimaryBarcode(
+                  outputItemId,
+                  session,
+                );
               const created = await this.stockRepo.createItem(
                 {
+                  _id: outputItemId,
                   sku: line.sku,
+                  barcode: outputBarcode,
                   name: `Ly in — ${line.sku}`,
                   type: ItemType.CUP_PRINTED,
-                  unit: 'cái',
+                  ...line.storageProfile,
                   blankItemId: line.inputItemId,
                 },
                 new Types.ObjectId(),
@@ -221,8 +280,33 @@ export class PrintJobService {
               );
               outputItemId = created._id;
               createdOutputBySku.set(line.sku, outputItemId);
+              barcodeByOutputId.set(outputItemId.toString(), outputBarcode);
+            } else {
+              await this.stockRepo.syncPrintedItemStorageProfile(
+                outputItemId,
+                line.storageProfile,
+                session,
+              );
+              if (!outputBarcode) {
+                outputBarcode =
+                  await this.barcodeSvc.generateAndReservePrimaryBarcode(
+                    outputItemId,
+                    session,
+                  );
+                await this.stockRepo.setItemPrimaryBarcode(
+                  outputItemId,
+                  outputBarcode,
+                  session,
+                );
+              }
             }
-            persistedLines.push({ ...line, outputItemId });
+            const { storageProfile, ...persistedLine } = line;
+            void storageProfile;
+            persistedLines.push({
+              ...persistedLine,
+              outputItemId,
+              outputBarcode,
+            });
           }
 
           await this.repo.createPrintJob(
@@ -524,10 +608,8 @@ export class PrintJobService {
   }
 
   /**
-   * PRINTER xác nhận in xong 1 dòng (toàn bộ reservedQty), nhập CUP_PRINTED.
-   * Cộng onHand+reserved giữ nguyên cho đúng đơn (available không đổi —
-   * PRINT_OUTPUT), KHÔNG bắn stock.changed. Khi mọi dòng COMPLETED → emit
-   * print.completed.
+   * PRINTER xác nhận in xong 1 dòng. Output luôn vào staging. SAMPLE hoàn tất
+   * và phát proof ngay; PRODUCTION chuyển PUTAWAY_PENDING, chưa phát event.
    */
   async completeItem(
     id: string,
@@ -548,7 +630,10 @@ export class PrintJobService {
     }
     const proofImage = dto.proofImage?.trim() || undefined;
     if (line.lineStatus === PrintJobLineStatus.COMPLETED) {
-      if (job.status === PrintJobStatus.COMPLETED) {
+      if (
+        job.stage === PrintStage.SAMPLE &&
+        job.status === PrintJobStatus.COMPLETED
+      ) {
         if (job.stage === PrintStage.SAMPLE && !proofImage) {
           throw new AppException(
             'VALIDATION_FAILED',
@@ -571,17 +656,34 @@ export class PrintJobService {
       );
     }
 
-    const shelf = await this.locationRepo.findShelfByCode(dto.shelfCode);
-    if (!shelf) throw new AppException('PRINT_JOB_SHELF_NOT_FOUND');
     if (dto.quantity !== line.reservedQty) {
       throw new AppException('PRINT_JOB_QTY_EXCEEDS');
     }
+    const configuredStaging = job.outputStagingShelfId
+      ? null
+      : await this.locationRepo.findStagingShelf();
+    const stagingShelfId =
+      job.outputStagingShelfId ?? configuredStaging?._id ?? null;
+    if (!stagingShelfId) {
+      throw new AppException('PRINT_JOB_STAGING_SHELF_NOT_FOUND');
+    }
 
-    let allDone = false;
+    let allPrinted = false;
     await this.stockTransactionHelper.withStockTransaction(async (session) => {
+      const staged = await this.repo.markLineOutputStaged(
+        id,
+        line.inputItemId,
+        job.stage === PrintStage.PRODUCTION ? dto.quantity : 0,
+        stagingShelfId,
+        session,
+      );
+      if (!staged) {
+        throw new AppException('PRINT_JOB_ITEM_ALREADY_COMPLETED');
+      }
+      allPrinted = staged.allPrinted;
       await this.stockRepo.upsertInventory(
         line.outputItemId,
-        shelf._id,
+        stagingShelfId,
         null,
         dto.quantity,
         session,
@@ -596,7 +698,7 @@ export class PrintJobService {
       await this.stockRepo.insertMovement(
         {
           itemId: line.outputItemId,
-          shelfId: shelf._id,
+          shelfId: stagingShelfId,
           lotId: null,
           type: MovementType.PRINT_OUTPUT,
           quantity: dto.quantity,
@@ -606,18 +708,16 @@ export class PrintJobService {
         },
         session,
       );
-      const result = await this.repo.markLineCompleted(
-        id,
-        line.inputItemId,
-        session,
-      );
-      allDone = result.allDone;
-      if (allDone) {
-        await this.repo.markJobCompleted(
-          id,
-          new Types.ObjectId(actorId),
-          session,
-        );
+      if (allPrinted) {
+        if (job.stage === PrintStage.SAMPLE) {
+          await this.repo.markJobCompleted(
+            id,
+            new Types.ObjectId(actorId),
+            session,
+          );
+        } else {
+          await this.repo.markJobPutawayPending(id, session);
+        }
       }
     });
 
@@ -627,10 +727,196 @@ export class PrintJobService {
     const updated = await this.repo.findById(id);
     if (!updated) throw new AppException('PRINT_JOB_NOT_FOUND');
 
-    if (allDone) {
+    if (allPrinted && job.stage === PrintStage.SAMPLE) {
       await this.emitPrintCompleted(job, id, proofImage);
     }
 
+    return updated;
+  }
+
+  /**
+   * PRINTER cất CUP_PRINTED từ staging vào khoang thật. Đây chỉ là chuyển vị
+   * trí nên StockBalance không đổi; event production chỉ phát sau khi cất đủ.
+   */
+  async putawayItem(
+    id: string,
+    inputItemId: string,
+    dto: PutawayPrintJobItemDto,
+    actorId: string,
+  ): Promise<PrintJobDocument> {
+    const job = await this.repo.findById(id);
+    if (!job) throw new AppException('PRINT_JOB_NOT_FOUND');
+    this.assertCompletionMapping(job);
+
+    if (
+      job.stage === PrintStage.PRODUCTION &&
+      job.status === PrintJobStatus.COMPLETED &&
+      job.items.every((item) => item.putawayRemainingQty === 0)
+    ) {
+      await this.emitPrintCompleted(job, id);
+      return job;
+    }
+    if (
+      job.stage !== PrintStage.PRODUCTION ||
+      job.status !== PrintJobStatus.PUTAWAY_PENDING
+    ) {
+      throw new AppException('PRINT_JOB_PUTAWAY_NOT_READY');
+    }
+
+    const line = job.items.find(
+      (item) => item.inputItemId.toString() === inputItemId,
+    );
+    if (!line) throw new AppException('PRINT_JOB_ITEM_MISMATCH');
+    if (dto.quantity > line.putawayRemainingQty) {
+      throw new AppException('PRINT_JOB_QTY_EXCEEDS');
+    }
+
+    const scannedItemId = await this.barcodeSvc.findItemIdByCode(
+      dto.itemBarcode,
+    );
+    if (
+      !scannedItemId ||
+      scannedItemId.toString() !== line.outputItemId.toString()
+    ) {
+      throw new AppException('PRINT_JOB_ITEM_MISMATCH');
+    }
+    const outputItem = await this.stockRepo.findItemByIdDocument(
+      scannedItemId.toString(),
+    );
+    if (!outputItem) throw new AppException('PRINT_JOB_ITEM_NOT_FOUND');
+    if (!outputItem.depth || !outputItem.width || !outputItem.height) {
+      throw new AppException('PRINT_JOB_PUTAWAY_DIMENSIONS_REQUIRED');
+    }
+    const outputDepth = outputItem.depth;
+    const outputWidth = outputItem.width;
+    const outputHeight = outputItem.height;
+
+    const cell = await this.locationRepo.findCellByCode(dto.cellBarcode);
+    if (!cell) throw new AppException('PUTAWAY_CELL_NOT_FOUND');
+    const shelf = await this.locationRepo.findShelfById(
+      cell.shelfId.toString(),
+    );
+    if (!shelf) throw new AppException('PUTAWAY_SHELF_NOT_FOUND');
+    if (shelf.isStaging) throw new AppException('PUTAWAY_SHELF_IS_STAGING');
+    const stagingShelfId = job.outputStagingShelfId;
+    if (!stagingShelfId) {
+      throw new AppException('PRINT_JOB_STAGING_SHELF_NOT_FOUND');
+    }
+
+    const unitVolume = outputDepth * outputWidth * outputHeight;
+    const suggestedCellId = dto.suggestedCellId
+      ? new Types.ObjectId(dto.suggestedCellId)
+      : null;
+    const isOverride =
+      suggestedCellId !== null &&
+      suggestedCellId.toString() !== cell._id.toString();
+    let completed = false;
+
+    await this.stockTransactionHelper.withStockTransaction(async (session) => {
+      const lineUpdated = await this.repo.decrementPutawayRemainingQty(
+        id,
+        line.inputItemId,
+        dto.quantity,
+        session,
+      );
+      if (!lineUpdated) throw new AppException('PRINT_JOB_QTY_EXCEEDS');
+
+      const activeCell = await this.locationRepo.lockActiveCellForInventory(
+        cell._id.toString(),
+        session,
+      );
+      if (!activeCell) throw new AppException('PUTAWAY_CELL_NOT_FOUND');
+      const activeShelf = await this.locationRepo.lockActiveShelfForInventory(
+        activeCell.shelfId.toString(),
+        session,
+      );
+      if (!activeShelf) throw new AppException('PUTAWAY_SHELF_NOT_FOUND');
+      if (activeShelf.isStaging) {
+        throw new AppException('PUTAWAY_SHELF_IS_STAGING');
+      }
+      if (
+        outputDepth > activeCell.innerDepth ||
+        outputWidth > activeCell.innerWidth ||
+        outputHeight > activeCell.innerHeight
+      ) {
+        throw new AppException('PUTAWAY_CELL_DIMENSION_MISMATCH');
+      }
+      const occupiedVolume = await this.stockRepo.findOccupiedVolumeForCell(
+        activeCell._id,
+        session,
+      );
+      const usableVolume =
+        activeCell.innerDepth *
+        activeCell.innerWidth *
+        activeCell.innerHeight *
+        (activeCell.fillFactor ?? 0.75);
+      if (occupiedVolume + dto.quantity * unitVolume > usableVolume) {
+        throw new AppException('PUTAWAY_CELL_CAPACITY_EXCEEDED');
+      }
+
+      const stagingUpdated = await this.stockRepo.decrementInventoryIfAvailable(
+        line.outputItemId,
+        stagingShelfId,
+        null,
+        null,
+        dto.quantity,
+        session,
+      );
+      if (!stagingUpdated) throw new AppException('STOCK_INSUFFICIENT');
+      await this.stockRepo.upsertInventory(
+        line.outputItemId,
+        activeShelf._id,
+        null,
+        dto.quantity,
+        session,
+        {
+          cellId: activeCell._id,
+          packageFactor: 1,
+          packageVolumeCm3Snapshot: unitVolume,
+        },
+      );
+      await this.stockRepo.insertMovement(
+        {
+          itemId: line.outputItemId,
+          shelfId: stagingShelfId,
+          lotId: null,
+          type: MovementType.PUTAWAY,
+          quantity: -dto.quantity,
+          refType: 'print_job',
+          refId: job._id,
+          createdBy: new Types.ObjectId(actorId),
+        },
+        session,
+      );
+      await this.stockRepo.insertMovement(
+        {
+          itemId: line.outputItemId,
+          shelfId: activeShelf._id,
+          cellId: activeCell._id,
+          lotId: null,
+          type: MovementType.PUTAWAY,
+          quantity: dto.quantity,
+          refType: 'print_job',
+          refId: job._id,
+          createdBy: new Types.ObjectId(actorId),
+          packageFactor: 1,
+          packageVolumeCm3Snapshot: unitVolume,
+          suggestedCellId,
+          actualCellId: activeCell._id,
+          isOverride,
+        },
+        session,
+      );
+      completed = await this.repo.markJobCompletedIfPutawayDone(
+        id,
+        new Types.ObjectId(actorId),
+        session,
+      );
+    });
+
+    const updated = await this.repo.findById(id);
+    if (!updated) throw new AppException('PRINT_JOB_NOT_FOUND');
+    if (completed) await this.emitPrintCompleted(updated, id);
     return updated;
   }
 
