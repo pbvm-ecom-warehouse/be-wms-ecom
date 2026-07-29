@@ -23,10 +23,10 @@ export class PutAwaySuggestionController {
   constructor(private readonly svc: PutAwaySuggestionService) {}
 
   @Get()
-  @Roles(WmsRole.RECEIVER, WmsRole.MANAGER, WmsRole.ADMIN)
+  @Roles(WmsRole.RECEIVER, WmsRole.PRINTER, WmsRole.MANAGER, WmsRole.ADMIN)
   @ApiOperation({
     summary:
-      'Gợi ý vị trí put-away theo thể tích (advisory) — [RECEIVER, MANAGER, ADMIN]',
+      'Gợi ý vị trí put-away theo thể tích (advisory) — [RECEIVER, PRINTER, MANAGER, ADMIN]',
   })
   @ApiOkResponse({ type: PutAwaySuggestionResponseDto })
   async suggest(

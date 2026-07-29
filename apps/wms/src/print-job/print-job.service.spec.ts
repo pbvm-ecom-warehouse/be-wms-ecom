@@ -12,8 +12,11 @@ const makeRepo = () => ({
   findAll: jest.fn(),
   decrementRemainingQty: jest.fn(),
   markLineConsumedIfDone: jest.fn(),
-  markLineCompleted: jest.fn(),
   markJobCompleted: jest.fn(),
+  markLineOutputStaged: jest.fn(),
+  markJobPutawayPending: jest.fn(),
+  decrementPutawayRemainingQty: jest.fn(),
+  markJobCompletedIfPutawayDone: jest.fn(),
 });
 
 const makeStockRepo = () => ({
@@ -27,10 +30,19 @@ const makeStockRepo = () => ({
   insertMovement: jest.fn(),
   createItem: jest.fn(),
   findSkuById: jest.fn(),
+  setItemPrimaryBarcode: jest.fn(),
+  syncPrintedItemStorageProfile: jest.fn(),
+  decrementInventoryIfAvailable: jest.fn(),
+  findOccupiedVolumeForCell: jest.fn(),
 });
 
 const makeLocationRepo = () => ({
   findShelfByCode: jest.fn(),
+  findStagingShelf: jest.fn(),
+  findCellByCode: jest.fn(),
+  findShelfById: jest.fn(),
+  lockActiveCellForInventory: jest.fn(),
+  lockActiveShelfForInventory: jest.fn(),
 });
 
 const makeTxHelper = () => ({
@@ -39,6 +51,7 @@ const makeTxHelper = () => ({
 
 const makeBarcodeService = () => ({
   findItemIdByCode: jest.fn(),
+  generateAndReservePrimaryBarcode: jest.fn(),
 });
 
 const makeStockService = () => ({
@@ -90,11 +103,18 @@ describe('PrintJobService', () => {
     shipmentQueue = makeShipmentQueue();
     documentNumber = makeDocumentNumberService();
     stockRepo.reserveIfAvailable.mockResolvedValue(true);
+    barcodeSvc.generateAndReservePrimaryBarcode.mockResolvedValue(
+      '2000000000015',
+    );
+    locationRepo.findStagingShelf.mockResolvedValue({
+      _id: new Types.ObjectId(),
+    });
+    repo.markLineOutputStaged.mockResolvedValue({ allPrinted: false });
     svc = new PrintJobService(
       repo as never,
       stockRepo as never,
       stockService as never,
-      locationRepo,
+      locationRepo as never,
       txHelper as never,
       barcodeSvc as never,
       documentNumber as never,
@@ -127,14 +147,19 @@ describe('PrintJobService', () => {
             _id: blankItemId,
             sku,
             type: ItemType.CUP_BLANK,
+            unit: 'cái',
+            altUnits: [{ unit: 'thùng', factor: 24 }],
+            depth: 10,
+            width: 8,
+            height: 12,
           });
         }
         return Promise.resolve(null);
       });
-      stockRepo.createItem.mockResolvedValue({
-        _id: printedItemId,
-        sku: printedSkuFor('CUP-HRT-PET-500-CLR', '042'),
-      });
+      stockRepo.createItem.mockImplementation(
+        (data: { _id: Types.ObjectId; sku: string }) =>
+          Promise.resolve({ _id: data._id, sku: data.sku }),
+      );
       stockRepo.findBalance.mockResolvedValue({
         onHand: 100,
         reserved: 20,
@@ -214,9 +239,16 @@ describe('PrintJobService', () => {
       );
       expect(stockRepo.createItem).toHaveBeenCalledWith(
         expect.objectContaining({
+          _id: expect.any(Types.ObjectId),
           sku: printedSkuFor('CUP-HRT-PET-500-CLR', '042'),
+          barcode: '2000000000015',
           type: ItemType.CUP_PRINTED,
           blankItemId,
+          unit: 'cái',
+          altUnits: [{ unit: 'thùng', factor: 24 }],
+          depth: 10,
+          width: 8,
+          height: 12,
         }),
         expect.any(Types.ObjectId),
         expect.anything(),
@@ -228,7 +260,8 @@ describe('PrintJobService', () => {
           expect.objectContaining({
             orderItemId: 'order-item-1',
             inputItemId: blankItemId,
-            outputItemId: printedItemId,
+            outputItemId: expect.any(Types.ObjectId),
+            outputBarcode: '2000000000015',
             sku: printedSkuFor('CUP-HRT-PET-500-CLR', '042'),
             designFile: 'https://cdn.example/design-042.png',
             quantity: 10,
@@ -241,6 +274,11 @@ describe('PrintJobService', () => {
         undefined,
       );
       expect(documentNumber.next).toHaveBeenCalledWith('PRN');
+      const allocatedOutputId =
+        barcodeSvc.generateAndReservePrimaryBarcode.mock.calls[0][0];
+      expect(stockRepo.createItem.mock.calls[0][0]._id).toEqual(
+        allocatedOutputId,
+      );
     });
 
     it('fallback sang orderItemId và tạo cùng output SKU cho SAMPLE/PRODUCTION của cùng dòng', async () => {
@@ -295,6 +333,16 @@ describe('PrintJobService', () => {
         'PRN-20260730-0001',
         'ORD-20260730-0001',
         undefined,
+      );
+      expect(stockRepo.setItemPrimaryBarcode).toHaveBeenCalledWith(
+        printedItemId,
+        '2000000000015',
+        expect.anything(),
+      );
+      expect(stockRepo.syncPrintedItemStorageProfile).toHaveBeenCalledWith(
+        printedItemId,
+        expect.objectContaining({ unit: undefined }),
+        expect.anything(),
       );
     });
 
@@ -856,7 +904,7 @@ describe('PrintJobService', () => {
       expect(stockRepo.upsertBalance).not.toHaveBeenCalled();
     });
 
-    it('job đã COMPLETED sẽ phát lại print.completed nếu lần enqueue trước lỗi sau commit', async () => {
+    it('production đã in xong không được ghi output lần hai qua endpoint complete', async () => {
       repo.findById.mockResolvedValue({
         ...consumedJob(),
         status: PrintJobStatus.COMPLETED,
@@ -868,29 +916,22 @@ describe('PrintJobService', () => {
         ],
       });
 
-      await svc.completeItem(
-        pjId,
-        blankItemId.toString(),
-        { shelfCode: 'A1', quantity: 10 },
-        actorId,
-      );
+      await expect(
+        svc.completeItem(
+          pjId,
+          blankItemId.toString(),
+          { shelfCode: 'A1', quantity: 10 },
+          actorId,
+        ),
+      ).rejects.toMatchObject({ code: 'PRINT_JOB_ITEM_ALREADY_COMPLETED' });
 
       expect(stockRepo.upsertInventory).not.toHaveBeenCalled();
-      expect(repo.markLineCompleted).not.toHaveBeenCalled();
-      expect(shipmentQueue.add).toHaveBeenCalledWith(
-        'print.completed',
-        expect.objectContaining({
-          orderId,
-          printJobId: pjId,
-          stage: PrintStage.PRODUCTION,
-        }),
-        { jobId: `print-job-${pjId}` },
-      );
+      expect(shipmentQueue.add).not.toHaveBeenCalled();
     });
 
-    it('throw PRINT_JOB_SHELF_NOT_FOUND khi shelf không khớp', async () => {
+    it('throw PRINT_JOB_STAGING_SHELF_NOT_FOUND khi kho chưa có staging', async () => {
       repo.findById.mockResolvedValue(consumedJob());
-      locationRepo.findShelfByCode.mockResolvedValue(null);
+      locationRepo.findStagingShelf.mockResolvedValue(null);
       await expect(
         svc.completeItem(
           pjId,
@@ -898,7 +939,7 @@ describe('PrintJobService', () => {
           { shelfCode: 'UNKNOWN', quantity: 10 },
           actorId,
         ),
-      ).rejects.toMatchObject({ code: 'PRINT_JOB_SHELF_NOT_FOUND' });
+      ).rejects.toMatchObject({ code: 'PRINT_JOB_STAGING_SHELF_NOT_FOUND' });
     });
 
     it('throw PRINT_JOB_QTY_EXCEEDS khi quantity khác reservedQty', async () => {
@@ -937,7 +978,6 @@ describe('PrintJobService', () => {
       ).rejects.toMatchObject({ code: 'VALIDATION_FAILED' });
 
       expect(stockRepo.upsertInventory).not.toHaveBeenCalled();
-      expect(repo.markLineCompleted).not.toHaveBeenCalled();
       expect(shipmentQueue.add).not.toHaveBeenCalled();
     });
 
@@ -957,7 +997,6 @@ describe('PrintJobService', () => {
       ).rejects.toMatchObject({ code: 'VALIDATION_FAILED' });
 
       expect(stockRepo.upsertInventory).not.toHaveBeenCalled();
-      expect(repo.markLineCompleted).not.toHaveBeenCalled();
       expect(shipmentQueue.add).not.toHaveBeenCalled();
     });
 
@@ -969,7 +1008,8 @@ describe('PrintJobService', () => {
       locationRepo.findShelfByCode.mockResolvedValue({
         _id: shelfId,
       });
-      repo.markLineCompleted.mockResolvedValue({ allDone: false });
+      locationRepo.findStagingShelf.mockResolvedValue({ _id: shelfId });
+      repo.markLineOutputStaged.mockResolvedValue({ allPrinted: false });
 
       await svc.completeItem(
         pjId,
@@ -1003,6 +1043,7 @@ describe('PrintJobService', () => {
         expect.anything(),
       );
       expect(repo.markJobCompleted).not.toHaveBeenCalled();
+      expect(repo.markJobPutawayPending).not.toHaveBeenCalled();
       expect(stockQueue.add).not.toHaveBeenCalled();
       expect(shipmentQueue.add).not.toHaveBeenCalled();
     });
@@ -1017,7 +1058,8 @@ describe('PrintJobService', () => {
         status: PrintJobStatus.COMPLETED,
       });
       locationRepo.findShelfByCode.mockResolvedValue({ _id: shelfId });
-      repo.markLineCompleted.mockResolvedValue({ allDone: true });
+      locationRepo.findStagingShelf.mockResolvedValue({ _id: shelfId });
+      repo.markLineOutputStaged.mockResolvedValue({ allPrinted: true });
 
       await svc.completeItem(
         pjId,
@@ -1061,15 +1103,13 @@ describe('PrintJobService', () => {
       );
     });
 
-    it('emit print.completed đúng 1 lần khi markLineCompleted trả allDone=true', async () => {
+    it('production in đủ chuyển PUTAWAY_PENDING nhưng chưa emit print.completed', async () => {
       repo.findById.mockResolvedValueOnce(consumedJob()).mockResolvedValueOnce({
         ...consumedJob(),
-        status: PrintJobStatus.COMPLETED,
+        status: PrintJobStatus.PUTAWAY_PENDING,
       });
-      locationRepo.findShelfByCode.mockResolvedValue({
-        _id: shelfId,
-      });
-      repo.markLineCompleted.mockResolvedValue({ allDone: true });
+      locationRepo.findStagingShelf.mockResolvedValue({ _id: shelfId });
+      repo.markLineOutputStaged.mockResolvedValue({ allPrinted: true });
 
       await svc.completeItem(
         pjId,
@@ -1078,28 +1118,12 @@ describe('PrintJobService', () => {
         actorId,
       );
 
-      expect(repo.markJobCompleted).toHaveBeenCalledWith(
+      expect(repo.markJobCompleted).not.toHaveBeenCalled();
+      expect(repo.markJobPutawayPending).toHaveBeenCalledWith(
         pjId,
-        expect.any(Types.ObjectId),
         expect.anything(),
       );
-      expect(shipmentQueue.add).toHaveBeenCalledTimes(1);
-      expect(shipmentQueue.add).toHaveBeenCalledWith(
-        'print.completed',
-        {
-          orderId,
-          printJobId: pjId,
-          stage: PrintStage.PRODUCTION,
-          items: [
-            {
-              orderItemId: 'order-item-1',
-              printedSku: 'CUP-PRINTED-1',
-              quantity: 10,
-            },
-          ],
-        },
-        { jobId: `print-job-${pjId}` },
-      );
+      expect(shipmentQueue.add).not.toHaveBeenCalled();
     });
 
     it('reject job legacy reserve partial trước mọi output mutation', async () => {
@@ -1137,7 +1161,8 @@ describe('PrintJobService', () => {
       locationRepo.findShelfByCode.mockResolvedValue({
         _id: shelfId,
       });
-      repo.markLineCompleted.mockResolvedValue({ allDone: false });
+      locationRepo.findStagingShelf.mockResolvedValue({ _id: shelfId });
+      repo.markLineOutputStaged.mockResolvedValue({ allPrinted: false });
 
       await svc.completeItem(
         pjId,
@@ -1148,6 +1173,252 @@ describe('PrintJobService', () => {
 
       expect(stockService.checkAndEmitStockLow).toHaveBeenCalledWith(
         printedItemId,
+      );
+    });
+  });
+
+  describe('putawayItem', () => {
+    const pjId = 'pj-putaway';
+    const stagingShelfId = new Types.ObjectId();
+    const targetShelfId = new Types.ObjectId();
+    const targetCellId = new Types.ObjectId();
+    const productionJob = () => ({
+      _id: new Types.ObjectId(),
+      orderId,
+      stage: PrintStage.PRODUCTION,
+      status: PrintJobStatus.PUTAWAY_PENDING,
+      outputStagingShelfId: stagingShelfId,
+      items: [
+        {
+          orderItemId: 'order-item-1',
+          inputItemId: blankItemId,
+          outputItemId: printedItemId,
+          sku: 'CUP-PRINTED-1',
+          quantity: 10,
+          reservedQty: 10,
+          remainingQty: 0,
+          putawayRemainingQty: 10,
+          lineStatus: PrintJobLineStatus.COMPLETED,
+        },
+      ],
+    });
+
+    it('chuyển output staging sang đúng cell, giữ nguyên balance và chỉ emit khi cất đủ', async () => {
+      const job = productionJob();
+      repo.findById.mockResolvedValueOnce(job).mockResolvedValueOnce({
+        ...job,
+        status: PrintJobStatus.COMPLETED,
+        items: [{ ...job.items[0], putawayRemainingQty: 0 }],
+      });
+      barcodeSvc.findItemIdByCode.mockResolvedValue(printedItemId);
+      stockRepo.findItemByIdDocument.mockResolvedValue({
+        _id: printedItemId,
+        depth: 10,
+        width: 8,
+        height: 12,
+      });
+      locationRepo.findStagingShelf.mockResolvedValue({ _id: stagingShelfId });
+      locationRepo.findCellByCode.mockResolvedValue({
+        _id: targetCellId,
+        shelfId: targetShelfId,
+      });
+      locationRepo.findShelfById.mockResolvedValue({
+        _id: targetShelfId,
+        isStaging: false,
+      });
+      locationRepo.lockActiveCellForInventory.mockResolvedValue({
+        _id: targetCellId,
+        shelfId: targetShelfId,
+        innerDepth: 100,
+        innerWidth: 100,
+        innerHeight: 100,
+        fillFactor: 0.75,
+      });
+      locationRepo.lockActiveShelfForInventory.mockResolvedValue({
+        _id: targetShelfId,
+        isStaging: false,
+      });
+      stockRepo.findOccupiedVolumeForCell.mockResolvedValue(0);
+      stockRepo.decrementInventoryIfAvailable.mockResolvedValue({});
+      repo.decrementPutawayRemainingQty.mockResolvedValue({});
+      repo.markJobCompletedIfPutawayDone.mockResolvedValue(true);
+
+      await svc.putawayItem(
+        pjId,
+        blankItemId.toString(),
+        {
+          itemBarcode: '2000000000015',
+          cellBarcode: 'R01-T1-B1',
+          quantity: 10,
+          suggestedCellId: targetCellId.toString(),
+        },
+        actorId,
+      );
+
+      expect(stockRepo.decrementInventoryIfAvailable).toHaveBeenCalledWith(
+        printedItemId,
+        stagingShelfId,
+        null,
+        null,
+        10,
+        expect.anything(),
+      );
+      expect(stockRepo.upsertInventory).toHaveBeenCalledWith(
+        printedItemId,
+        targetShelfId,
+        null,
+        10,
+        expect.anything(),
+        expect.objectContaining({ cellId: targetCellId }),
+      );
+      expect(stockRepo.upsertBalance).not.toHaveBeenCalled();
+      expect(shipmentQueue.add).toHaveBeenCalledWith(
+        'print.completed',
+        expect.objectContaining({
+          orderId,
+          printJobId: pjId,
+          stage: PrintStage.PRODUCTION,
+        }),
+        { jobId: `print-job-${pjId}` },
+      );
+    });
+
+    it('chặn cất production trước trạng thái PUTAWAY_PENDING', async () => {
+      repo.findById.mockResolvedValue({
+        ...productionJob(),
+        status: PrintJobStatus.IN_PROGRESS,
+      });
+
+      await expect(
+        svc.putawayItem(
+          pjId,
+          blankItemId.toString(),
+          {
+            itemBarcode: '2000000000015',
+            cellBarcode: 'R01-T1-B1',
+            quantity: 1,
+          },
+          actorId,
+        ),
+      ).rejects.toMatchObject({ code: 'PRINT_JOB_PUTAWAY_NOT_READY' });
+    });
+
+    it('chặn quét barcode không thuộc CUP_PRINTED của dòng', async () => {
+      repo.findById.mockResolvedValue(productionJob());
+      barcodeSvc.findItemIdByCode.mockResolvedValue(new Types.ObjectId());
+
+      await expect(
+        svc.putawayItem(
+          pjId,
+          blankItemId.toString(),
+          {
+            itemBarcode: '2000000000091',
+            cellBarcode: 'R01-T1-B1',
+            quantity: 1,
+          },
+          actorId,
+        ),
+      ).rejects.toMatchObject({ code: 'PRINT_JOB_ITEM_MISMATCH' });
+      expect(txHelper.withStockTransaction).not.toHaveBeenCalled();
+    });
+
+    it('chặn cất vượt số lượng còn lại của dòng', async () => {
+      repo.findById.mockResolvedValue(productionJob());
+
+      await expect(
+        svc.putawayItem(
+          pjId,
+          blankItemId.toString(),
+          {
+            itemBarcode: '2000000000015',
+            cellBarcode: 'R01-T1-B1',
+            quantity: 11,
+          },
+          actorId,
+        ),
+      ).rejects.toMatchObject({ code: 'PRINT_JOB_QTY_EXCEEDS' });
+      expect(barcodeSvc.findItemIdByCode).not.toHaveBeenCalled();
+      expect(txHelper.withStockTransaction).not.toHaveBeenCalled();
+    });
+
+    it('rollback và chặn khoang không đủ sức chứa', async () => {
+      repo.findById.mockResolvedValue(productionJob());
+      barcodeSvc.findItemIdByCode.mockResolvedValue(printedItemId);
+      stockRepo.findItemByIdDocument.mockResolvedValue({
+        _id: printedItemId,
+        depth: 10,
+        width: 8,
+        height: 12,
+      });
+      locationRepo.findCellByCode.mockResolvedValue({
+        _id: targetCellId,
+        shelfId: targetShelfId,
+      });
+      locationRepo.findShelfById.mockResolvedValue({
+        _id: targetShelfId,
+        isStaging: false,
+      });
+      locationRepo.lockActiveCellForInventory.mockResolvedValue({
+        _id: targetCellId,
+        shelfId: targetShelfId,
+        innerDepth: 10,
+        innerWidth: 8,
+        innerHeight: 12,
+        fillFactor: 0.75,
+      });
+      locationRepo.lockActiveShelfForInventory.mockResolvedValue({
+        _id: targetShelfId,
+        isStaging: false,
+      });
+      stockRepo.findOccupiedVolumeForCell.mockResolvedValue(0);
+      repo.decrementPutawayRemainingQty.mockResolvedValue({});
+
+      await expect(
+        svc.putawayItem(
+          pjId,
+          blankItemId.toString(),
+          {
+            itemBarcode: '2000000000015',
+            cellBarcode: 'R01-T1-B1',
+            quantity: 1,
+          },
+          actorId,
+        ),
+      ).rejects.toMatchObject({ code: 'PUTAWAY_CELL_CAPACITY_EXCEEDED' });
+      expect(stockRepo.decrementInventoryIfAvailable).not.toHaveBeenCalled();
+      expect(stockRepo.upsertInventory).not.toHaveBeenCalled();
+      expect(shipmentQueue.add).not.toHaveBeenCalled();
+    });
+
+    it('retry sau khi cất đủ chỉ phát lại event idempotent, không ghi tồn lần hai', async () => {
+      const job = productionJob();
+      repo.findById.mockResolvedValue({
+        ...job,
+        status: PrintJobStatus.COMPLETED,
+        items: [{ ...job.items[0], putawayRemainingQty: 0 }],
+      });
+
+      await svc.putawayItem(
+        pjId,
+        blankItemId.toString(),
+        {
+          itemBarcode: '2000000000015',
+          cellBarcode: 'R01-T1-B1',
+          quantity: 10,
+        },
+        actorId,
+      );
+
+      expect(txHelper.withStockTransaction).not.toHaveBeenCalled();
+      expect(stockRepo.upsertInventory).not.toHaveBeenCalled();
+      expect(shipmentQueue.add).toHaveBeenCalledWith(
+        'print.completed',
+        expect.objectContaining({
+          orderId,
+          printJobId: pjId,
+          stage: PrintStage.PRODUCTION,
+        }),
+        { jobId: `print-job-${pjId}` },
       );
     });
   });

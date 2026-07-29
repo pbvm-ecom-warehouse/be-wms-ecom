@@ -13,6 +13,7 @@ export interface CreatePrintJobLineInput {
   orderItemId: string;
   inputItemId: Types.ObjectId;
   outputItemId: Types.ObjectId;
+  outputBarcode: string;
   sku: string;
   designFile?: string;
   quantity: number;
@@ -69,12 +70,14 @@ export class PrintJobRepository {
             orderItemId: l.orderItemId,
             inputItemId: l.inputItemId,
             outputItemId: l.outputItemId,
+            outputBarcode: l.outputBarcode,
             sku: l.sku,
             designFile: l.designFile,
             quantity: l.quantity,
             reservedQty: l.reservedQty,
             remainingQty: l.reservedQty,
             lineStatus: PrintJobLineStatus.PENDING,
+            putawayRemainingQty: 0,
           })),
         },
       ],
@@ -144,31 +147,85 @@ export class PrintJobRepository {
   }
 
   /**
-   * Set lineStatus=COMPLETED cho dòng khớp inputItemId. Trả allDone=true nếu
-   * SAU khi set, mọi dòng của job đều COMPLETED — service dùng để quyết định
-   * có chuyển job status + set confirmedBy hay không (repository không tự
-   * set job status ở đây vì cần actorId từ service).
+   * Claim dòng CONSUMED để ghi output đúng một lần trong transaction. Production
+   * giữ số lượng ở staging; SAMPLE dùng putawayQuantity=0.
    */
-  async markLineCompleted(
+  async markLineOutputStaged(
     id: string,
     inputItemId: Types.ObjectId,
+    putawayQuantity: number,
+    stagingShelfId: Types.ObjectId,
     session: ClientSession,
-  ): Promise<{ allDone: boolean }> {
+  ): Promise<{ allPrinted: boolean } | null> {
     const doc = await this.model.findOne({ _id: id }, null, { session });
-    if (!doc) return { allDone: false };
+    if (!doc) return null;
     const line = doc.items.find(
       (i) => i.inputItemId.toString() === inputItemId.toString(),
     );
-    if (!line) return { allDone: false };
+    if (!line || line.lineStatus !== PrintJobLineStatus.CONSUMED) return null;
     line.lineStatus = PrintJobLineStatus.COMPLETED;
+    line.putawayRemainingQty = putawayQuantity;
+    doc.outputStagingShelfId ??= stagingShelfId;
     await doc.save({ session });
-    const allDone = doc.items.every(
-      (i) => i.lineStatus === PrintJobLineStatus.COMPLETED,
-    );
-    return { allDone };
+    return {
+      allPrinted: doc.items.every(
+        (item) => item.lineStatus === PrintJobLineStatus.COMPLETED,
+      ),
+    };
   }
 
-  /** Set status=COMPLETED + confirmedBy — gọi bởi service SAU khi markLineCompleted trả allDone=true. */
+  markJobPutawayPending(
+    id: string,
+    session: ClientSession,
+  ): Promise<PrintJobDocument | null> {
+    return this.model
+      .findOneAndUpdate(
+        { _id: id, status: PrintJobStatus.IN_PROGRESS },
+        { $set: { status: PrintJobStatus.PUTAWAY_PENDING } },
+        { new: true, session },
+      )
+      .exec();
+  }
+
+  decrementPutawayRemainingQty(
+    id: string,
+    inputItemId: Types.ObjectId,
+    quantity: number,
+    session: ClientSession,
+  ): Promise<PrintJobDocument | null> {
+    return this.model
+      .findOneAndUpdate(
+        {
+          _id: id,
+          status: PrintJobStatus.PUTAWAY_PENDING,
+          items: {
+            $elemMatch: {
+              inputItemId,
+              putawayRemainingQty: { $gte: quantity },
+            },
+          },
+        },
+        { $inc: { 'items.$.putawayRemainingQty': -quantity } },
+        { new: true, session },
+      )
+      .exec();
+  }
+
+  async markJobCompletedIfPutawayDone(
+    id: string,
+    confirmedBy: Types.ObjectId,
+    session: ClientSession,
+  ): Promise<boolean> {
+    const doc = await this.model.findOne({ _id: id }, null, { session });
+    if (!doc || doc.status !== PrintJobStatus.PUTAWAY_PENDING) return false;
+    if (doc.items.some((item) => item.putawayRemainingQty !== 0)) return false;
+    doc.status = PrintJobStatus.COMPLETED;
+    doc.confirmedBy = confirmedBy;
+    await doc.save({ session });
+    return true;
+  }
+
+  /** SAMPLE hoàn tất ngay sau proof; PRODUCTION chỉ gọi sau khi put-away đủ. */
   async markJobCompleted(
     id: string,
     confirmedBy: Types.ObjectId,

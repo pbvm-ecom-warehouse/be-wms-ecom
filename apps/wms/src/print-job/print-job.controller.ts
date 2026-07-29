@@ -26,6 +26,7 @@ import {
   CompletePrintJobItemDto,
   ConsumePrintJobItemDto,
   PrintJobResponseDto,
+  PutawayPrintJobItemDto,
   QueryPrintJobDto,
 } from './dto/print-job.dto';
 
@@ -105,6 +106,23 @@ export class PrintJobController {
     @CurrentUser('sub') actorId: string,
   ): Promise<PrintJobResponseDto> {
     const doc = await this.svc.completeItem(id, itemId, dto, actorId);
+    return plainToInstance(PrintJobResponseDto, doc.toObject(), TO_OPTS);
+  }
+
+  @Post(':id/items/:itemId/putaway')
+  @Roles(WmsRole.PRINTER, WmsRole.ADMIN)
+  @ApiOperation({
+    summary:
+      'Quét CUP_PRINTED + khoang để cất từ staging; cất đủ mới hoàn tất lệnh — [PRINTER, ADMIN]',
+  })
+  @ApiOkResponse({ type: PrintJobResponseDto })
+  async putawayItem(
+    @Param('id') id: string,
+    @Param('itemId') itemId: string,
+    @Body() dto: PutawayPrintJobItemDto,
+    @CurrentUser('sub') actorId: string,
+  ): Promise<PrintJobResponseDto> {
+    const doc = await this.svc.putawayItem(id, itemId, dto, actorId);
     return plainToInstance(PrintJobResponseDto, doc.toObject(), TO_OPTS);
   }
 }

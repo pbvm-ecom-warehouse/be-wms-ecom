@@ -473,6 +473,18 @@ export const ERROR_CATALOG = {
     status: HttpStatus.CONFLICT,
     message: 'Dòng này đã được xác nhận in xong trước đó',
   },
+  PRINT_JOB_STAGING_SHELF_NOT_FOUND: {
+    status: HttpStatus.CONFLICT,
+    message: 'Kho chưa cấu hình vị trí staging cho thành phẩm in',
+  },
+  PRINT_JOB_PUTAWAY_NOT_READY: {
+    status: HttpStatus.CONFLICT,
+    message: 'Lệnh in chưa ở trạng thái chờ cất thành phẩm',
+  },
+  PRINT_JOB_PUTAWAY_DIMENSIONS_REQUIRED: {
+    status: HttpStatus.CONFLICT,
+    message: 'CUP_PRINTED thiếu kích thước để kiểm tra khoang cất',
+  },
 
   // ── WMS — Stock Count ────────────────────────────────────────────────────
   STOCK_COUNT_NOT_FOUND: {
