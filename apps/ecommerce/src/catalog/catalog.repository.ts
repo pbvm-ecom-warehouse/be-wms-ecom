@@ -124,7 +124,11 @@ export class CatalogRepository {
           .session(session)
           .lean();
         if (!existing) {
-          const productId = await this.findOrCreateProductForVariant(sku, type, attributes);
+          const productId = await this.findOrCreateProductForVariant(
+            sku,
+            type,
+            attributes,
+          );
           await this.variantModel.create(
             [
               {
@@ -232,7 +236,10 @@ export class CatalogRepository {
       query.inStock
     ) {
       const productIds = products.map((p) => p._id);
-      const searchIds = [...productIds, ...productIds.map((id) => id.toString())];
+      const searchIds = [
+        ...productIds,
+        ...productIds.map((id) => id.toString()),
+      ];
       const variantFilter: Record<string, unknown> = {
         productId: { $in: searchIds },
         isActive: true,
@@ -262,7 +269,10 @@ export class CatalogRepository {
     if (products.length === 0) return [];
 
     const finalProductIds = products.map((p) => p._id);
-    const searchFinalIds = [...finalProductIds, ...finalProductIds.map((id) => id.toString())];
+    const searchFinalIds = [
+      ...finalProductIds,
+      ...finalProductIds.map((id) => id.toString()),
+    ];
     const allVariants = await this.variantModel
       .find({
         productId: { $in: searchFinalIds },
@@ -281,7 +291,8 @@ export class CatalogRepository {
 
     return products.map((p) => {
       const pVariants = variantsByProductId[p._id.toString()] ?? [];
-      const price = pVariants.length > 0 ? Math.min(...pVariants.map((v) => v.price)) : 0;
+      const price =
+        pVariants.length > 0 ? Math.min(...pVariants.map((v) => v.price)) : 0;
       const inStock = pVariants.some((v) => v.availableQty > 0);
       return {
         ...p,
@@ -329,7 +340,10 @@ export class CatalogRepository {
       query.inStock
     ) {
       const productIds = products.map((p) => p._id);
-      const searchIds = [...productIds, ...productIds.map((id) => id.toString())];
+      const searchIds = [
+        ...productIds,
+        ...productIds.map((id) => id.toString()),
+      ];
       const variantFilter: Record<string, unknown> = {
         productId: { $in: searchIds },
         isActive: true,
@@ -359,7 +373,10 @@ export class CatalogRepository {
     if (products.length === 0) return [];
 
     const finalProductIds = products.map((p) => p._id);
-    const searchFinalIds = [...finalProductIds, ...finalProductIds.map((id) => id.toString())];
+    const searchFinalIds = [
+      ...finalProductIds,
+      ...finalProductIds.map((id) => id.toString()),
+    ];
     const allVariants = await this.variantModel
       .find({
         productId: { $in: searchFinalIds },
@@ -378,7 +395,8 @@ export class CatalogRepository {
 
     return products.map((p) => {
       const pVariants = variantsByProductId[p._id.toString()] ?? [];
-      const price = pVariants.length > 0 ? Math.min(...pVariants.map((v) => v.price)) : 0;
+      const price =
+        pVariants.length > 0 ? Math.min(...pVariants.map((v) => v.price)) : 0;
       const inStock = pVariants.some((v) => v.availableQty > 0);
       return {
         ...p,
@@ -393,6 +411,11 @@ export class CatalogRepository {
     return this.productModel
       .findOne({ slug, status: ProductStatus.ACTIVE })
       .lean();
+  }
+
+  /** Tìm product theo slug bất kể status — dùng cho seed script (idempotency check). */
+  async getProductBySlugAny(slug: string) {
+    return this.productModel.findOne({ slug }).lean();
   }
 
   async getProductById(id: string) {
@@ -422,9 +445,7 @@ export class CatalogRepository {
     const queryId = Types.ObjectId.isValid(productId)
       ? new Types.ObjectId(productId)
       : new Types.ObjectId();
-    return this.variantModel
-      .find({ productId: queryId })
-      .lean();
+    return this.variantModel.find({ productId: queryId }).lean();
   }
 
   async updateVariant(id: string, data: Partial<ProductVariant>) {
@@ -433,6 +454,11 @@ export class CatalogRepository {
 
   async findVariantBySku(sku: string) {
     return this.variantModel.findOne({ sku, isActive: true }).lean();
+  }
+
+  /** Tìm variant theo sku bất kể isActive — dùng cho seed script (idempotency check). */
+  async findVariantBySkuAny(sku: string) {
+    return this.variantModel.findOne({ sku }).lean();
   }
 
   // ── DESIGN ────────────────────────────────────────────────────────────────
