@@ -20,6 +20,7 @@ import { StockTransactionHelper } from '../stock/helpers/with-stock-transaction.
 import { MovementType } from '../stock/schemas/stock-movement.schema';
 import { BarcodeService } from '../stock/barcode/barcode.service';
 import { WarehouseNavigationService } from '../location/navigation.service';
+import { DocumentNumberService } from '../document-number/document-number.service';
 
 interface OrderReadyItem {
   sku: string;
@@ -38,6 +39,7 @@ export class GoodsIssueService {
     private readonly stockTransactionHelper: StockTransactionHelper,
     private readonly barcodeSvc: BarcodeService,
     private readonly navigationService: WarehouseNavigationService,
+    private readonly documentNumberService: DocumentNumberService,
     @InjectQueue(QUEUES.SHIPMENT) private readonly shipmentQueue: Queue,
     @InjectQueue(QUEUES.SHIPMENT_INTERNAL)
     private readonly shipmentInternalQueue: Queue,
@@ -51,6 +53,7 @@ export class GoodsIssueService {
    */
   async createFromOrderReady(
     orderId: string,
+    orderCode: string,
     items: OrderReadyItem[],
     shippingAddress: Record<string, unknown>,
     recipient: { name: string; phone: string },
@@ -89,8 +92,11 @@ export class GoodsIssueService {
       return;
     }
 
+    const goodsIssueNumber = await this.documentNumberService.next('GI');
     await this.repo.createGoodsIssue({
       orderId,
+      orderCode,
+      goodsIssueNumber,
       lines,
       shippingAddress,
       recipient,

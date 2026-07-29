@@ -38,29 +38,39 @@ describe('GoodsIssueRepository', () => {
   });
 
   describe('createGoodsIssue', () => {
-    it('tạo document với remainingQty = quantity khởi tạo, status PENDING', async () => {
-      model.create.mockResolvedValue([{ _id: 'gi1' }]);
+    it('upsert theo orderId để retry không đổi mã hoặc tạo phiếu trùng', async () => {
+      model.findOneAndUpdate.mockReturnValue({
+        exec: jest.fn().mockResolvedValue({ _id: 'gi1' }),
+      });
       const shippingAddress = { street: '123 Le Loi' };
       const recipient = { name: 'Nguyen Van A', phone: '0900000000' };
       await repo.createGoodsIssue({
         orderId,
+        orderCode: 'ORD-20260730-0001',
+        goodsIssueNumber: 'GI-20260730-0001',
         lines: [{ itemId, sku: 'SKU-1', quantity: 10 }],
         shippingAddress,
         recipient,
         paymentMethod: 'COD',
         codAmount: 0,
       });
-      expect(model.create).toHaveBeenCalledWith([
+      expect(model.findOneAndUpdate).toHaveBeenCalledWith(
+        { orderId },
         {
-          orderId,
-          status: GoodsIssueStatus.PENDING,
-          shippingAddress,
-          recipient,
-          paymentMethod: 'COD',
-          codAmount: 0,
-          items: [{ itemId, sku: 'SKU-1', quantity: 10, remainingQty: 10 }],
+          $setOnInsert: {
+            orderId,
+            orderCode: 'ORD-20260730-0001',
+            goodsIssueNumber: 'GI-20260730-0001',
+            status: GoodsIssueStatus.PENDING,
+            shippingAddress,
+            recipient,
+            paymentMethod: 'COD',
+            codAmount: 0,
+            items: [{ itemId, sku: 'SKU-1', quantity: 10, remainingQty: 10 }],
+          },
         },
-      ]);
+        { upsert: true, new: true, setDefaultsOnInsert: true },
+      );
     });
   });
 
