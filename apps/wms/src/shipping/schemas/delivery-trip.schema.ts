@@ -66,6 +66,22 @@ export class DeliveryTrip {
 
   @Prop({ type: Date })
   completedAt?: Date;
+
+  @Prop({ type: Number, default: 0, min: 0 })
+  cashCollectedAmount!: number;
+
+  @Prop({ type: Number, default: 0, min: 0 })
+  cashSettledAmount!: number;
+
+  /** Ledger idempotency: mỗi Shipment COD CASH chỉ cộng vào chuyến một lần. */
+  @Prop({ type: [Types.ObjectId], default: [] })
+  cashPostedShipmentIds!: Types.ObjectId[];
+
+  @Prop({ type: Date })
+  settledAt?: Date;
+
+  @Prop({ type: Types.ObjectId })
+  settledBy?: Types.ObjectId;
 }
 
 export type DeliveryTripDocument = HydratedDocument<DeliveryTrip>;

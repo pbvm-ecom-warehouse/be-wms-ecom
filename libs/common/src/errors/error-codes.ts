@@ -678,6 +678,70 @@ export const ERROR_CATALOG = {
     status: HttpStatus.CONFLICT,
     message: 'Chưa quét đủ tất cả kiện của chuyến',
   },
+  DELIVERY_TRIP_SHIPMENT_MISMATCH: {
+    status: HttpStatus.BAD_REQUEST,
+    message: 'Vận đơn không thuộc chuyến giao hàng này',
+  },
+  SHIPMENT_DELIVERY_OTP_COOLDOWN: {
+    status: HttpStatus.TOO_MANY_REQUESTS,
+    message: 'Vui lòng chờ trước khi gửi lại OTP giao hàng',
+  },
+  SHIPMENT_DELIVERY_OTP_INVALID: {
+    status: HttpStatus.BAD_REQUEST,
+    message: 'OTP giao hàng không hợp lệ',
+  },
+  SHIPMENT_DELIVERY_OTP_EXPIRED: {
+    status: HttpStatus.BAD_REQUEST,
+    message: 'OTP giao hàng đã hết hạn hoặc chưa được gửi',
+  },
+  SHIPMENT_DELIVERY_OTP_LOCKED: {
+    status: HttpStatus.TOO_MANY_REQUESTS,
+    message: 'OTP giao hàng tạm khóa do nhập sai nhiều lần',
+  },
+  SHIPMENT_POD_REQUIRED: {
+    status: HttpStatus.BAD_REQUEST,
+    message: 'Bắt buộc có ít nhất một ảnh bằng chứng giao hàng',
+  },
+  SHIPMENT_COD_METHOD_REQUIRED: {
+    status: HttpStatus.BAD_REQUEST,
+    message: 'Đơn COD phải chọn phương thức thu CASH hoặc ECOM_QR',
+  },
+  SHIPMENT_COD_METHOD_NOT_ALLOWED: {
+    status: HttpStatus.BAD_REQUEST,
+    message: 'Vận đơn không thu COD nên không nhận phương thức thu tiền',
+  },
+  SHIPMENT_RETURN_SCAN_CONFLICT: {
+    status: HttpStatus.CONFLICT,
+    message: 'Kiện hoàn vừa được cập nhật, vui lòng tải lại',
+  },
+  SHIPMENT_RETURN_PACKAGES_INCOMPLETE: {
+    status: HttpStatus.CONFLICT,
+    message: 'Chưa quét đủ tất cả kiện hoàn về kho',
+  },
+  DELIVERY_TRIP_SETTLEMENT_MISMATCH: {
+    status: HttpStatus.BAD_REQUEST,
+    message: 'Số tiền đối soát không bằng tiền mặt Shipper đã thu',
+  },
+  DELIVERY_TRIP_SETTLEMENT_CONFLICT: {
+    status: HttpStatus.CONFLICT,
+    message: 'Chuyến đã được đối soát hoặc số tiền vừa thay đổi',
+  },
+  DELIVERY_INCIDENT_NOT_FOUND: {
+    status: HttpStatus.NOT_FOUND,
+    message: 'Không tìm thấy sự cố giao hàng',
+  },
+  DELIVERY_INCIDENT_ALREADY_RESOLVED: {
+    status: HttpStatus.CONFLICT,
+    message: 'Sự cố đã được xử lý trước đó',
+  },
+  DELIVERY_INCIDENT_RESCUE_SHIPPER_REQUIRED: {
+    status: HttpStatus.BAD_REQUEST,
+    message: 'Phương án cứu hộ phải chọn Shipper thay thế',
+  },
+  DELIVERY_INCIDENT_RESCUE_SHIPPER_INVALID: {
+    status: HttpStatus.BAD_REQUEST,
+    message: 'Shipper cứu hộ không tồn tại hoặc không hoạt động',
+  },
 
   // ── WMS — SKU Template / Attribute Option / Barcode Registry (issue #25) ──
   // AppException chỉ resolve status/message qua ERROR_CATALOG (xem

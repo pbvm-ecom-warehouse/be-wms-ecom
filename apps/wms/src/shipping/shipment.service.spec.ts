@@ -4,15 +4,22 @@ import { ShipmentStatus } from './schemas/shipment.schema';
 import { CarrierStatus } from './schemas/carrier.schema';
 import { EVENTS } from '@app/events';
 import { WmsRole } from '@app/auth';
+import { createHmac } from 'node:crypto';
 
 const makeRepo = () => ({
   findById: jest.fn(),
+  findByIdWithDeliveryOtp: jest.fn(),
   findByGoodsIssueId: jest.fn(),
   createFromGoodsIssue: jest.fn(),
   assignCarrier: jest.fn(),
   appendPackage: jest.fn(),
   markReady: jest.fn(),
   pushStatus: jest.fn(),
+  setDeliveryOtp: jest.fn(),
+  recordDeliveryOtpFailure: jest.fn(),
+  completeDelivery: jest.fn(),
+  recordFailedDeliveryAttempt: jest.fn(),
+  scanReturnedPackage: jest.fn(),
   findAll: jest.fn(),
 });
 
@@ -21,6 +28,9 @@ const makeCarrierService = () => ({
 });
 
 const makeQueue = () => ({ add: jest.fn() });
+const makeConfig = () => ({
+  getOrThrow: jest.fn().mockReturnValue('x'.repeat(32)),
+});
 
 const makeCloudinaryService = () => ({
   uploadImage: jest.fn().mockResolvedValue({
@@ -57,6 +67,8 @@ describe('ShipmentService', () => {
   let repo: ReturnType<typeof makeRepo>;
   let carrierService: ReturnType<typeof makeCarrierService>;
   let queue: ReturnType<typeof makeQueue>;
+  let notificationQueue: ReturnType<typeof makeQueue>;
+  let config: ReturnType<typeof makeConfig>;
   let cloudinary: ReturnType<typeof makeCloudinaryService>;
   let documentNumber: ReturnType<typeof makeDocumentNumberService>;
   let goodsIssueRepo: ReturnType<typeof makeGoodsIssueRepository>;
@@ -69,6 +81,8 @@ describe('ShipmentService', () => {
     repo = makeRepo();
     carrierService = makeCarrierService();
     queue = makeQueue();
+    notificationQueue = makeQueue();
+    config = makeConfig();
     cloudinary = makeCloudinaryService();
     documentNumber = makeDocumentNumberService();
     goodsIssueRepo = makeGoodsIssueRepository();
@@ -78,7 +92,9 @@ describe('ShipmentService', () => {
       documentNumber as never,
       goodsIssueRepo as never,
       queue as never,
+      notificationQueue as never,
       cloudinary as never,
+      config as never,
     );
   });
 
@@ -230,6 +246,250 @@ describe('ShipmentService', () => {
     });
   });
 
+  describe('last-mile OTP/POD', () => {
+    const tripId = new Types.ObjectId().toString();
+    const shipperId = new Types.ObjectId().toString();
+
+    it('phát OTP qua notification queue, chỉ lưu hash và không trả plaintext', async () => {
+      repo.findByIdWithDeliveryOtp.mockResolvedValue({
+        _id: shipmentId,
+        orderId,
+        recipient: { phone: '0901234567' },
+        assignedShipperId: new Types.ObjectId(shipperId),
+        activeTripId: new Types.ObjectId(tripId),
+        shipmentStatus: ShipmentStatus.IN_TRANSIT,
+      });
+      repo.setDeliveryOtp.mockImplementation((_id, _expected, input) =>
+        Promise.resolve({
+          deliveryOtpExpiresAt: input.expiresAt,
+          deliveryOtpLastSentAt: input.sentAt,
+        }),
+      );
+
+      const result = await svc.requestDeliveryOtp(
+        shipmentId,
+        tripId,
+        shipperId,
+      );
+
+      const eventPayload = notificationQueue.add.mock.calls[0][1] as {
+        code: string;
+      };
+      const stored = repo.setDeliveryOtp.mock.calls[0][2] as {
+        hash: string;
+      };
+      expect(eventPayload.code).toMatch(/^\d{6}$/);
+      expect(stored.hash).not.toBe(eventPayload.code);
+      expect(result).not.toHaveProperty('code');
+    });
+
+    it('OTP đúng + POD hợp lệ mới DELIVERED và ghi nhận COD CASH', async () => {
+      const code = '123456';
+      const salt = 'salt-1';
+      const hash = createHmac('sha256', 'x'.repeat(32))
+        .update(`${shipmentId}:${salt}:${code}`)
+        .digest('hex');
+      repo.findByIdWithDeliveryOtp.mockResolvedValue({
+        _id: shipmentId,
+        orderId,
+        recipient: { phone: '0901234567' },
+        paymentMethod: 'COD',
+        codAmount: 150000,
+        assignedShipperId: new Types.ObjectId(shipperId),
+        activeTripId: new Types.ObjectId(tripId),
+        shipmentStatus: ShipmentStatus.IN_TRANSIT,
+        deliveryOtpHash: hash,
+        deliveryOtpSalt: salt,
+        deliveryOtpExpiresAt: new Date(Date.now() + 60_000),
+        deliveryOtpFailedAttempts: 0,
+        packages: [],
+      });
+      repo.completeDelivery.mockResolvedValue({
+        _id: shipmentId,
+        orderId,
+        shipmentStatus: ShipmentStatus.DELIVERED,
+      });
+
+      const result = await svc.deliverForTrip(
+        shipmentId,
+        tripId,
+        shipperId,
+        code,
+        'CASH',
+        [fakeImageFile()],
+      );
+
+      expect(cloudinary.uploadImage).toHaveBeenCalledTimes(1);
+      expect(repo.completeDelivery).toHaveBeenCalledWith(
+        shipmentId,
+        new Types.ObjectId(tripId),
+        expect.objectContaining({
+          codCollectionMethod: 'CASH',
+          codCollectedAmount: 150000,
+          podImages: [
+            'https://res.cloudinary.com/demo/image/upload/wms/shipment-pod/x.jpg',
+          ],
+        }),
+      );
+      expect(result.cashCollectedAmount).toBe(150000);
+      expect(queue.add).toHaveBeenCalledWith(
+        EVENTS.SHIPMENT_DELIVERED,
+        expect.objectContaining({ orderId, shipmentId }),
+        { jobId: `${EVENTS.SHIPMENT_DELIVERED}:${shipmentId}` },
+      );
+    });
+
+    it('OTP sai tăng bộ đếm và không upload POD', async () => {
+      repo.findByIdWithDeliveryOtp.mockResolvedValue({
+        _id: shipmentId,
+        orderId,
+        paymentMethod: 'ONLINE',
+        assignedShipperId: new Types.ObjectId(shipperId),
+        activeTripId: new Types.ObjectId(tripId),
+        shipmentStatus: ShipmentStatus.IN_TRANSIT,
+        deliveryOtpHash: 'not-a-valid-hash',
+        deliveryOtpSalt: 'salt',
+        deliveryOtpExpiresAt: new Date(Date.now() + 60_000),
+        deliveryOtpFailedAttempts: 0,
+      });
+      repo.recordDeliveryOtpFailure.mockResolvedValue({ _id: shipmentId });
+
+      await expect(
+        svc.deliverForTrip(shipmentId, tripId, shipperId, '000000', undefined, [
+          fakeImageFile(),
+        ]),
+      ).rejects.toMatchObject({ code: 'SHIPMENT_DELIVERY_OTP_INVALID' });
+      expect(repo.recordDeliveryOtpFailure).toHaveBeenCalled();
+      expect(cloudinary.uploadImage).not.toHaveBeenCalled();
+    });
+
+    it('OTP sai lần thứ 5 khóa xác nhận giao trong 15 phút', async () => {
+      repo.findByIdWithDeliveryOtp.mockResolvedValue({
+        _id: shipmentId,
+        orderId,
+        paymentMethod: 'ONLINE',
+        assignedShipperId: new Types.ObjectId(shipperId),
+        activeTripId: new Types.ObjectId(tripId),
+        shipmentStatus: ShipmentStatus.IN_TRANSIT,
+        deliveryOtpHash: 'not-a-valid-hash',
+        deliveryOtpSalt: 'salt',
+        deliveryOtpExpiresAt: new Date(Date.now() + 60_000),
+        deliveryOtpFailedAttempts: 4,
+      });
+      repo.recordDeliveryOtpFailure.mockResolvedValue({ _id: shipmentId });
+
+      await expect(
+        svc.deliverForTrip(shipmentId, tripId, shipperId, '000000', undefined, [
+          fakeImageFile(),
+        ]),
+      ).rejects.toMatchObject({ code: 'SHIPMENT_DELIVERY_OTP_LOCKED' });
+      expect(repo.recordDeliveryOtpFailure).toHaveBeenCalledWith(
+        shipmentId,
+        new Types.ObjectId(tripId),
+        4,
+        expect.objectContaining({
+          failedAttempts: 5,
+          lockedUntil: expect.any(Date),
+        }),
+      );
+      expect(cloudinary.uploadImage).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('failed delivery and return handoff', () => {
+    const tripId = new Types.ObjectId().toString();
+    const shipperId = new Types.ObjectId().toString();
+
+    it('lần giao thất bại thứ 3 chuyển shipment sang RETURNING', async () => {
+      repo.findById.mockResolvedValue({
+        _id: shipmentId,
+        orderId,
+        attempts: 2,
+        assignedShipperId: new Types.ObjectId(shipperId),
+        activeTripId: new Types.ObjectId(tripId),
+        shipmentStatus: ShipmentStatus.IN_TRANSIT,
+      });
+      repo.recordFailedDeliveryAttempt.mockResolvedValue({
+        _id: shipmentId,
+        shipmentStatus: ShipmentStatus.RETURNING,
+        attempts: 3,
+      });
+
+      await svc.recordFailedAttemptForTrip(
+        shipmentId,
+        tripId,
+        shipperId,
+        'Khách không nhận hàng',
+      );
+
+      expect(repo.recordFailedDeliveryAttempt).toHaveBeenCalledWith(
+        shipmentId,
+        new Types.ObjectId(tripId),
+        2,
+        expect.objectContaining({
+          nextAttempts: 3,
+          returnToWarehouse: true,
+        }),
+      );
+    });
+
+    it('chặn bàn giao hoàn khi còn kiện chưa quét về kho', async () => {
+      repo.findById.mockResolvedValue({
+        _id: shipmentId,
+        orderId,
+        assignedShipperId: new Types.ObjectId(shipperId),
+        activeTripId: new Types.ObjectId(tripId),
+        shipmentStatus: ShipmentStatus.RETURNING,
+        packages: [
+          { barcode: 'PKG-1', returnedAt: new Date() },
+          { barcode: 'PKG-2' },
+        ],
+      });
+
+      await expect(
+        svc.completeReturnForTrip(shipmentId, tripId, shipperId),
+      ).rejects.toMatchObject({
+        code: 'SHIPMENT_RETURN_PACKAGES_INCOMPLETE',
+      });
+      expect(repo.pushStatus).not.toHaveBeenCalled();
+      expect(queue.add).not.toHaveBeenCalled();
+    });
+
+    it('quét đủ kiện mới chuyển RETURNED và phát event idempotent', async () => {
+      repo.findById.mockResolvedValue({
+        _id: shipmentId,
+        orderId,
+        assignedShipperId: new Types.ObjectId(shipperId),
+        activeTripId: new Types.ObjectId(tripId),
+        shipmentStatus: ShipmentStatus.RETURNING,
+        packages: [
+          { barcode: 'PKG-1', returnedAt: new Date() },
+          { barcode: 'PKG-2', returnedAt: new Date() },
+        ],
+      });
+      repo.pushStatus.mockResolvedValue({
+        _id: shipmentId,
+        orderId,
+        shipmentStatus: ShipmentStatus.RETURNED,
+      });
+
+      await svc.completeReturnForTrip(shipmentId, tripId, shipperId);
+
+      expect(repo.pushStatus).toHaveBeenCalledWith(
+        shipmentId,
+        ShipmentStatus.RETURNING,
+        expect.objectContaining({
+          shipmentStatus: ShipmentStatus.RETURNED,
+        }),
+      );
+      expect(queue.add).toHaveBeenCalledWith(
+        EVENTS.SHIPMENT_RETURNED,
+        expect.objectContaining({ orderId, shipmentId }),
+        { jobId: `${EVENTS.SHIPMENT_RETURNED}:${shipmentId}` },
+      );
+    });
+  });
+
   describe('createFromGoodsIssue', () => {
     const goodsIssueIdStr = new Types.ObjectId().toString();
 
@@ -317,6 +577,19 @@ describe('ShipmentService', () => {
       shipmentStatus: status,
       attempts: 0,
       paymentMethod: 'COD',
+    });
+
+    it('chặn endpoint legacy với shipment thuộc chuyến nội bộ để không bypass OTP/POD', async () => {
+      repo.findById.mockResolvedValue({
+        ...baseShipment(ShipmentStatus.IN_TRANSIT),
+        activeTripId: new Types.ObjectId(),
+      });
+
+      await expect(
+        svc.updateStatus(shipmentId, ShipmentStatus.DELIVERED, actorId, {}),
+      ).rejects.toMatchObject({ code: 'SHIPMENT_INVALID_TRANSITION' });
+      expect(repo.pushStatus).not.toHaveBeenCalled();
+      expect(queue.add).not.toHaveBeenCalled();
     });
 
     it('throw SHIPMENT_INVALID_TRANSITION cho bước nhảy không hợp lệ (PENDING → DELIVERED)', async () => {

@@ -3,16 +3,19 @@
 This file records the active operational ownership. `ADMIN` keeps the global
 guard bypass and is omitted from repetitive cells below.
 
-| Capability                        | RECEIVER | SHIPPER      | PRINTER | COUNTER | MANAGER      |
-| --------------------------------- | -------- | ------------ | ------- | ------- | ------------ |
-| Receive/confirm GRN               | Operate  | —            | —       | —       | Approve/view |
-| Put away inbound stock            | Operate  | —            | —       | —       | View         |
-| Claim and pick Goods Issue        | —        | Owner only   | —       | —       | View         |
-| Package picked Shipment           | —        | Owner only   | —       | —       | View         |
-| Load/start internal delivery trip | —        | Owner only   | —       | —       | Plan/route   |
-| Print and put away `CUP_PRINTED`  | —        | —            | Operate | —       | View         |
-| Count stock / propose scrap       | —        | —            | —       | Operate | Approve/view |
-| Inspect and restock returns       | Operate  | Handoff only | —       | —       | View         |
+| Capability                         | RECEIVER | SHIPPER      | PRINTER | COUNTER | MANAGER      |
+| ---------------------------------- | -------- | ------------ | ------- | ------- | ------------ |
+| Receive/confirm GRN                | Operate  | —            | —       | —       | Approve/view |
+| Put away inbound stock             | Operate  | —            | —       | —       | View         |
+| Claim and pick Goods Issue         | —        | Owner only   | —       | —       | View         |
+| Package picked Shipment            | —        | Owner only   | —       | —       | View         |
+| Load/start internal delivery trip  | —        | Owner only   | —       | —       | Plan/route   |
+| Deliver with OTP + POD             | —        | Owner only   | —       | —       | View         |
+| Collect COD / return handoff       | Inspect  | Owner only   | —       | —       | Settle/view  |
+| Report / resolve delivery incident | —        | Report/view  | —       | —       | Resolve/view |
+| Print and put away `CUP_PRINTED`   | —        | —            | Operate | —       | View         |
+| Count stock / propose scrap        | —        | —            | —       | Operate | Approve/view |
+| Inspect and restock returns        | Operate  | Handoff only | —       | —       | View         |
 
 `PICKER` is a deprecated compatibility enum only. New users cannot be assigned
 that role, runtime picking endpoints do not authorize it, and deploys must run

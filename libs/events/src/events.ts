@@ -42,6 +42,7 @@ export const EVENTS = {
   SHIPMENT_SHIPPED: 'shipment.shipped',
   SHIPMENT_DELIVERED: 'shipment.delivered',
   SHIPMENT_RETURNED: 'shipment.returned',
+  SHIPMENT_DELIVERY_OTP_REQUESTED: 'shipment.delivery_otp_requested',
   // ----- Thông báo (* → Notification) -----
   STOCK_LOW: 'stock.low',
   STOCK_NEAR_EXPIRY: 'stock.near_expiry',
@@ -154,6 +155,14 @@ export interface ShipmentEventPayload {
   trackingNumber?: string;
 }
 
+export interface ShipmentDeliveryOtpRequestedPayload {
+  shipmentId: string;
+  orderId: string;
+  phone: string;
+  code: string;
+  expiresInSeconds: number;
+}
+
 export interface StockLowPayload {
   sku: string;
   available: number;
@@ -209,6 +218,7 @@ export interface EventPayloadMap {
   [EVENTS.SHIPMENT_SHIPPED]: ShipmentEventPayload;
   [EVENTS.SHIPMENT_DELIVERED]: ShipmentEventPayload;
   [EVENTS.SHIPMENT_RETURNED]: ShipmentEventPayload;
+  [EVENTS.SHIPMENT_DELIVERY_OTP_REQUESTED]: ShipmentDeliveryOtpRequestedPayload;
   [EVENTS.STOCK_LOW]: StockLowPayload;
   [EVENTS.STOCK_NEAR_EXPIRY]: StockNearExpiryPayload;
   [EVENTS.PAYMENT_SUCCESS]: PaymentSuccessPayload;

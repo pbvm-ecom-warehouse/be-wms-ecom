@@ -14,6 +14,7 @@ import {
   type StockLowPayload,
   type StockNearExpiryPayload,
   type NewItemSyncedPayload,
+  type ShipmentDeliveryOtpRequestedPayload,
 } from '@app/events';
 import { EcomRole } from '@app/auth';
 import { User, UserStatus } from '../../ecommerce/src/auth/schemas/user.schema';
@@ -186,6 +187,29 @@ export class NotificationConsumer extends WorkerHost {
         }
         break;
       }
+      case EVENTS.SHIPMENT_DELIVERY_OTP_REQUESTED: {
+        const payload = job.data as ShipmentDeliveryOtpRequestedPayload;
+        const webhookUrl = this.config.get<string>('DELIVERY_SMS_WEBHOOK_URL');
+        if (!webhookUrl) {
+          this.logger.warn(
+            `OTP giao hàng shipment=${payload.shipmentId} chưa gửi: chưa cấu hình SMS webhook.`,
+          );
+          break;
+        }
+        const response = await fetch(webhookUrl, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({
+            phone: payload.phone,
+            message: `Ma OTP nhan hang cua ban la ${payload.code}. Ma co hieu luc ${Math.ceil(payload.expiresInSeconds / 60)} phut.`,
+            idempotencyKey: key,
+          }),
+        });
+        if (!response.ok) {
+          throw new Error(`SMS webhook trả HTTP ${response.status}`);
+        }
+        break;
+      }
       case EVENTS.NEW_ITEM_SYNCED: {
         const { sku, name } = job.data as NewItemSyncedPayload;
         try {
@@ -232,8 +256,16 @@ export class NotificationConsumer extends WorkerHost {
           react: React.createElement(
             'div',
             { style: { fontFamily: 'sans-serif', padding: '20px' } },
-            React.createElement('h2', { style: { color: '#4caf50' } }, 'Đơn hàng in hoàn tất!'),
-            React.createElement('p', null, `Các ly in thuộc đơn hàng ${payload.orderId} của bạn đã hoàn thành in ấn và chuẩn bị chuyển sang bộ phận đóng gói giao đi.`),
+            React.createElement(
+              'h2',
+              { style: { color: '#4caf50' } },
+              'Đơn hàng in hoàn tất!',
+            ),
+            React.createElement(
+              'p',
+              null,
+              `Các ly in thuộc đơn hàng ${payload.orderId} của bạn đã hoàn thành in ấn và chuẩn bị chuyển sang bộ phận đóng gói giao đi.`,
+            ),
           ),
           idempotencyKey: key,
         });
@@ -259,8 +291,16 @@ export class NotificationConsumer extends WorkerHost {
           react: React.createElement(
             'div',
             { style: { fontFamily: 'sans-serif', padding: '20px' } },
-            React.createElement('h2', { style: { color: '#2196f3' } }, 'Đơn hàng đang trên đường giao!'),
-            React.createElement('p', null, `Đơn hàng ${payload.orderId} của bạn đang được giao đi.`),
+            React.createElement(
+              'h2',
+              { style: { color: '#2196f3' } },
+              'Đơn hàng đang trên đường giao!',
+            ),
+            React.createElement(
+              'p',
+              null,
+              `Đơn hàng ${payload.orderId} của bạn đang được giao đi.`,
+            ),
           ),
           idempotencyKey: key,
         });

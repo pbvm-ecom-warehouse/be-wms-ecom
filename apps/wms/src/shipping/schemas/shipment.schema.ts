@@ -12,6 +12,11 @@ export enum ShipmentStatus {
   RETURNED = 'RETURNED',
 }
 
+export enum CodCollectionMethod {
+  CASH = 'CASH',
+  ECOM_QR = 'ECOM_QR',
+}
+
 /** Append-only log — không sửa/xóa dòng cũ, chỉ thêm mỗi lần đổi trạng thái. */
 @Schema({ _id: false })
 export class ShipmentStatusHistoryEntry {
@@ -71,6 +76,12 @@ export class ShipmentPackage {
 
   @Prop({ type: Date })
   loadedAt?: Date;
+
+  @Prop({ type: Date })
+  returnedAt?: Date;
+
+  @Prop({ type: Types.ObjectId })
+  returnedBy?: Types.ObjectId;
 }
 const ShipmentPackageSchema = SchemaFactory.createForClass(ShipmentPackage);
 
@@ -124,6 +135,12 @@ export class Shipment {
   @Prop({ type: Number, default: 0 })
   codAmount!: number;
 
+  @Prop({ enum: CodCollectionMethod })
+  codCollectionMethod?: CodCollectionMethod;
+
+  @Prop({ type: Number, default: 0 })
+  codCollectedAmount!: number;
+
   @Prop({ type: [ShipmentPackageSchema], default: [] })
   packages!: ShipmentPackage[];
 
@@ -141,6 +158,25 @@ export class Shipment {
 
   @Prop({ type: Date })
   deliveredAt?: Date;
+
+  /** Chỉ lấy qua query explicit select khi verify; không bao giờ trả DTO/log. */
+  @Prop({ select: false })
+  deliveryOtpHash?: string;
+
+  @Prop({ select: false })
+  deliveryOtpSalt?: string;
+
+  @Prop({ type: Date })
+  deliveryOtpExpiresAt?: Date;
+
+  @Prop({ type: Date })
+  deliveryOtpLastSentAt?: Date;
+
+  @Prop({ type: Number, default: 0 })
+  deliveryOtpFailedAttempts!: number;
+
+  @Prop({ type: Date })
+  deliveryOtpLockedUntil?: Date;
 }
 
 export type ShipmentDocument = HydratedDocument<Shipment>;

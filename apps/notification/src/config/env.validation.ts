@@ -33,6 +33,10 @@ const envSchema = z.object({
   // → email cảnh báo tắt mềm, chỉ còn FCM (nếu có) hoặc log warn nếu cả 2 tắt.
   WAREHOUSE_ALERT_EMAIL: z.string().email().optional(),
 
+  // Webhook nhà cung cấp SMS nhận { phone, message, idempotencyKey }.
+  // Thiếu biến này → OTP giao hàng tắt mềm và consumer chỉ cảnh báo (không log mã).
+  DELIVERY_SMS_WEBHOOK_URL: z.string().url().optional(),
+
   NOTIFICATION_PORT: z.coerce.number().int().positive(),
 });
 
