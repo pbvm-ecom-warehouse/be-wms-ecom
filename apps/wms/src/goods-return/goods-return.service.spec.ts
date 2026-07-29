@@ -41,6 +41,10 @@ const makeTxHelper = () => ({
 
 const makeStockQueue = () => ({ add: jest.fn() });
 
+const makeDocumentNumberService = () => ({
+  next: jest.fn().mockResolvedValue('RET-20260730-0001'),
+});
+
 const makeCloudinaryService = () => ({
   uploadImage: jest.fn().mockResolvedValue({
     url: 'https://res.cloudinary.com/demo/image/upload/wms/goods-return/x.jpg',
@@ -69,6 +73,7 @@ describe('GoodsReturnService', () => {
   let txHelper: ReturnType<typeof makeTxHelper>;
   let stockQueue: ReturnType<typeof makeStockQueue>;
   let cloudinary: ReturnType<typeof makeCloudinaryService>;
+  let documentNumber: ReturnType<typeof makeDocumentNumberService>;
 
   const actorId = new Types.ObjectId().toString();
   const itemId = new Types.ObjectId();
@@ -84,6 +89,7 @@ describe('GoodsReturnService', () => {
     txHelper = makeTxHelper();
     stockQueue = makeStockQueue();
     cloudinary = makeCloudinaryService();
+    documentNumber = makeDocumentNumberService();
     svc = new GoodsReturnService(
       repo as never,
       stockRepo as never,
@@ -91,6 +97,7 @@ describe('GoodsReturnService', () => {
       locationRepo as never,
       scrapNoteService as never,
       txHelper as never,
+      documentNumber as never,
       stockQueue as never,
       cloudinary as never,
     );
@@ -100,7 +107,7 @@ describe('GoodsReturnService', () => {
     it('idempotent: đã có phiếu cho orderId → bỏ qua, không tạo trùng', async () => {
       repo.findByOrderId.mockResolvedValue({ _id: 'gr-existing' });
 
-      await svc.createFromOrderReturned('order-1', [
+      await svc.createFromOrderReturned('order-1', 'ORD-20260730-0001', [
         { sku: 'SKU-1', quantity: 2 },
       ]);
 
@@ -111,7 +118,7 @@ describe('GoodsReturnService', () => {
       repo.findByOrderId.mockResolvedValue(null);
       stockRepo.findItemBySku.mockResolvedValue(null);
 
-      await svc.createFromOrderReturned('order-1', [
+      await svc.createFromOrderReturned('order-1', 'ORD-20260730-0001', [
         { sku: 'SKU-X', quantity: 2 },
       ]);
 
@@ -122,7 +129,7 @@ describe('GoodsReturnService', () => {
       repo.findByOrderId.mockResolvedValue(null);
       stockRepo.findItemBySku.mockResolvedValue({ _id: itemId, sku: 'SKU-1' });
 
-      await svc.createFromOrderReturned('order-1', [
+      await svc.createFromOrderReturned('order-1', 'ORD-20260730-0001', [
         { sku: 'SKU-1', quantity: 2 },
       ]);
 
@@ -131,7 +138,10 @@ describe('GoodsReturnService', () => {
         null,
         undefined,
         [{ itemId, sku: 'SKU-1', quantity: 2 }],
+        'RET-20260730-0001',
+        'ORD-20260730-0001',
       );
+      expect(documentNumber.next).toHaveBeenCalledWith('RET');
     });
   });
 
@@ -166,6 +176,7 @@ describe('GoodsReturnService', () => {
         new Types.ObjectId(actorId),
         'Ghi chú',
         [{ itemId, sku: 'SKU-1', quantity: 3 }],
+        'RET-20260730-0001',
       );
     });
   });

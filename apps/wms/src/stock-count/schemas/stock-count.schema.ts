@@ -79,6 +79,10 @@ const StockCountItemSchema = SchemaFactory.createForClass(StockCountItem);
  */
 @Schema({ collection: 'stock_counts', timestamps: true })
 export class StockCount {
+  /** Mã phiếu kiểm nghiệp vụ; sparse để dữ liệu legacy vẫn đọc được. */
+  @Prop({ unique: true, sparse: true })
+  stockCountNumber?: string;
+
   /** null = kiểm toàn kho */
   @Prop({ type: Types.ObjectId, default: null })
   zoneId!: Types.ObjectId | null;

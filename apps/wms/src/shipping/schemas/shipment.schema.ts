@@ -40,9 +40,17 @@ const ShipmentStatusHistoryEntrySchema = SchemaFactory.createForClass(
  */
 @Schema({ collection: 'shipments', timestamps: true })
 export class Shipment {
+  /** Mã vận đơn nghiệp vụ; sparse để dữ liệu legacy vẫn đọc được. */
+  @Prop({ unique: true, sparse: true })
+  shipmentNumber?: string;
+
   /** id tham chiếu đơn Ecom — KHÔNG đọc chéo ecom_db, chỉ lưu để đối soát & đẩy event */
   @Prop({ required: true })
   orderId!: string;
+
+  /** Snapshot mã đơn từ GoodsIssue, không query chéo ecom_db. */
+  @Prop()
+  orderCode?: string;
 
   @Prop({ type: Types.ObjectId, required: true })
   goodsIssueId!: Types.ObjectId;

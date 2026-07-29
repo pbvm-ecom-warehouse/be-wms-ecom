@@ -41,18 +41,24 @@ describe('ScrapNoteRepository', () => {
   describe('createScrapNote', () => {
     it('tạo document với status DRAFT, items đúng shape (images mặc định rỗng)', async () => {
       model.create.mockResolvedValue([{ _id: 'sn1' }]);
-      await repo.createScrapNote('Ghi chú', createdBy, [
-        {
-          itemId,
-          sku: 'SKU-1',
-          shelfId,
-          lotId: null,
-          quantity: 5,
-          reason: 'Vỡ',
-        },
-      ]);
+      await repo.createScrapNote(
+        'Ghi chú',
+        createdBy,
+        [
+          {
+            itemId,
+            sku: 'SKU-1',
+            shelfId,
+            lotId: null,
+            quantity: 5,
+            reason: 'Vỡ',
+          },
+        ],
+        'SCR-20260730-0001',
+      );
       expect(model.create).toHaveBeenCalledWith([
         {
+          scrapNoteNumber: 'SCR-20260730-0001',
           note: 'Ghi chú',
           status: ScrapNoteStatus.DRAFT,
           createdBy,
@@ -73,17 +79,22 @@ describe('ScrapNoteRepository', () => {
 
     it('lưu images vào đúng dòng khi có ảnh minh chứng', async () => {
       model.create.mockResolvedValue([{ _id: 'sn1' }]);
-      await repo.createScrapNote(undefined, createdBy, [
-        {
-          itemId,
-          sku: 'SKU-1',
-          shelfId,
-          lotId: null,
-          quantity: 5,
-          reason: 'Vỡ',
-          images: ['https://res.cloudinary.com/demo/image/upload/x.jpg'],
-        },
-      ]);
+      await repo.createScrapNote(
+        undefined,
+        createdBy,
+        [
+          {
+            itemId,
+            sku: 'SKU-1',
+            shelfId,
+            lotId: null,
+            quantity: 5,
+            reason: 'Vỡ',
+            images: ['https://res.cloudinary.com/demo/image/upload/x.jpg'],
+          },
+        ],
+        'SCR-20260730-0002',
+      );
       expect(model.create).toHaveBeenCalledWith([
         expect.objectContaining({
           items: [
@@ -114,10 +125,12 @@ describe('ScrapNoteRepository', () => {
           },
         ],
         session,
+        'SCR-20260730-0003',
       );
       expect(model.create).toHaveBeenCalledWith(
         [
           {
+            scrapNoteNumber: 'SCR-20260730-0003',
             status: ScrapNoteStatus.APPROVED,
             createdBy,
             approvedBy: createdBy,

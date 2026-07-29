@@ -29,6 +29,7 @@ import { LocationRepository } from '../location/location.repository';
 import { StockTransactionHelper } from '../stock/helpers/with-stock-transaction.helper';
 import { MovementType } from '../stock/schemas/stock-movement.schema';
 import { BarcodeService } from '../stock/barcode/barcode.service';
+import { DocumentNumberService } from '../document-number/document-number.service';
 
 interface ResolvedLine {
   orderItemId: string;
@@ -58,6 +59,7 @@ export class PrintJobService {
     private readonly locationRepo: LocationRepository,
     private readonly stockTransactionHelper: StockTransactionHelper,
     private readonly barcodeSvc: BarcodeService,
+    private readonly documentNumberService: DocumentNumberService,
     // reserve CUP_BLANK bắn stock.changed lên QUEUES.STOCK (khớp
     // apps/ecommerce/src/catalog/stock.consumer.ts @Processor(QUEUES.STOCK));
     // print.completed bắn lên QUEUES.SHIPMENT (khớp
@@ -76,7 +78,7 @@ export class PrintJobService {
     payload: PrintRequestedPayload,
   ): Promise<void> {
     const request = this.normalizePrintRequest(payload);
-    const { orderId, stage, items, orderDetail } = request;
+    const { orderId, orderCode, stage, items, orderDetail } = request;
 
     const existing = await this.repo.findByOrderAndStage(orderId, stage);
     if (existing) {
@@ -94,6 +96,7 @@ export class PrintJobService {
       return;
     }
 
+    const printJobNumber = await this.documentNumberService.next('PRN');
     const lines: ResolvedLine[] = [];
     const blankBySku = new Map<
       string,
@@ -227,6 +230,8 @@ export class PrintJobService {
             stage,
             persistedLines,
             session,
+            printJobNumber,
+            orderCode,
             orderDetail,
           );
           return { reservedByBlank };
@@ -253,6 +258,7 @@ export class PrintJobService {
     }
 
     const orderId = this.requireText(raw.orderId, 'orderId');
+    const orderCode = this.requireText(raw.orderCode, 'orderCode');
     let stage = raw.stage;
     let normalizedOrderId = orderId;
     // Tương thích ngắn hạn với producer legacy chỉ khi vẫn có đầy đủ mapping
@@ -329,6 +335,7 @@ export class PrintJobService {
 
     return {
       orderId: normalizedOrderId,
+      orderCode,
       stage,
       items,
       ...(raw.orderDetail &&

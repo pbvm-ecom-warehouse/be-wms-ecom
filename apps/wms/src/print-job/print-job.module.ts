@@ -9,6 +9,7 @@ import { PrintJobController } from './print-job.controller';
 import { PrintJobConsumer } from './print-job.consumer';
 import { LocationModule } from '../location/location.module';
 import { StockModule } from '../stock/stock.module';
+import { DocumentNumberModule } from '../document-number/document-number.module';
 
 @Module({
   imports: [
@@ -27,6 +28,7 @@ import { StockModule } from '../stock/stock.module';
     ]),
     LocationModule, // findShelfByCode
     StockModule, // StockRepository + StockTransactionHelper
+    DocumentNumberModule,
   ],
   providers: [PrintJobRepository, PrintJobService, PrintJobConsumer],
   controllers: [PrintJobController],

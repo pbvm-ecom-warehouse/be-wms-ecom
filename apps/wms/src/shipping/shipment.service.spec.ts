@@ -26,6 +26,10 @@ const makeCloudinaryService = () => ({
   }),
 });
 
+const makeDocumentNumberService = () => ({
+  next: jest.fn().mockResolvedValue('SHP-20260730-0001'),
+});
+
 function fakeImageFile(
   overrides: Partial<{ mimetype: string; size: number; buffer: Buffer }> = {},
 ) {
@@ -43,6 +47,7 @@ describe('ShipmentService', () => {
   let carrierService: ReturnType<typeof makeCarrierService>;
   let queue: ReturnType<typeof makeQueue>;
   let cloudinary: ReturnType<typeof makeCloudinaryService>;
+  let documentNumber: ReturnType<typeof makeDocumentNumberService>;
   const actorId = new Types.ObjectId().toString();
   const shipmentId = 'ship1';
   const carrierId = new Types.ObjectId().toString();
@@ -53,9 +58,11 @@ describe('ShipmentService', () => {
     carrierService = makeCarrierService();
     queue = makeQueue();
     cloudinary = makeCloudinaryService();
+    documentNumber = makeDocumentNumberService();
     svc = new ShipmentService(
       repo as never,
       carrierService as never,
+      documentNumber as never,
       queue as never,
       cloudinary as never,
     );
@@ -68,6 +75,7 @@ describe('ShipmentService', () => {
       repo.findByGoodsIssueId.mockResolvedValue({ _id: shipmentId });
       await svc.createFromGoodsIssue({
         orderId,
+        orderCode: 'ORD-20260730-0001',
         goodsIssueId: goodsIssueIdStr,
         recipient: { name: 'A', phone: '090', address: {} },
         paymentMethod: 'COD',
@@ -81,18 +89,22 @@ describe('ShipmentService', () => {
       repo.createFromGoodsIssue.mockResolvedValue({ _id: shipmentId });
       await svc.createFromGoodsIssue({
         orderId,
+        orderCode: 'ORD-20260730-0001',
         goodsIssueId: goodsIssueIdStr,
         recipient: { name: 'A', phone: '090', address: {} },
         paymentMethod: 'COD',
         codAmount: 0,
       });
       expect(repo.createFromGoodsIssue).toHaveBeenCalledWith({
+        shipmentNumber: 'SHP-20260730-0001',
         orderId,
+        orderCode: 'ORD-20260730-0001',
         goodsIssueId: new Types.ObjectId(goodsIssueIdStr),
         recipient: { name: 'A', phone: '090', address: {} },
         paymentMethod: 'COD',
         codAmount: 0,
       });
+      expect(documentNumber.next).toHaveBeenCalledWith('SHP');
     });
   });
 

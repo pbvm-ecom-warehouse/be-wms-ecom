@@ -26,6 +26,7 @@ export class OrderReturnedConsumer extends WorkerHost {
         );
         await this.goodsReturnService.createFromOrderReturned(
           data.orderId,
+          data.orderCode,
           data.items,
         );
         break;

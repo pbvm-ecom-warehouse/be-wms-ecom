@@ -37,9 +37,11 @@ export class StockCountRepository {
     note: string | undefined,
     createdBy: Types.ObjectId,
     lines: CreateStockCountLineInput[],
+    stockCountNumber: string,
   ): Promise<StockCountDocument> {
     const [doc] = await this.model.create([
       {
+        stockCountNumber,
         zoneId,
         note,
         status: StockCountStatus.DRAFT,

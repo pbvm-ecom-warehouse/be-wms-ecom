@@ -15,12 +15,14 @@ describe('OrderReturnedConsumer', () => {
       name: EVENTS.ORDER_RETURNED,
       data: {
         orderId: 'order-1',
+        orderCode: 'ORD-20260730-0001',
         items: [{ sku: 'SKU-1', quantity: 2 }],
       },
     } as never);
 
     expect(goodsReturnService.createFromOrderReturned).toHaveBeenCalledWith(
       'order-1',
+      'ORD-20260730-0001',
       [{ sku: 'SKU-1', quantity: 2 }],
     );
   });

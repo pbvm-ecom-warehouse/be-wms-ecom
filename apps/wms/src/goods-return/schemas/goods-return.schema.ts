@@ -75,6 +75,10 @@ const GoodsReturnItemSchema = SchemaFactory.createForClass(GoodsReturnItem);
  */
 @Schema({ collection: 'goods_returns', timestamps: true })
 export class GoodsReturn {
+  /** Mã phiếu hoàn nghiệp vụ; sparse để dữ liệu legacy vẫn đọc được. */
+  @Prop({ unique: true, sparse: true })
+  goodsReturnNumber?: string;
+
   /**
    * Đơn gốc bên Ecommerce — lưu string (KHÔNG populate xuyên app, xem
    * architecture.md liên kết xuyên app chỉ bằng id scalar). Optional: phiếu
@@ -82,6 +86,10 @@ export class GoodsReturn {
    */
   @Prop()
   orderId?: string;
+
+  /** Snapshot mã đơn Ecommerce, optional với phiếu tạo tay/dữ liệu legacy. */
+  @Prop()
+  orderCode?: string;
 
   @Prop({ enum: GoodsReturnStatus, default: GoodsReturnStatus.DRAFT })
   status!: GoodsReturnStatus;

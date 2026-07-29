@@ -8,7 +8,9 @@ import {
 } from './schemas/shipment.schema';
 
 export interface CreateShipmentFromGoodsIssueInput {
+  shipmentNumber: string;
   orderId: string;
+  orderCode?: string;
   goodsIssueId: Types.ObjectId;
   recipient: { name: string; phone: string; address: Record<string, unknown> };
   paymentMethod: 'COD' | 'ONLINE';
@@ -40,17 +42,24 @@ export class ShipmentRepository {
   async createFromGoodsIssue(
     input: CreateShipmentFromGoodsIssueInput,
   ): Promise<ShipmentDocument> {
-    const [doc] = await this.model.create([
-      {
-        orderId: input.orderId,
-        goodsIssueId: input.goodsIssueId,
-        shipmentStatus: ShipmentStatus.PENDING,
-        recipient: input.recipient,
-        paymentMethod: input.paymentMethod,
-        codAmount: input.codAmount,
-      },
-    ]);
-    return doc;
+    return this.model
+      .findOneAndUpdate(
+        { goodsIssueId: input.goodsIssueId },
+        {
+          $setOnInsert: {
+            shipmentNumber: input.shipmentNumber,
+            orderId: input.orderId,
+            orderCode: input.orderCode,
+            goodsIssueId: input.goodsIssueId,
+            shipmentStatus: ShipmentStatus.PENDING,
+            recipient: input.recipient,
+            paymentMethod: input.paymentMethod,
+            codAmount: input.codAmount,
+          },
+        },
+        { upsert: true, new: true, setDefaultsOnInsert: true },
+      )
+      .exec();
   }
 
   assignCarrier(

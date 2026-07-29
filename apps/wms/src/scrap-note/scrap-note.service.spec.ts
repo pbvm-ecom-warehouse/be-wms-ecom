@@ -29,6 +29,10 @@ const makeTxHelper = () => ({
 
 const makeStockQueue = () => ({ add: jest.fn() });
 
+const makeDocumentNumberService = () => ({
+  next: jest.fn().mockResolvedValue('SCR-20260730-0001'),
+});
+
 const makeStockService = () => ({ checkAndEmitStockLow: jest.fn() });
 
 const makeCloudinaryService = () => ({
@@ -58,6 +62,7 @@ describe('ScrapNoteService', () => {
   let txHelper: ReturnType<typeof makeTxHelper>;
   let stockQueue: ReturnType<typeof makeStockQueue>;
   let cloudinary: ReturnType<typeof makeCloudinaryService>;
+  let documentNumber: ReturnType<typeof makeDocumentNumberService>;
 
   const actorId = new Types.ObjectId().toString();
   const itemId = new Types.ObjectId();
@@ -72,12 +77,14 @@ describe('ScrapNoteService', () => {
     txHelper = makeTxHelper();
     stockQueue = makeStockQueue();
     cloudinary = makeCloudinaryService();
+    documentNumber = makeDocumentNumberService();
     svc = new ScrapNoteService(
       repo as never,
       stockRepo as never,
       stockService as never,
       locationRepo as never,
       txHelper as never,
+      documentNumber as never,
       stockQueue as never,
       cloudinary as never,
     );
@@ -151,7 +158,9 @@ describe('ScrapNoteService', () => {
             images: [],
           },
         ],
+        'SCR-20260730-0001',
       );
+      expect(documentNumber.next).toHaveBeenCalledWith('SCR');
     });
 
     it('không có imagesByIndex → images rỗng, không gọi CloudinaryService', async () => {
@@ -183,6 +192,7 @@ describe('ScrapNoteService', () => {
         undefined,
         expect.anything(),
         [expect.objectContaining({ images: [] })],
+        'SCR-20260730-0001',
       );
     });
 
@@ -227,6 +237,7 @@ describe('ScrapNoteService', () => {
             ],
           }),
         ],
+        'SCR-20260730-0001',
       );
     });
 
@@ -617,6 +628,7 @@ describe('ScrapNoteService', () => {
           },
         ],
         session,
+        'SCR-20260730-0001',
       );
       expect(stockRepo.upsertInventory).toHaveBeenCalledWith(
         itemId,

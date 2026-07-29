@@ -49,10 +49,14 @@ export class GoodsReturnRepository {
     createdBy: Types.ObjectId | null,
     note: string | undefined,
     lines: CreateGoodsReturnLineInput[],
+    goodsReturnNumber: string,
+    orderCode?: string,
   ): Promise<GoodsReturnDocument> {
     const [doc] = await this.model.create([
       {
+        goodsReturnNumber,
         orderId,
+        orderCode,
         note,
         status: GoodsReturnStatus.DRAFT,
         createdBy,

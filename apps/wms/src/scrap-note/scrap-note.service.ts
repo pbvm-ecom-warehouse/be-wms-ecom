@@ -21,6 +21,7 @@ import { StockService } from '../stock/stock.service';
 import { LocationRepository } from '../location/location.repository';
 import { StockTransactionHelper } from '../stock/helpers/with-stock-transaction.helper';
 import { MovementType } from '../stock/schemas/stock-movement.schema';
+import { DocumentNumberService } from '../document-number/document-number.service';
 
 // Giới hạn upload ảnh minh chứng hủy hàng — theo đúng ràng buộc thiết kế IMG-01/IMG-06.
 const ALLOWED_IMAGE_MIMETYPES = ['image/jpeg', 'image/png', 'image/webp'];
@@ -40,6 +41,7 @@ export class ScrapNoteService {
     private readonly stockService: StockService,
     private readonly locationRepo: LocationRepository,
     private readonly stockTransactionHelper: StockTransactionHelper,
+    private readonly documentNumberService: DocumentNumberService,
     @InjectQueue(QUEUES.STOCK) private readonly stockQueue: Queue,
     private readonly cloudinary: CloudinaryService,
   ) {}
@@ -115,10 +117,12 @@ export class ScrapNoteService {
       });
     }
 
+    const scrapNoteNumber = await this.documentNumberService.next('SCR');
     return this.repo.createScrapNote(
       dto.note,
       new Types.ObjectId(actorId),
       lines,
+      scrapNoteNumber,
     );
   }
 
@@ -238,6 +242,7 @@ export class ScrapNoteService {
     actorId: Types.ObjectId;
     session: ClientSession;
   }): Promise<Types.ObjectId> {
+    const scrapNoteNumber = await this.documentNumberService.next('SCR');
     const scrapNote = await this.repo.createApprovedScrapNote(
       params.actorId,
       [
@@ -252,6 +257,7 @@ export class ScrapNoteService {
         },
       ],
       params.session,
+      scrapNoteNumber,
     );
     await this.stockRepo.upsertInventory(
       params.itemId,

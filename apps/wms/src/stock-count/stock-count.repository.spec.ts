@@ -46,11 +46,16 @@ describe('StockCountRepository', () => {
       model.create.mockResolvedValue([
         { _id: 'sc1', status: StockCountStatus.DRAFT },
       ]);
-      await repo.createStockCount(null, undefined, createdBy, [
-        { itemId, sku: 'SKU-1', shelfId, lotId: null, systemQty: 50 },
-      ]);
+      await repo.createStockCount(
+        null,
+        undefined,
+        createdBy,
+        [{ itemId, sku: 'SKU-1', shelfId, lotId: null, systemQty: 50 }],
+        'SC-20260730-0001',
+      );
       expect(model.create).toHaveBeenCalledWith([
         {
+          stockCountNumber: 'SC-20260730-0001',
           zoneId: null,
           note: undefined,
           status: StockCountStatus.DRAFT,
