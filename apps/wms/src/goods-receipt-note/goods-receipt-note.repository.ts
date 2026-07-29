@@ -81,7 +81,8 @@ export class GoodsReceiptNoteRepository {
       .exec();
   }
 
-  /** PO có GRN đang DRAFT/PENDING_APPROVAL — chặn tạo GRN mới trùng lặp cho cùng PO. */
+  /** PO có GRN chưa kết thúc (DRAFT/PENDING_APPROVAL/REJECTED) — chặn tạo GRN mới trùng lặp
+   * cho cùng PO, vì REJECTED vẫn có thể resubmit lại. */
   async existsOpenGrnForPurchaseOrder(
     purchaseOrderId: string,
   ): Promise<boolean> {
@@ -92,6 +93,7 @@ export class GoodsReceiptNoteRepository {
           $in: [
             GoodsReceiptNoteStatus.DRAFT,
             GoodsReceiptNoteStatus.PENDING_APPROVAL,
+            GoodsReceiptNoteStatus.REJECTED,
           ],
         },
       })

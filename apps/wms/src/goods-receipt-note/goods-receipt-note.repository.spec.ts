@@ -134,6 +134,26 @@ describe('GoodsReceiptNoteRepository - vòng đời duyệt', () => {
         $in: [
           GoodsReceiptNoteStatus.DRAFT,
           GoodsReceiptNoteStatus.PENDING_APPROVAL,
+          GoodsReceiptNoteStatus.REJECTED,
+        ],
+      },
+    });
+    expect(result).toBe(true);
+  });
+
+  it('existsOpenGrnForPurchaseOrder: trả về true khi PO chỉ có GRN đang REJECTED (vẫn có thể resubmit lại)', async () => {
+    const purchaseOrderId = new Types.ObjectId().toString();
+    model.exec.mockResolvedValue({ _id: new Types.ObjectId() });
+
+    const result = await repo.existsOpenGrnForPurchaseOrder(purchaseOrderId);
+
+    expect(model.exists).toHaveBeenCalledWith({
+      purchaseOrderId: new Types.ObjectId(purchaseOrderId),
+      status: {
+        $in: [
+          GoodsReceiptNoteStatus.DRAFT,
+          GoodsReceiptNoteStatus.PENDING_APPROVAL,
+          GoodsReceiptNoteStatus.REJECTED,
         ],
       },
     });
