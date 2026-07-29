@@ -43,6 +43,7 @@ describe('GoodsReceiptNoteService - duyệt trước khi ghi tồn', () => {
     findGoodsReceiptNoteById: jest.fn(),
     findGoodsReceiptNotes: jest.fn(),
     countByGrnNumberPrefix: jest.fn(),
+    existsOpenGrnForPurchaseOrder: jest.fn(),
     updateStatusSubmitted: jest.fn(),
     updateStatusApproved: jest.fn(),
     updateStatusRejected: jest.fn(),
@@ -124,6 +125,7 @@ describe('GoodsReceiptNoteService - duyệt trước khi ghi tồn', () => {
       supplierService as never,
     );
     repo.countByGrnNumberPrefix.mockResolvedValue(0);
+    repo.existsOpenGrnForPurchaseOrder.mockResolvedValue(false);
     poService.getPurchaseOrder.mockResolvedValue(purchaseOrder());
     stockRepo.findItemById.mockResolvedValue(warehouseItem);
     cloudinary.uploadImage.mockResolvedValue({
@@ -151,6 +153,43 @@ describe('GoodsReceiptNoteService - duyệt trước khi ghi tồn', () => {
       ),
     ).rejects.toMatchObject({ code: 'GRN_IMAGE_REQUIRED' });
     expect(repo.createGoodsReceiptNote).not.toHaveBeenCalled();
+  });
+
+  it('throw PO_HAS_OPEN_GRN khi PO đã có GRN khác đang DRAFT/PENDING_APPROVAL', async () => {
+    repo.existsOpenGrnForPurchaseOrder.mockResolvedValue(true);
+
+    await expect(
+      service.createGoodsReceiptNote(
+        {
+          purchaseOrderId,
+          items: [{ itemId, actualQty: 2, manufacturedDate: '2026-07-28' }],
+        },
+        actorId,
+        [proofImage],
+      ),
+    ).rejects.toMatchObject({ code: 'PO_HAS_OPEN_GRN' });
+    expect(repo.createGoodsReceiptNote).not.toHaveBeenCalled();
+  });
+
+  it('vẫn tạo được GRN khi existsOpenGrnForPurchaseOrder trả false (không có GRN mở)', async () => {
+    repo.existsOpenGrnForPurchaseOrder.mockResolvedValue(false);
+    repo.createGoodsReceiptNote.mockResolvedValue({
+      status: GoodsReceiptNoteStatus.DRAFT,
+    });
+
+    await service.createGoodsReceiptNote(
+      {
+        purchaseOrderId,
+        items: [{ itemId, actualQty: 2, manufacturedDate: '2026-07-28' }],
+      },
+      actorId,
+      [proofImage],
+    );
+
+    expect(repo.existsOpenGrnForPurchaseOrder).toHaveBeenCalledWith(
+      purchaseOrderId,
+    );
+    expect(repo.createGoodsReceiptNote).toHaveBeenCalled();
   });
 
   it('tạo GRN với actualQty là số thùng nguyên, không còn packageCount/unit riêng', async () => {

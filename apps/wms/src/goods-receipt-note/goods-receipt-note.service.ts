@@ -85,6 +85,12 @@ export class GoodsReceiptNoteService {
     if (NON_RECEIVABLE_STATUSES.has(po.status)) {
       throw new AppException('PO_NOT_RECEIVABLE');
     }
+    const hasOpenGrn = await this.repo.existsOpenGrnForPurchaseOrder(
+      dto.purchaseOrderId,
+    );
+    if (hasOpenGrn) {
+      throw new AppException('PO_HAS_OPEN_GRN');
+    }
 
     // Mỗi dòng GRN phải mang ngày sản xuất và thông tin lô do Receiver xác nhận.
     // Backend không thể tự suy đoán các dữ liệu này từ PO khi client bỏ trống items.
