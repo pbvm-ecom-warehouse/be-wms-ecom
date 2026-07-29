@@ -40,7 +40,9 @@ export class CartService {
     }
 
     const isPrintItem =
-      variant.fulfillmentType === FulfillmentType.CUSTOM_PRINT;
+      variant.fulfillmentType === FulfillmentType.CUSTOM_PRINT ||
+      !!dto.designFile ||
+      !!dto.designId;
 
     // CUSTOM_PRINT bắt buộc kèm designFile
     if (isPrintItem && !dto.designFile) {
