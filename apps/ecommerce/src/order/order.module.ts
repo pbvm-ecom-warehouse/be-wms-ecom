@@ -32,6 +32,7 @@ import { CatalogModule } from '../catalog/catalog.module';
       { name: QUEUES.ORDER_REPLY },
       { name: QUEUES.SHIPMENT },
       { name: QUEUES.NOTIFICATION },
+      { name: QUEUES.PRINT },
     ),
     AuthModule,
     CartModule,

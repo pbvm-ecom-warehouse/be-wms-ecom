@@ -26,6 +26,7 @@ export class OrderService {
     private readonly repo: OrderRepository,
     @InjectQueue(QUEUES.ORDER) private readonly orderQueue: Queue,
     @InjectQueue(QUEUES.NOTIFICATION) private readonly notifyQueue: Queue,
+    @InjectQueue(QUEUES.PRINT) private readonly printQueue: Queue,
     @Inject(forwardRef(() => PaymentService))
     private readonly paymentService: PaymentService,
     private readonly userRepo: UserRepository,
@@ -208,7 +209,7 @@ export class OrderService {
     if (order.hasPrintItems) {
       // Đơn in đợt 1 (vừa cọc 30%): Phát lệnh in sang WMS xưởng in
       if (nextPaymentStatus === PaymentStatus.DEPOSIT_PAID && prevPaymentStatus !== PaymentStatus.DEPOSIT_PAID) {
-        await this.orderQueue.add(EVENTS.PRINT_REQUESTED, {
+        await this.printQueue.add(EVENTS.PRINT_REQUESTED, {
           orderId,
           items: order.items
             .filter((i) => i.isPrintItem)
