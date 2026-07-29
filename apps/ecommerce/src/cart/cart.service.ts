@@ -44,6 +44,13 @@ export class CartService {
       !!dto.designFile ||
       !!dto.designId;
 
+    if (isPrintItem) {
+      throw new AppException(
+        'VALIDATION_FAILED',
+        'Sản phẩm in ấn không được phép thêm vào giỏ hàng. Vui lòng chọn mua ngay.',
+      );
+    }
+
     // CUSTOM_PRINT bắt buộc kèm designFile
     if (isPrintItem && !dto.designFile) {
       throw new AppException('CART_PRINT_ITEM_REQUIRES_DESIGN');
@@ -117,6 +124,27 @@ export class CartService {
     const cart = await this.repo.getOrCreateActive(customerId);
     const items = (cart.items ?? []).filter((i) => i.sku !== sku);
     return this.repo.saveCart(cart._id.toString(), items);
+  }
+
+  async removeItems(
+    customerId: string,
+    itemsToRemove: { sku: string; designFile?: string; designId?: string }[],
+  ) {
+    if (!Types.ObjectId.isValid(customerId)) {
+      throw new AppException('VALIDATION_FAILED', 'ID khách hàng không hợp lệ');
+    }
+
+    const cart = await this.repo.getOrCreateActive(customerId);
+    const remainingItems = (cart.items ?? []).filter((cartItem) => {
+      const matched = itemsToRemove.some(
+        (toRemove) =>
+          toRemove.sku === cartItem.sku &&
+          (toRemove.designFile ?? '') === (cartItem.designFile ?? '') &&
+          (toRemove.designId?.toString() ?? '') === (cartItem.designId ?? ''),
+      );
+      return !matched;
+    });
+    return this.repo.saveCart(cart._id.toString(), remainingItems);
   }
 
   async clearCart(customerId: string) {

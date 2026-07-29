@@ -9,6 +9,8 @@ import { OrderRepository } from './order.repository';
 import { CheckoutDto } from './dto/checkout.dto';
 import { UserRepository } from '../auth/repositories/user.repository';
 import { CacheService } from '../cache/cache.service';
+import { CatalogService } from '../catalog/catalog.service';
+import { FulfillmentType } from '../catalog/schemas/product-variant.schema';
 import {
   FulfillmentStatus,
   OrderStatus,
@@ -28,6 +30,7 @@ export class CheckoutService {
     private readonly config: ConfigService,
     @InjectQueue(QUEUES.ORDER) private readonly orderQueue: Queue,
     private readonly cacheService: CacheService,
+    private readonly catalogService: CatalogService,
   ) {}
 
   async checkout(customerId: string, dto: CheckoutDto) {
@@ -35,12 +38,105 @@ export class CheckoutService {
       throw new AppException('VALIDATION_FAILED', 'ID khách hàng không hợp lệ');
     }
 
-    const cart = await this.cartService.getCart(customerId);
-    if (!cart.items || cart.items.length === 0) {
-      throw new AppException('CART_EMPTY');
+    // 1. Xác định danh sách sản phẩm chuẩn bị mua (itemsToBuy) và hasPrintItems
+    let itemsToBuy: {
+      sku: string;
+      quantity: number;
+      unitPrice: number;
+      isPrintItem: boolean;
+      designFile?: string;
+      designId?: string;
+    }[] = [];
+
+    let hasPrintItems = false;
+
+    if (dto.directItem) {
+      // LUỒNG 1: MUA NGAY TRỰC TIẾP (Bỏ qua giỏ hàng, chỉ dùng cho ly in)
+      const variant = await this.catalogService.findVariantBySku(dto.directItem.sku);
+      if (!variant) {
+        throw new AppException(
+          'CART_VARIANT_NOT_AVAILABLE',
+          `SKU ${dto.directItem.sku} không tồn tại`,
+        );
+      }
+      if (!variant.isActive) {
+        throw new AppException(
+          'CART_VARIANT_NOT_AVAILABLE',
+          'Sản phẩm đã bị ẩn hoặc ngừng kinh doanh',
+        );
+      }
+
+      const isPrintItem =
+        variant.fulfillmentType === FulfillmentType.CUSTOM_PRINT ||
+        !!dto.directItem.designFile ||
+        !!dto.directItem.designId;
+
+      itemsToBuy = [
+        {
+          sku: dto.directItem.sku,
+          quantity: dto.directItem.quantity,
+          unitPrice: variant.price,
+          isPrintItem,
+          designFile: dto.directItem.designFile,
+          designId: dto.directItem.designId,
+        },
+      ];
+      hasPrintItems = isPrintItem;
+    } else {
+      // LUỒNG 2: THANH TOÁN TỪ GIỎ HÀNG (Mua toàn bộ hoặc chọn lọc)
+      const cart = await this.cartService.getCart(customerId);
+      if (!cart.items || cart.items.length === 0) {
+        throw new AppException('CART_EMPTY');
+      }
+
+      if (dto.items && dto.items.length > 0) {
+        // Mua một phần giỏ hàng (selected items)
+        for (const sel of dto.items) {
+          const cartItem = cart.items.find(
+            (i) =>
+              i.sku === sel.sku &&
+              (i.designFile ?? '') === (sel.designFile ?? '') &&
+              (i.designId?.toString() ?? '') === (sel.designId ?? ''),
+          );
+          if (!cartItem) {
+            throw new AppException(
+              'VALIDATION_FAILED',
+              `Sản phẩm với SKU ${sel.sku} không tồn tại hoặc không khớp thông tin thiết kế trong giỏ hàng`,
+            );
+          }
+          itemsToBuy.push({
+            sku: cartItem.sku,
+            quantity: cartItem.quantity,
+            unitPrice: cartItem.unitPrice,
+            isPrintItem: cartItem.isPrintItem,
+            designFile: cartItem.designFile,
+            designId: cartItem.designId,
+          });
+        }
+      } else {
+        // Mua toàn bộ giỏ hàng
+        itemsToBuy = cart.items.map((i) => ({
+          sku: i.sku,
+          quantity: i.quantity,
+          unitPrice: i.unitPrice,
+          isPrintItem: i.isPrintItem,
+          designFile: i.designFile,
+          designId: i.designId,
+        }));
+      }
+
+      hasPrintItems = itemsToBuy.some((i) => i.isPrintItem);
     }
 
-    const hasPrintItems = cart.items.some((i) => i.isPrintItem);
+    // 2. Ràng buộc: Ly in bắt buộc thanh toán riêng biệt, không đi kèm sản phẩm nào khác
+    if (hasPrintItems) {
+      if (itemsToBuy.length > 1) {
+        throw new AppException(
+          'VALIDATION_FAILED',
+          'Sản phẩm in ấn phải được thanh toán riêng biệt, không đi kèm sản phẩm khác.',
+        );
+      }
+    }
 
     // Bắt buộc thanh toán ONLINE cho các đơn có ly in custom
     if (hasPrintItems && dto.paymentMethod === PaymentMethod.COD) {
@@ -76,7 +172,7 @@ export class CheckoutService {
     };
 
     // Tính toán tiền hàng
-    const subtotal = cart.items.reduce(
+    const subtotal = itemsToBuy.reduce(
       (sum, item) => sum + item.unitPrice * item.quantity,
       0,
     );
@@ -103,14 +199,14 @@ export class CheckoutService {
     const order = await this.orderRepo.createOrder({
       code,
       customerId: new Types.ObjectId(customerId),
-      items: cart.items.map((i) => ({
+      items: itemsToBuy.map((i) => ({
         sku: i.sku,
         name: i.sku, // v1: dùng sku làm tên
         unitPrice: i.unitPrice,
         quantity: i.quantity,
         isPrintItem: i.isPrintItem,
         designFile: i.designFile,
-        designId: i.designId,
+        designId: i.designId ? new Types.ObjectId(i.designId) : undefined,
       })),
       shippingAddress,
       subtotal,
@@ -125,23 +221,21 @@ export class CheckoutService {
       placedAt: new Date(),
     });
 
-    // Làm trống giỏ hàng sau khi chốt đơn tạm thời
-    await this.cartService.clearCart(customerId);
-
-    // Xóa cache danh sách đơn hàng
-    // try {
-    //   await this.cacheService.del(`ecom:orders:list:${customerId}`);
-    // } catch (cacheErr) {
-    //   this.logger.error(
-    //     `Lỗi khi xóa cache orders list của khách ${customerId}:`,
-    //     cacheErr,
-    //   );
-    // }
+    // 3. Xử lý xóa sản phẩm đã mua khỏi giỏ hàng
+    if (!dto.directItem) {
+      if (dto.items && dto.items.length > 0) {
+        // Chỉ xóa các item được chọn
+        await this.cartService.removeItems(customerId, dto.items);
+      } else {
+        // Xóa sạch giỏ hàng
+        await this.cartService.clearCart(customerId);
+      }
+    }
 
     // Gửi yêu cầu kiểm kho và giữ tồn kho vật lý sang WMS
     await this.orderQueue.add(EVENTS.STOCK_RESERVE_REQUESTED, {
       orderId: order._id.toString(),
-      items: cart.items.map((i) => ({ sku: i.sku, quantity: i.quantity })),
+      items: itemsToBuy.map((i) => ({ sku: i.sku, quantity: i.quantity })),
     });
 
     this.logger.log(`Đặt đơn tạm thời thành công: ${code} -> Chờ WMS giữ kho`);

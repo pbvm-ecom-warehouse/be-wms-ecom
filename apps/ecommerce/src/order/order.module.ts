@@ -18,9 +18,11 @@ import { PaymentController } from './payment.controller';
 import { ReserveConsumer, ReservationReplyConsumer } from './reserve.consumer';
 import { ShipmentConsumer } from './order.consumer';
 import { CacheModule } from '../cache/cache.module';
+import { CatalogModule } from '../catalog/catalog.module';
 
 @Module({
   imports: [
+    CatalogModule,
     MongooseModule.forFeature([
       { name: Order.name, schema: OrderSchema },
       { name: PaymentTransaction.name, schema: PaymentTransactionSchema },
