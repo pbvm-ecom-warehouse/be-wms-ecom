@@ -58,7 +58,12 @@ export class CartService {
     const cart = await this.repo.getOrCreateActive(customerId);
     const cartId = cart._id.toString();
     const items = [...(cart.items ?? [])];
-    const idx = items.findIndex((i) => i.sku === dto.sku);
+    const idx = items.findIndex(
+      (i) =>
+        i.sku === dto.sku &&
+        (i.designFile ?? '') === (dto.designFile ?? '') &&
+        (i.designId?.toString() ?? '') === (dto.designId ?? ''),
+    );
 
     if (idx >= 0) {
       // Đã có trong giỏ → cộng dồn quantity
