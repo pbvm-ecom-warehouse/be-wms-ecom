@@ -4,14 +4,11 @@ import {
 } from './purchase-order.schema';
 
 describe('PurchaseOrder schema', () => {
-  it('PurchaseOrderStatus enum có đủ 6 giá trị', () => {
+  it('PurchaseOrderStatus enum có đủ 3 giá trị', () => {
     expect(Object.values(PurchaseOrderStatus)).toEqual([
-      'DRAFT',
       'CONFIRMED',
-      'SENT',
       'PARTIALLY_RECEIVED',
       'COMPLETED',
-      'CANCELLED',
     ]);
   });
 

@@ -81,6 +81,26 @@ export class GoodsReceiptNoteRepository {
       .exec();
   }
 
+  /** PO có GRN chưa kết thúc (DRAFT/PENDING_APPROVAL/REJECTED) — chặn tạo GRN mới trùng lặp
+   * cho cùng PO, vì REJECTED vẫn có thể resubmit lại. */
+  async existsOpenGrnForPurchaseOrder(
+    purchaseOrderId: string,
+  ): Promise<boolean> {
+    const doc = await this.model
+      .exists({
+        purchaseOrderId: new Types.ObjectId(purchaseOrderId),
+        status: {
+          $in: [
+            GoodsReceiptNoteStatus.DRAFT,
+            GoodsReceiptNoteStatus.PENDING_APPROVAL,
+            GoodsReceiptNoteStatus.REJECTED,
+          ],
+        },
+      })
+      .exec();
+    return doc !== null;
+  }
+
   /** DRAFT/REJECTED → PENDING_APPROVAL: Receiver đã gửi ảnh và số thùng để duyệt. */
   async updateStatusSubmitted(
     id: string,
