@@ -206,7 +206,7 @@ export class CheckoutService {
         quantity: i.quantity,
         isPrintItem: i.isPrintItem,
         designFile: i.designFile,
-        designId: i.designId ? new Types.ObjectId(i.designId) : undefined,
+        designId: i.designId,
       })),
       shippingAddress,
       subtotal,
