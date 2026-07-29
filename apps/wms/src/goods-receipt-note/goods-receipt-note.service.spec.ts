@@ -182,6 +182,55 @@ describe('GoodsReceiptNoteService - duyệt trước khi ghi tồn', () => {
     );
   });
 
+  it('grnNumber trùng do race condition (E11000) → tự đếm lại và insert lại, không lỗi 500', async () => {
+    const dupErr = Object.assign(new Error('E11000 duplicate key'), {
+      code: 11000,
+    });
+    repo.countByGrnNumberPrefix
+      .mockResolvedValueOnce(8) // lần 1: sinh GRN-...-0009 (trùng, request khác đã chiếm)
+      .mockResolvedValueOnce(9); // lần 2 (retry): sinh GRN-...-0010
+    repo.createGoodsReceiptNote
+      .mockRejectedValueOnce(dupErr)
+      .mockResolvedValueOnce({ status: GoodsReceiptNoteStatus.DRAFT });
+
+    await service.createGoodsReceiptNote(
+      {
+        purchaseOrderId,
+        items: [{ itemId, actualQty: 2, manufacturedDate: '2026-07-28' }],
+      },
+      actorId,
+      [proofImage],
+    );
+
+    expect(repo.createGoodsReceiptNote).toHaveBeenCalledTimes(2);
+    expect(repo.createGoodsReceiptNote).toHaveBeenNthCalledWith(
+      2,
+      purchaseOrderId,
+      expect.stringMatching(/-0010$/),
+      expect.anything(),
+      actorId,
+      expect.anything(),
+    );
+  });
+
+  it('grnNumber trùng liên tục vượt quá số lần retry → ném GRN_NUMBER_GENERATION_CONFLICT thay vì để lộ MongoServerError', async () => {
+    const dupErr = Object.assign(new Error('E11000 duplicate key'), {
+      code: 11000,
+    });
+    repo.createGoodsReceiptNote.mockRejectedValue(dupErr);
+
+    await expect(
+      service.createGoodsReceiptNote(
+        {
+          purchaseOrderId,
+          items: [{ itemId, actualQty: 2, manufacturedDate: '2026-07-28' }],
+        },
+        actorId,
+        [proofImage],
+      ),
+    ).rejects.toMatchObject({ code: 'GRN_NUMBER_GENERATION_CONFLICT' });
+  });
+
   it('tạo GRN với expiryDate/lotNumber được parse đúng thành Date và lưu vào item', async () => {
     repo.createGoodsReceiptNote.mockResolvedValue({
       status: GoodsReceiptNoteStatus.DRAFT,

@@ -8,6 +8,7 @@ import {
 } from './purchase-order.repository';
 import { SupplierService } from '../supplier/supplier.service';
 import { StockRepository } from '../stock/stock.repository';
+import { isMongoDuplicateKeyError } from '../stock/barcode/barcode.service';
 import {
   PurchaseOrderStatus,
   type PurchaseOrderDocument,
@@ -20,6 +21,12 @@ import type {
 
 /** Ngưỡng lệch giá (%) để cảnh báo — không chặn PO, chỉ log nghi vấn nhập nhầm/gian lận (issue #31). */
 const PRICE_DEVIATION_WARN_THRESHOLD = 0.2;
+
+// poNumber sinh từ đếm document trong ngày (không atomic) — 2 request tạo PO
+// gần như đồng thời có thể đọc cùng count và cùng sinh trùng số, insert bị
+// unique index chặn (E11000). Retry đếm lại + insert lại thay vì để lộ
+// MongoServerError 500 (xem PO_NUMBER_GENERATION_CONFLICT).
+const MAX_PO_NUMBER_RETRIES = 3;
 
 function maxOf(
   a: number | undefined,
@@ -120,19 +127,27 @@ export class PurchaseOrderService {
       });
     }
 
-    const poNumber = await this.generatePoNumber();
     // Client không truyền expectedDate → gợi ý = hôm nay + leadTimeDays (lớn nhất trong PO), sửa tay được (issue #32)
     const expectedDate =
       dto.expectedDate ??
       (maxLeadTimeDays !== undefined
         ? addDays(new Date(), maxLeadTimeDays).toISOString()
         : undefined);
-    return this.repo.createPurchaseOrder(
-      { ...dto, expectedDate },
-      poNumber,
-      resolvedItems,
-      actorId,
-    );
+
+    for (let attempt = 0; attempt < MAX_PO_NUMBER_RETRIES; attempt++) {
+      const poNumber = await this.generatePoNumber();
+      try {
+        return await this.repo.createPurchaseOrder(
+          { ...dto, expectedDate },
+          poNumber,
+          resolvedItems,
+          actorId,
+        );
+      } catch (err) {
+        if (!isMongoDuplicateKeyError(err)) throw err;
+      }
+    }
+    throw new AppException('PO_NUMBER_GENERATION_CONFLICT');
   }
 
   /**
