@@ -66,9 +66,9 @@ export class CarrierController {
   }
 
   @Get()
-  @Roles(WmsRole.SHIPPER, WmsRole.MANAGER, WmsRole.ADMIN)
+  @Roles(WmsRole.MANAGER, WmsRole.ADMIN)
   @ApiOperation({
-    summary: 'Danh sách đơn vị vận chuyển — [SHIPPER, MANAGER, ADMIN]',
+    summary: 'Danh sách đơn vị vận chuyển legacy — [MANAGER, ADMIN]',
   })
   @ApiOkResponse({ type: [CarrierResponseDto] })
   async list(@Query() query: QueryCarrierDto): Promise<{
@@ -91,9 +91,9 @@ export class CarrierController {
   }
 
   @Get(':id')
-  @Roles(WmsRole.SHIPPER, WmsRole.MANAGER, WmsRole.ADMIN)
+  @Roles(WmsRole.MANAGER, WmsRole.ADMIN)
   @ApiOperation({
-    summary: 'Chi tiết đơn vị vận chuyển — [SHIPPER, MANAGER, ADMIN]',
+    summary: 'Chi tiết đơn vị vận chuyển legacy — [MANAGER, ADMIN]',
   })
   @ApiOkResponse({ type: CarrierResponseDto })
   async getById(@Param('id') id: string): Promise<CarrierResponseDto> {

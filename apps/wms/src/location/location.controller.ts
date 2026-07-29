@@ -96,7 +96,7 @@ export class LocationController {
   // ─── Layout tổng hợp (đặt đầu tiên, route cố định không xung đột) ────────
 
   @Get('layout')
-  @Roles(WmsRole.MANAGER, WmsRole.ADMIN, WmsRole.RECEIVER, WmsRole.PICKER)
+  @Roles(WmsRole.MANAGER, WmsRole.ADMIN, WmsRole.RECEIVER, WmsRole.SHIPPER)
   @ApiOperation({
     summary:
       'Snapshot sơ đồ kho 2D (canvas+zone+rack+shelf+aisle+gate) — [MANAGER, ADMIN]',
@@ -108,7 +108,7 @@ export class LocationController {
   }
 
   @Get('navigation')
-  @Roles(WmsRole.MANAGER, WmsRole.ADMIN, WmsRole.RECEIVER, WmsRole.PICKER)
+  @Roles(WmsRole.MANAGER, WmsRole.ADMIN, WmsRole.RECEIVER, WmsRole.SHIPPER)
   @ApiOperation({ summary: 'Đường đi từ GATE-01 tới rack đích' })
   getNavigation(@Query('targetRackId') targetRackId: string) {
     return this.navigationService.getPath(targetRackId);
@@ -439,10 +439,10 @@ export class LocationController {
   // ─── Rack param routes ────────────────────────────────────────────────────
 
   @Get('racks/:id/cells')
-  @Roles(WmsRole.MANAGER, WmsRole.ADMIN, WmsRole.RECEIVER, WmsRole.PICKER)
+  @Roles(WmsRole.MANAGER, WmsRole.ADMIN, WmsRole.RECEIVER, WmsRole.SHIPPER)
   @ApiOperation({
     summary:
-      'Danh sách khoang và tồn thật của một rack — [MANAGER, ADMIN, RECEIVER, PICKER]',
+      'Danh sách khoang và tồn thật của một rack — [MANAGER, ADMIN, RECEIVER, SHIPPER]',
   })
   async getRackCells(@Param('id') id: string) {
     return this.svc.getRackCells(id);
@@ -484,10 +484,10 @@ export class LocationController {
   // ─── Shelf param routes ───────────────────────────────────────────────────
 
   @Get('cells/:id/contents')
-  @Roles(WmsRole.MANAGER, WmsRole.ADMIN, WmsRole.RECEIVER, WmsRole.PICKER)
+  @Roles(WmsRole.MANAGER, WmsRole.ADMIN, WmsRole.RECEIVER, WmsRole.SHIPPER)
   @ApiOperation({
     summary:
-      'Tồn kho thật tại 1 khoang (cell) — [MANAGER, ADMIN, RECEIVER, PICKER]',
+      'Tồn kho thật tại 1 khoang (cell) — [MANAGER, ADMIN, RECEIVER, SHIPPER]',
   })
   @ApiOkResponse({ type: [ShelfContentResponseDto] })
   async getCellContents(
@@ -506,10 +506,10 @@ export class LocationController {
   }
 
   @Get('shelves/:id/contents')
-  @Roles(WmsRole.MANAGER, WmsRole.ADMIN, WmsRole.RECEIVER, WmsRole.PICKER)
+  @Roles(WmsRole.MANAGER, WmsRole.ADMIN, WmsRole.RECEIVER, WmsRole.SHIPPER)
   @ApiOperation({
     summary:
-      'Tồn kho thật tại 1 shelf (cho rack elevation view) — [MANAGER, ADMIN, RECEIVER, PICKER]',
+      'Tồn kho thật tại 1 shelf (cho rack elevation view) — [MANAGER, ADMIN, RECEIVER, SHIPPER]',
   })
   @ApiOkResponse({ type: [ShelfContentResponseDto] })
   async getShelfContents(

@@ -87,7 +87,7 @@ export type UpdateWarehouseItemData = Partial<
 export interface PickSuggestion {
   shelfId: Types.ObjectId;
   cellId?: Types.ObjectId | null;
-  /** Barcode dán trên kệ/khoang — PICKER quét/đọc để tìm đúng vị trí. */
+  /** Barcode dán trên kệ/khoang — SHIPPER quét/đọc để tìm đúng vị trí. */
   shelfCode: string;
   cellCode?: string | null;
   rackId?: Types.ObjectId;

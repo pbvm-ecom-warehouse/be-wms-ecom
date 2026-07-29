@@ -2,6 +2,7 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Expose, Transform, Type } from 'class-transformer';
 import {
   IsEnum,
+  ArrayMinSize,
   IsInt,
   IsMongoId,
   IsOptional,
@@ -9,6 +10,7 @@ import {
   Max,
   Min,
   MinLength,
+  ValidateNested,
 } from 'class-validator';
 import { Types } from 'mongoose';
 import { ShipmentStatus } from '../schemas/shipment.schema';
@@ -22,6 +24,26 @@ export class AssignShipmentDto {
   @IsString()
   @MinLength(1)
   trackingNumber!: string;
+}
+
+export class CreateShipmentPackageAllocationDto {
+  @ApiProperty()
+  @IsMongoId()
+  itemId!: string;
+
+  @ApiProperty({ minimum: 1 })
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  quantity!: number;
+}
+
+export class CreateShipmentPackageDto {
+  @ApiProperty({ type: [CreateShipmentPackageAllocationDto] })
+  @ArrayMinSize(1)
+  @ValidateNested({ each: true })
+  @Type(() => CreateShipmentPackageAllocationDto)
+  allocations!: CreateShipmentPackageAllocationDto[];
 }
 
 export class UpdateShipmentStatusDto {
@@ -116,6 +138,56 @@ class ShipmentStatusHistoryResponseDto {
   images!: string[];
 }
 
+class ShipmentPackageAllocationResponseDto {
+  @Expose()
+  @Transform(({ obj }: { obj: { itemId?: Types.ObjectId } }) =>
+    obj.itemId?.toString(),
+  )
+  @ApiProperty()
+  itemId!: string;
+
+  @Expose()
+  @ApiProperty()
+  sku!: string;
+
+  @Expose()
+  @ApiProperty()
+  quantity!: number;
+}
+
+class ShipmentPackageResponseDto {
+  @Expose()
+  @ApiProperty()
+  barcode!: string;
+
+  @Expose()
+  @Type(() => ShipmentPackageAllocationResponseDto)
+  @ApiProperty({ type: [ShipmentPackageAllocationResponseDto] })
+  allocations!: ShipmentPackageAllocationResponseDto[];
+
+  @Expose()
+  @ApiProperty()
+  createdAt!: Date;
+
+  @Expose()
+  @Transform(({ obj }: { obj: { createdBy?: Types.ObjectId } }) =>
+    obj.createdBy?.toString(),
+  )
+  @ApiProperty()
+  createdBy!: string;
+
+  @Expose()
+  @Transform(({ obj }: { obj: { loadedTripId?: Types.ObjectId } }) =>
+    obj.loadedTripId?.toString(),
+  )
+  @ApiPropertyOptional()
+  loadedTripId?: string;
+
+  @Expose()
+  @ApiPropertyOptional()
+  loadedAt?: Date;
+}
+
 export class ShipmentResponseDto {
   @Expose()
   @Transform(({ obj }: { obj: { _id?: Types.ObjectId } }) =>
@@ -154,6 +226,13 @@ export class ShipmentResponseDto {
   goodsIssueId!: string;
 
   @Expose()
+  @Transform(({ obj }: { obj: { assignedShipperId?: Types.ObjectId } }) =>
+    obj.assignedShipperId?.toString(),
+  )
+  @ApiPropertyOptional()
+  assignedShipperId?: string;
+
+  @Expose()
   @Transform(({ obj }: { obj: { carrierId?: Types.ObjectId } }) =>
     obj.carrierId?.toString(),
   )
@@ -179,6 +258,11 @@ export class ShipmentResponseDto {
   @Expose()
   @ApiProperty()
   codAmount!: number;
+
+  @Expose()
+  @Type(() => ShipmentPackageResponseDto)
+  @ApiProperty({ type: [ShipmentPackageResponseDto] })
+  packages!: ShipmentPackageResponseDto[];
 
   @Expose()
   @ApiProperty()

@@ -39,18 +39,26 @@ export class GoodsIssueController {
   constructor(private readonly svc: GoodsIssueService) {}
 
   @Get()
-  @Roles(WmsRole.PICKER, WmsRole.MANAGER, WmsRole.ADMIN)
+  @Roles(WmsRole.SHIPPER, WmsRole.MANAGER, WmsRole.ADMIN)
   @ApiOperation({
-    summary: 'Danh sách phiếu xuất kho — [PICKER, MANAGER, ADMIN]',
+    summary: 'Danh sách phiếu xuất kho — [SHIPPER, MANAGER, ADMIN]',
   })
   @ApiOkResponse({ type: [GoodsIssueResponseDto] })
-  async listGoodsIssues(@Query() query: QueryGoodsIssueDto): Promise<{
+  async listGoodsIssues(
+    @Query() query: QueryGoodsIssueDto,
+    @CurrentUser('sub') actorId: string,
+    @CurrentUser('role') actorRole: WmsRole,
+  ): Promise<{
     data: GoodsIssueResponseDto[];
     total: number;
     page: number;
     limit: number;
   }> {
-    const { data, total } = await this.svc.listGoodsIssues(query);
+    const { data, total } = await this.svc.listGoodsIssues(
+      query,
+      actorId,
+      actorRole,
+    );
     return {
       data: plainToInstance(
         GoodsIssueResponseDto,
@@ -64,9 +72,9 @@ export class GoodsIssueController {
   }
 
   @Get(':id')
-  @Roles(WmsRole.PICKER, WmsRole.MANAGER, WmsRole.ADMIN)
+  @Roles(WmsRole.SHIPPER, WmsRole.MANAGER, WmsRole.ADMIN)
   @ApiOperation({
-    summary: 'Chi tiết phiếu xuất kho — [PICKER, MANAGER, ADMIN]',
+    summary: 'Chi tiết phiếu xuất kho — [SHIPPER, MANAGER, ADMIN]',
   })
   @ApiOkResponse({ type: GoodsIssueResponseDto })
   async getGoodsIssue(@Param('id') id: string): Promise<GoodsIssueResponseDto> {
@@ -74,34 +82,56 @@ export class GoodsIssueController {
     return plainToInstance(GoodsIssueResponseDto, doc.toObject(), TO_OPTS);
   }
 
+  @Post(':id/claim')
+  @Roles(WmsRole.SHIPPER, WmsRole.ADMIN)
+  @ApiOperation({
+    summary: 'Nhận phiếu xuất kho atomically — [SHIPPER, ADMIN]',
+  })
+  @ApiOkResponse({ type: GoodsIssueResponseDto })
+  async claim(
+    @Param('id') id: string,
+    @CurrentUser('sub') actorId: string,
+  ): Promise<GoodsIssueResponseDto> {
+    const doc = await this.svc.claim(id, actorId);
+    return plainToInstance(GoodsIssueResponseDto, doc.toObject(), TO_OPTS);
+  }
+
   @Get(':id/items/:itemId/suggestions')
-  @Roles(WmsRole.PICKER, WmsRole.ADMIN)
+  @Roles(WmsRole.SHIPPER, WmsRole.ADMIN)
   @ApiOperation({
     summary:
-      'Gợi ý vị trí pick (FEFO nếu hàng có hạn sử dụng) — [PICKER, ADMIN]',
+      'Gợi ý vị trí pick (FEFO nếu hàng có hạn sử dụng) — [SHIPPER owner, ADMIN]',
   })
   @ApiOkResponse({ type: [PickSuggestionResponseDto] })
   async getPickSuggestions(
     @Param('id') id: string,
     @Param('itemId') itemId: string,
+    @CurrentUser('sub') actorId: string,
+    @CurrentUser('role') actorRole: WmsRole,
   ): Promise<PickSuggestionResponseDto[]> {
-    const suggestions = await this.svc.getPickSuggestions(id, itemId);
+    const suggestions = await this.svc.getPickSuggestions(
+      id,
+      itemId,
+      actorId,
+      actorRole,
+    );
     return plainToInstance(PickSuggestionResponseDto, suggestions, TO_OPTS);
   }
 
   @Post(':id/confirm-line')
-  @Roles(WmsRole.PICKER, WmsRole.ADMIN)
+  @Roles(WmsRole.SHIPPER, WmsRole.ADMIN)
   @ApiOperation({
     summary:
-      'Xác nhận 1 dòng xuất kho (quét SKU + shelf) — trừ onHand+reserved — [PICKER, ADMIN]',
+      'Xác nhận 1 dòng xuất kho (quét item + cell) — trừ onHand+reserved — [SHIPPER owner, ADMIN]',
   })
   @ApiOkResponse({ type: GoodsIssueResponseDto })
   async confirmLine(
     @Param('id') id: string,
     @Body() dto: ConfirmGoodsIssueLineDto,
     @CurrentUser('sub') actorId: string,
+    @CurrentUser('role') actorRole: WmsRole,
   ): Promise<GoodsIssueResponseDto> {
-    const doc = await this.svc.confirmLine(id, dto, actorId);
+    const doc = await this.svc.confirmLine(id, dto, actorId, actorRole);
     return plainToInstance(GoodsIssueResponseDto, doc.toObject(), TO_OPTS);
   }
 }

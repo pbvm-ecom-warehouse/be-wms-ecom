@@ -1,6 +1,8 @@
 import { Types } from 'mongoose';
 import { AppException } from '@app/common/errors/app.exception';
+import { WmsRole } from '@app/auth';
 import { GoodsIssueService } from './goods-issue.service';
+import { GoodsIssueStatus } from './schemas/goods-issue.schema';
 
 const path = (rackId: string, distanceM: number) => ({
   startGateCode: 'GATE-01',
@@ -25,6 +27,7 @@ describe('GoodsIssueService theo khoang và thùng nguyên', () => {
     createGoodsIssue: jest.fn(),
     findById: jest.fn(),
     findAll: jest.fn(),
+    claim: jest.fn(),
     decrementRemainingQty: jest.fn(),
     markConfirmedIfAllDone: jest.fn(),
   };
@@ -58,6 +61,8 @@ describe('GoodsIssueService theo khoang và thùng nguyên', () => {
   const goodsIssue = () => ({
     _id: new Types.ObjectId(giId),
     orderId,
+    status: GoodsIssueStatus.PICKING,
+    assignedShipperId: new Types.ObjectId(actorId),
     items: [{ itemId, sku: 'SKU-1', quantity: 5, remainingQty: 5 }],
   });
   const cell = () => ({ _id: cellId, shelfId });
@@ -97,6 +102,31 @@ describe('GoodsIssueService theo khoang và thùng nguyên', () => {
     stockRepo.issueReservedIfAvailable.mockResolvedValue(true);
     repo.decrementRemainingQty.mockResolvedValue(goodsIssue());
     repo.markConfirmedIfAllDone.mockResolvedValue(false);
+  });
+
+  it('claim idempotent cho cùng Shipper và chặn Shipper khác', async () => {
+    repo.claim.mockResolvedValueOnce(goodsIssue()).mockResolvedValueOnce(null);
+
+    await expect(service.claim(giId, actorId)).resolves.toMatchObject({
+      status: GoodsIssueStatus.PICKING,
+    });
+
+    const otherShipperId = new Types.ObjectId().toString();
+    repo.findById.mockResolvedValue(goodsIssue());
+    await expect(service.claim(giId, otherShipperId)).rejects.toMatchObject({
+      code: 'GOODS_ISSUE_ALREADY_CLAIMED',
+    });
+  });
+
+  it('chặn Shipper không phải owner xem gợi ý', async () => {
+    await expect(
+      service.getPickSuggestions(
+        giId,
+        itemId.toString(),
+        new Types.ObjectId().toString(),
+        WmsRole.SHIPPER,
+      ),
+    ).rejects.toMatchObject({ code: 'GOODS_ISSUE_NOT_OWNER' });
   });
 
   it('tạo mã phiếu atomic và lưu snapshot orderCode khi nhận event', async () => {
@@ -169,7 +199,12 @@ describe('GoodsIssueService theo khoang và thùng nguyên', () => {
       ),
     );
 
-    const result = await service.getPickSuggestions(giId, itemId.toString());
+    const result = await service.getPickSuggestions(
+      giId,
+      itemId.toString(),
+      actorId,
+      WmsRole.SHIPPER,
+    );
 
     expect(result.map((entry) => entry.cellCode)).toEqual([
       'C-NEAR',
@@ -192,7 +227,12 @@ describe('GoodsIssueService theo khoang và thùng nguyên', () => {
     );
 
     await expect(
-      service.getPickSuggestions(giId, itemId.toString()),
+      service.getPickSuggestions(
+        giId,
+        itemId.toString(),
+        actorId,
+        WmsRole.SHIPPER,
+      ),
     ).resolves.toEqual([]);
   });
 
@@ -204,6 +244,7 @@ describe('GoodsIssueService theo khoang và thùng nguyên', () => {
         giId,
         { itemBarcode: 'SKU-1', cellBarcode: 'WRONG', quantity: 1 },
         actorId,
+        WmsRole.SHIPPER,
       ),
     ).rejects.toMatchObject({ code: 'GOODS_ISSUE_CELL_NOT_FOUND' });
   });
@@ -214,6 +255,7 @@ describe('GoodsIssueService theo khoang và thùng nguyên', () => {
         giId,
         { itemBarcode: 'SKU-1', cellBarcode: 'R1-T1-B1', quantity: 0 },
         actorId,
+        WmsRole.SHIPPER,
       ),
     ).rejects.toMatchObject({ code: 'GOODS_ISSUE_PACKAGE_COUNT_REQUIRED' });
   });
@@ -226,6 +268,7 @@ describe('GoodsIssueService theo khoang và thùng nguyên', () => {
         giId,
         { itemBarcode: 'SKU-1', cellBarcode: 'R1-T1-B1', quantity: 2 },
         actorId,
+        WmsRole.SHIPPER,
       ),
     ).rejects.toMatchObject({ code: 'STOCK_INSUFFICIENT' });
     expect(stockRepo.insertMovement).not.toHaveBeenCalled();
@@ -244,6 +287,7 @@ describe('GoodsIssueService theo khoang và thùng nguyên', () => {
         suggestedCellId,
       },
       actorId,
+      WmsRole.SHIPPER,
     );
 
     expect(stockRepo.decrementInventoryIfAvailable).toHaveBeenCalledWith(

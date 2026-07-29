@@ -46,6 +46,9 @@ export class GoodsIssuedConsumer extends WorkerHost {
           },
           paymentMethod: gi.paymentMethod,
           codAmount: gi.codAmount,
+          ...(gi.assignedShipperId
+            ? { assignedShipperId: gi.assignedShipperId.toString() }
+            : {}),
         });
         this.logger.log(
           `Auto-sinh Shipment{PENDING} cho goodsIssueId=${data.goodsIssueId}`,

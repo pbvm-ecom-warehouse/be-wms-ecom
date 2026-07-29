@@ -3,6 +3,7 @@ import { HydratedDocument, Types } from 'mongoose';
 
 export enum ShipmentStatus {
   PENDING = 'PENDING',
+  READY = 'READY',
   PICKED_UP = 'PICKED_UP',
   IN_TRANSIT = 'IN_TRANSIT',
   DELIVERED = 'DELIVERED',
@@ -34,6 +35,45 @@ const ShipmentStatusHistoryEntrySchema = SchemaFactory.createForClass(
   ShipmentStatusHistoryEntry,
 );
 
+@Schema({ _id: false })
+export class ShipmentPackageAllocation {
+  @Prop({ type: Types.ObjectId, required: true })
+  itemId!: Types.ObjectId;
+
+  @Prop({ required: true })
+  sku!: string;
+
+  @Prop({ type: Number, required: true, min: 1 })
+  quantity!: number;
+}
+const ShipmentPackageAllocationSchema = SchemaFactory.createForClass(
+  ShipmentPackageAllocation,
+);
+
+@Schema({ _id: false })
+export class ShipmentPackage {
+  /** Code128/business barcode do WMS sinh; không phải LPN. */
+  @Prop({ required: true })
+  barcode!: string;
+
+  @Prop({ type: [ShipmentPackageAllocationSchema], required: true })
+  allocations!: ShipmentPackageAllocation[];
+
+  @Prop({ type: Date, required: true })
+  createdAt!: Date;
+
+  @Prop({ type: Types.ObjectId, required: true })
+  createdBy!: Types.ObjectId;
+
+  /** Phase 2 dùng để khóa package vào đúng một chuyến. */
+  @Prop({ type: Types.ObjectId })
+  loadedTripId?: Types.ObjectId;
+
+  @Prop({ type: Date })
+  loadedAt?: Date;
+}
+const ShipmentPackageSchema = SchemaFactory.createForClass(ShipmentPackage);
+
 /**
  * Vận đơn (UC-S02..S05) — 1:1 với GoodsIssue, auto-sinh khi nhận goods.issued.
  * Chứng từ giao dịch: hủy bằng shipmentStatus, KHÔNG soft-delete.
@@ -56,6 +96,9 @@ export class Shipment {
   goodsIssueId!: Types.ObjectId;
 
   @Prop({ type: Types.ObjectId })
+  assignedShipperId?: Types.ObjectId;
+
+  @Prop({ type: Types.ObjectId })
   carrierId?: Types.ObjectId;
 
   @Prop()
@@ -76,6 +119,9 @@ export class Shipment {
 
   @Prop({ type: Number, default: 0 })
   codAmount!: number;
+
+  @Prop({ type: [ShipmentPackageSchema], default: [] })
+  packages!: ShipmentPackage[];
 
   @Prop({ type: Number, default: 0 })
   attempts!: number;
@@ -101,3 +147,5 @@ ShipmentSchema.index({ goodsIssueId: 1 }, { unique: true });
 ShipmentSchema.index({ orderId: 1 });
 ShipmentSchema.index({ shipmentStatus: 1 });
 ShipmentSchema.index({ carrierId: 1 });
+ShipmentSchema.index({ assignedShipperId: 1, shipmentStatus: 1 });
+ShipmentSchema.index({ 'packages.barcode': 1 }, { unique: true, sparse: true });

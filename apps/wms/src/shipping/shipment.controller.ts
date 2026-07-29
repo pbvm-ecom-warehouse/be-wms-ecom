@@ -4,6 +4,7 @@ import {
   Get,
   Param,
   Patch,
+  Post,
   Query,
   UploadedFiles,
   UseGuards,
@@ -29,6 +30,7 @@ import { plainToInstance } from 'class-transformer';
 import { ShipmentService, type UploadedImageFile } from './shipment.service';
 import {
   AssignShipmentDto,
+  CreateShipmentPackageDto,
   UpdateShipmentStatusFormDto,
   QueryShipmentDto,
   ShipmentResponseDto,
@@ -47,13 +49,17 @@ export class ShipmentController {
   @Roles(WmsRole.SHIPPER, WmsRole.MANAGER, WmsRole.ADMIN)
   @ApiOperation({ summary: 'Danh sách vận đơn — [SHIPPER, MANAGER, ADMIN]' })
   @ApiOkResponse({ type: [ShipmentResponseDto] })
-  async list(@Query() query: QueryShipmentDto): Promise<{
+  async list(
+    @Query() query: QueryShipmentDto,
+    @CurrentUser('sub') actorId: string,
+    @CurrentUser('role') actorRole: WmsRole,
+  ): Promise<{
     data: ShipmentResponseDto[];
     total: number;
     page: number;
     limit: number;
   }> {
-    const { data, total } = await this.svc.list(query);
+    const { data, total } = await this.svc.list(query, actorId, actorRole);
     return {
       data: plainToInstance(
         ShipmentResponseDto,
@@ -70,15 +76,36 @@ export class ShipmentController {
   @Roles(WmsRole.SHIPPER, WmsRole.MANAGER, WmsRole.ADMIN)
   @ApiOperation({ summary: 'Chi tiết vận đơn — [SHIPPER, MANAGER, ADMIN]' })
   @ApiOkResponse({ type: ShipmentResponseDto })
-  async getById(@Param('id') id: string): Promise<ShipmentResponseDto> {
-    const doc = await this.svc.getById(id);
+  async getById(
+    @Param('id') id: string,
+    @CurrentUser('sub') actorId: string,
+    @CurrentUser('role') actorRole: WmsRole,
+  ): Promise<ShipmentResponseDto> {
+    const doc = await this.svc.getByIdForActor(id, actorId, actorRole);
+    return plainToInstance(ShipmentResponseDto, doc.toObject(), TO_OPTS);
+  }
+
+  @Post(':id/packages')
+  @Roles(WmsRole.SHIPPER, WmsRole.ADMIN)
+  @ApiOperation({
+    summary:
+      'Đóng một kiện từ allocations đã pick; barcode do WMS sinh — [SHIPPER owner, ADMIN]',
+  })
+  @ApiOkResponse({ type: ShipmentResponseDto })
+  async createPackage(
+    @Param('id') id: string,
+    @Body() dto: CreateShipmentPackageDto,
+    @CurrentUser('sub') actorId: string,
+    @CurrentUser('role') actorRole: WmsRole,
+  ): Promise<ShipmentResponseDto> {
+    const doc = await this.svc.createPackage(id, dto, actorId, actorRole);
     return plainToInstance(ShipmentResponseDto, doc.toObject(), TO_OPTS);
   }
 
   @Patch(':id/assign')
-  @Roles(WmsRole.SHIPPER, WmsRole.ADMIN)
+  @Roles(WmsRole.ADMIN)
   @ApiOperation({
-    summary: 'Gán hãng vận chuyển + mã tracking — [SHIPPER, ADMIN]',
+    summary: 'Legacy: gán hãng vận chuyển + tracking — [ADMIN]',
   })
   @ApiOkResponse({ type: ShipmentResponseDto })
   async assign(
@@ -94,9 +121,9 @@ export class ShipmentController {
   }
 
   @Patch(':id/status')
-  @Roles(WmsRole.SHIPPER, WmsRole.ADMIN)
+  @Roles(WmsRole.ADMIN)
   @UseInterceptors(FilesInterceptor('images'))
-  @ApiOperation({ summary: 'Cập nhật trạng thái giao hàng — [SHIPPER, ADMIN]' })
+  @ApiOperation({ summary: 'Legacy: cập nhật trạng thái giao hàng — [ADMIN]' })
   @ApiConsumes('multipart/form-data')
   @ApiBody({
     description:

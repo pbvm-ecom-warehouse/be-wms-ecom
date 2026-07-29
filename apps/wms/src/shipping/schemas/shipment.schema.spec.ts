@@ -37,4 +37,14 @@ describe('ShipmentSchema', () => {
         : imagesPath.defaultValue;
     expect(defaultValue).toEqual([]);
   });
+
+  it('package barcode có unique multikey index', () => {
+    const indexes = ShipmentSchema.indexes();
+    expect(
+      indexes.some(
+        ([fields, opts]) =>
+          fields['packages.barcode'] === 1 && opts?.unique === true,
+      ),
+    ).toBe(true);
+  });
 });
