@@ -24,6 +24,13 @@ export interface QueryScrapNoteInput {
   limit?: number;
 }
 
+export interface UpsertStockCountScrapInput {
+  sourceStockCountId: Types.ObjectId;
+  scrapNoteNumber: string;
+  createdBy: Types.ObjectId;
+  line: CreateScrapNoteLineInput;
+}
+
 @Injectable()
 export class ScrapNoteRepository {
   constructor(
@@ -33,6 +40,96 @@ export class ScrapNoteRepository {
 
   findById(id: string): Promise<ScrapNoteDocument | null> {
     return this.model.findOne({ _id: id }).exec();
+  }
+
+  findBySourceStockCountId(
+    sourceStockCountId: Types.ObjectId,
+  ): Promise<ScrapNoteDocument | null> {
+    return this.model.findOne({ sourceStockCountId }).exec();
+  }
+
+  /**
+   * Gom đề xuất hủy của cùng một Stock Count vào đúng một phiếu DRAFT.
+   * Hai request đồng thời không thể append trùng cùng (item, shelf, lot), và
+   * unique index sourceStockCountId ngăn tạo hai phiếu nguồn giống nhau.
+   */
+  async upsertFromStockCount(
+    input: UpsertStockCountScrapInput,
+  ): Promise<ScrapNoteDocument | null> {
+    const key = {
+      itemId: input.line.itemId,
+      shelfId: input.line.shelfId,
+      lotId: input.line.lotId,
+    };
+    const line = {
+      ...key,
+      sku: input.line.sku,
+      quantity: input.line.quantity,
+      reason: input.line.reason,
+      images: input.line.images ?? [],
+    };
+
+    const updateExisting = () =>
+      this.model
+        .findOneAndUpdate(
+          {
+            sourceStockCountId: input.sourceStockCountId,
+            status: ScrapNoteStatus.DRAFT,
+            items: { $elemMatch: key },
+          },
+          {
+            $set: {
+              'items.$.quantity': input.line.quantity,
+              'items.$.reason': input.line.reason,
+              ...(input.line.images
+                ? { 'items.$.images': input.line.images }
+                : {}),
+            },
+          },
+          { new: true },
+        )
+        .exec();
+
+    const appendNew = () =>
+      this.model
+        .findOneAndUpdate(
+          {
+            sourceStockCountId: input.sourceStockCountId,
+            status: ScrapNoteStatus.DRAFT,
+            items: { $not: { $elemMatch: key } },
+          },
+          { $push: { items: line } },
+          { new: true },
+        )
+        .exec();
+
+    const existing = await updateExisting();
+    if (existing) return existing;
+    const appended = await appendNew();
+    if (appended) return appended;
+
+    try {
+      const [created] = await this.model.create([
+        {
+          sourceStockCountId: input.sourceStockCountId,
+          scrapNoteNumber: input.scrapNoteNumber,
+          status: ScrapNoteStatus.DRAFT,
+          createdBy: input.createdBy,
+          items: [line],
+        },
+      ]);
+      return created;
+    } catch (error) {
+      if (
+        typeof error !== 'object' ||
+        error === null ||
+        !('code' in error) ||
+        (error as { code?: unknown }).code !== 11000
+      ) {
+        throw error;
+      }
+      return (await updateExisting()) ?? (await appendNew());
+    }
   }
 
   async createScrapNote(
@@ -128,6 +225,21 @@ export class ScrapNoteRepository {
         { session },
       )
       .exec();
+  }
+
+  async claimApprovedIfDraft(
+    id: string,
+    approvedBy: Types.ObjectId,
+    session: ClientSession,
+  ): Promise<boolean> {
+    const updated = await this.model
+      .findOneAndUpdate(
+        { _id: id, status: ScrapNoteStatus.DRAFT },
+        { $set: { status: ScrapNoteStatus.APPROVED, approvedBy } },
+        { new: true, session },
+      )
+      .exec();
+    return updated !== null;
   }
 
   async setRejected(

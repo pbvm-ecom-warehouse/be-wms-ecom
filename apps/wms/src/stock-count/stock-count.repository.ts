@@ -172,4 +172,26 @@ export class StockCountRepository {
       )
       .exec();
   }
+
+  async claimApprovedIfCompleted(
+    id: string,
+    approvedBy: Types.ObjectId,
+    approveReason: string | undefined,
+    session: ClientSession,
+  ): Promise<boolean> {
+    const updated = await this.model
+      .findOneAndUpdate(
+        { _id: id, status: StockCountStatus.COMPLETED },
+        {
+          $set: {
+            status: StockCountStatus.APPROVED,
+            approvedBy,
+            approveReason,
+          },
+        },
+        { new: true, session },
+      )
+      .exec();
+    return updated !== null;
+  }
 }

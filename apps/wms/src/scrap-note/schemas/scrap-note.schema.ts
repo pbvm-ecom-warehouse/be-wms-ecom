@@ -76,6 +76,13 @@ export class ScrapNote {
   @Prop({ unique: true, sparse: true })
   scrapNoteNumber?: string;
 
+  /**
+   * Có giá trị khi COUNTER đề xuất hủy từ một dòng kiểm kê. Unique + sparse
+   * bảo đảm mỗi Stock Count chỉ gom vào đúng một phiếu hủy DRAFT.
+   */
+  @Prop({ type: Types.ObjectId })
+  sourceStockCountId?: Types.ObjectId;
+
   @Prop({ enum: ScrapNoteStatus, default: ScrapNoteStatus.DRAFT })
   status!: ScrapNoteStatus;
 
@@ -102,3 +109,7 @@ export type ScrapNoteDocument = HydratedDocument<ScrapNote>;
 export const ScrapNoteSchema = SchemaFactory.createForClass(ScrapNote);
 
 ScrapNoteSchema.index({ status: 1 });
+ScrapNoteSchema.index(
+  { sourceStockCountId: 1 },
+  { unique: true, sparse: true },
+);

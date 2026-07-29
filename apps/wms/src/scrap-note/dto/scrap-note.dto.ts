@@ -84,6 +84,33 @@ export class CreateScrapNoteFormDto {
   items!: string;
 }
 
+export class CreateStockCountScrapFormDto {
+  @ApiProperty({ description: 'Barcode của đúng SKU trên dòng kiểm kê' })
+  @IsString()
+  @MinLength(1)
+  itemBarcode!: string;
+
+  @ApiProperty({ example: '665f1a2b3c4d5e6f7a8b9c1c' })
+  @IsMongoId()
+  shelfId!: string;
+
+  @ApiPropertyOptional({ example: '665f1a2b3c4d5e6f7a8b9c1b' })
+  @IsOptional()
+  @IsMongoId()
+  lotId?: string;
+
+  @ApiProperty({ example: 2, minimum: 1 })
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  quantity!: number;
+
+  @ApiProperty({ example: 'Hai thùng bị vỡ khi kiểm kê' })
+  @IsString()
+  @MinLength(1)
+  reason!: string;
+}
+
 export class RejectScrapNoteDto {
   @ApiProperty({ example: 'Số lượng đề xuất không khớp kiểm tra thực tế' })
   @IsString()
@@ -168,6 +195,17 @@ export class ScrapNoteResponseDto {
     description: 'Null với chứng từ legacy chưa backfill',
   })
   scrapNoteNumber!: string | null;
+
+  @Expose()
+  @Transform(
+    ({ obj }: { obj: { sourceStockCountId?: Types.ObjectId | null } }) =>
+      obj.sourceStockCountId ? obj.sourceStockCountId.toString() : null,
+  )
+  @ApiPropertyOptional({
+    nullable: true,
+    description: 'Phiếu kiểm kê nguồn; null với phiếu hủy nội bộ khác',
+  })
+  sourceStockCountId!: string | null;
 
   @Expose()
   @ApiProperty({ enum: ScrapNoteStatus })

@@ -13,9 +13,12 @@ const shelfId = new Types.ObjectId();
 
 const makeModel = (overrides: Record<string, jest.Mock> = {}) => ({
   findById: jest.fn().mockReturnThis(),
+  find: jest.fn().mockReturnThis(),
   findOne: jest.fn().mockReturnThis(),
   findOneAndUpdate: jest.fn().mockReturnThis(),
   create: jest.fn(),
+  sort: jest.fn().mockReturnThis(),
+  session: jest.fn().mockReturnThis(),
   select: jest.fn().mockReturnThis(),
   lean: jest.fn().mockReturnThis(),
   exec: jest.fn(),
@@ -157,6 +160,102 @@ describe('StockRepository', () => {
         { $inc: { onHand: 5, reserved: 0, expired: 0 } },
         { upsert: true, new: true, session: undefined },
       );
+    });
+  });
+
+  describe('decrementBalanceForScrapIfAvailable', () => {
+    it('trừ có điều kiện cả onHand và expired cho hàng hết hạn', async () => {
+      const session = {} as never;
+      balanceModel.exec.mockResolvedValueOnce({ onHand: 8, expired: 3 });
+
+      const result = await repo.decrementBalanceForScrapIfAvailable(
+        itemId,
+        2,
+        2,
+        session,
+      );
+
+      expect(result).toBe(true);
+      expect(balanceModel.findOneAndUpdate).toHaveBeenCalledWith(
+        { itemId, onHand: { $gte: 2 }, expired: { $gte: 2 } },
+        { $inc: { onHand: -2, expired: -2 } },
+        { new: true, session },
+      );
+    });
+
+    it('trả false khi tồn không đủ và không upsert', async () => {
+      balanceModel.exec.mockResolvedValueOnce(null);
+      const result = await repo.decrementBalanceForScrapIfAvailable(
+        itemId,
+        20,
+        0,
+        {} as never,
+      );
+      expect(result).toBe(false);
+    });
+  });
+
+  describe('decrementInventoryAtShelfIfAvailable', () => {
+    it('trừ lần lượt qua nhiều khoang trong cùng transaction', async () => {
+      const cellA = new Types.ObjectId();
+      const cellB = new Types.ObjectId();
+      const session = {} as never;
+      inventoryModel.exec
+        .mockResolvedValueOnce([
+          { quantity: 3, cellId: cellA },
+          { quantity: 2, cellId: cellB },
+        ])
+        .mockResolvedValueOnce({ quantity: 0 })
+        .mockResolvedValueOnce({ quantity: 1 });
+
+      const result = await repo.decrementInventoryAtShelfIfAvailable(
+        itemId,
+        shelfId,
+        null,
+        4,
+        session,
+      );
+
+      expect(result).toBe(true);
+      expect(inventoryModel.findOneAndUpdate).toHaveBeenNthCalledWith(
+        1,
+        {
+          itemId,
+          shelfId,
+          cellId: cellA,
+          lotId: null,
+          quantity: { $gte: 3 },
+        },
+        { $inc: { quantity: -3 } },
+        { new: true, session },
+      );
+      expect(inventoryModel.findOneAndUpdate).toHaveBeenNthCalledWith(
+        2,
+        {
+          itemId,
+          shelfId,
+          cellId: cellB,
+          lotId: null,
+          quantity: { $gte: 1 },
+        },
+        { $inc: { quantity: -1 } },
+        { new: true, session },
+      );
+    });
+
+    it('không cập nhật khi tổng tồn ở shelf/lot không đủ', async () => {
+      inventoryModel.exec.mockResolvedValueOnce([
+        { quantity: 1, cellId: new Types.ObjectId() },
+      ]);
+      const result = await repo.decrementInventoryAtShelfIfAvailable(
+        itemId,
+        shelfId,
+        null,
+        2,
+        {} as never,
+      );
+      expect(result).toBe(false);
+      expect(inventoryModel.findOneAndUpdate).not.toHaveBeenCalled();
     });
   });
 

@@ -509,6 +509,22 @@ export const ERROR_CATALOG = {
     status: HttpStatus.BAD_REQUEST,
     message: 'Số lượng đề xuất hủy vượt quá tồn thật tại vị trí này',
   },
+  SCRAP_NOTE_BARCODE_MISMATCH: {
+    status: HttpStatus.BAD_REQUEST,
+    message: 'Barcode không thuộc mặt hàng của dòng kiểm kê',
+  },
+  SCRAP_NOTE_SOURCE_LINE_NOT_COUNTED: {
+    status: HttpStatus.CONFLICT,
+    message: 'Dòng kiểm kê chưa có số lượng thực tế',
+  },
+  SCRAP_NOTE_QTY_EXCEEDS_ACTUAL: {
+    status: HttpStatus.BAD_REQUEST,
+    message: 'Số lượng đề xuất hủy vượt quá số lượng thực tế đã đếm',
+  },
+  SCRAP_NOTE_SOURCE_NOT_APPROVED: {
+    status: HttpStatus.CONFLICT,
+    message: 'Phiếu kiểm kê nguồn chưa được duyệt',
+  },
   SCRAP_NOTE_ALREADY_DECIDED: {
     status: HttpStatus.CONFLICT,
     message: 'Phiếu đã được duyệt hoặc từ chối, không thể xử lý lại',

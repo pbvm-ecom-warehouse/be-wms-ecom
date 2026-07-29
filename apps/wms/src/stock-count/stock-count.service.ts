@@ -230,6 +230,14 @@ export class StockCountService {
     const touchedItemIds = new Set<string>();
 
     await this.stockTransactionHelper.withStockTransaction(async (session) => {
+      const claimed = await this.repo.claimApprovedIfCompleted(
+        id,
+        new Types.ObjectId(actorId),
+        dto.reason,
+        session,
+      );
+      if (!claimed) throw new AppException('STOCK_COUNT_ALREADY_APPROVED');
+
       for (const line of changedLines) {
         const delta = line.delta!;
         await this.stockRepo.upsertInventory(
@@ -255,12 +263,6 @@ export class StockCountService {
           session,
         );
       }
-      await this.repo.setApproved(
-        id,
-        new Types.ObjectId(actorId),
-        dto.reason,
-        session,
-      );
     });
 
     for (const line of changedLines) {
