@@ -126,8 +126,7 @@ describe('GoodsReceiptNoteRepository - vòng đời duyệt', () => {
     const purchaseOrderId = new Types.ObjectId().toString();
     model.exec.mockResolvedValue({ _id: new Types.ObjectId() });
 
-    const result =
-      await repo.existsOpenGrnForPurchaseOrder(purchaseOrderId);
+    const result = await repo.existsOpenGrnForPurchaseOrder(purchaseOrderId);
 
     expect(model.exists).toHaveBeenCalledWith({
       purchaseOrderId: new Types.ObjectId(purchaseOrderId),
@@ -145,8 +144,7 @@ describe('GoodsReceiptNoteRepository - vòng đời duyệt', () => {
     const purchaseOrderId = new Types.ObjectId().toString();
     model.exec.mockResolvedValue(null);
 
-    const result =
-      await repo.existsOpenGrnForPurchaseOrder(purchaseOrderId);
+    const result = await repo.existsOpenGrnForPurchaseOrder(purchaseOrderId);
 
     expect(result).toBe(false);
   });
