@@ -130,7 +130,7 @@ export class PurchaseOrderRepository {
   }
 
   /**
-   * PO còn có thể tạo GRN (chưa CANCELLED/COMPLETED) — dùng cho màn hình RECEIVER
+   * PO còn có thể tạo GRN (chưa COMPLETED) — dùng cho màn hình RECEIVER
    * chọn đơn để nhận hàng. Không lọc theo dòng item còn thiếu ở query Mongo (tính
    * remainingQty ở service, đơn giản hơn và nhất quán với logic auto-fill GRN).
    */
@@ -139,9 +139,7 @@ export class PurchaseOrderRepository {
     limit: number,
   ): Promise<{ data: PurchaseOrderDocument[]; total: number }> {
     const filter = {
-      status: {
-        $nin: [PurchaseOrderStatus.CANCELLED, PurchaseOrderStatus.COMPLETED],
-      },
+      status: { $ne: PurchaseOrderStatus.COMPLETED },
     };
     const [data, total] = await Promise.all([
       this.model

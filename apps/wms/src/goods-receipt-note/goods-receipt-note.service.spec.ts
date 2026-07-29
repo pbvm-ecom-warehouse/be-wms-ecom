@@ -84,7 +84,7 @@ describe('GoodsReceiptNoteService - duyệt trước khi ghi tồn', () => {
   const purchaseOrder = () => ({
     _id: new Types.ObjectId(purchaseOrderId),
     supplierId: new Types.ObjectId(supplierId),
-    status: PurchaseOrderStatus.SENT,
+    status: PurchaseOrderStatus.CONFIRMED,
     items: [
       {
         itemId: new Types.ObjectId(itemId),

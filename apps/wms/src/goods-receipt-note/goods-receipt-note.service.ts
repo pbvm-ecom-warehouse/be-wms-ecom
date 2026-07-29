@@ -28,10 +28,7 @@ import type {
   QueryGoodsReceiptNoteDto,
 } from './dto/goods-receipt-note.dto';
 
-const NON_RECEIVABLE_STATUSES = new Set([
-  PurchaseOrderStatus.CANCELLED,
-  PurchaseOrderStatus.COMPLETED,
-]);
+const NON_RECEIVABLE_STATUSES = new Set([PurchaseOrderStatus.COMPLETED]);
 
 // Giới hạn upload ảnh minh chứng GRN — theo đúng ràng buộc thiết kế IMG-01/IMG-04.
 const ALLOWED_IMAGE_MIMETYPES = ['image/jpeg', 'image/png', 'image/webp'];
