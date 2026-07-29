@@ -115,6 +115,10 @@ export interface PrintRequestedPayload {
     designFile?: string;
     blankSku?: string;
   }[];
+  /** Toàn bộ thông tin đơn hàng từ Ecom — để WMS có đủ context khi tạo lệnh in */
+  orderDetail?: Record<string, any>;
+  /** true = in bản mẫu, false = in chính thức */
+  isSample?: boolean;
 }
 
 export interface PrintCompletedPayload {

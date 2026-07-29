@@ -162,6 +162,10 @@ export class PrintJobResponseDto {
   items!: PrintJobItemResponseDto[];
 
   @Expose()
+  @ApiPropertyOptional({ type: Object, description: 'Chi tiết đơn hàng gốc từ Ecom' })
+  orderDetail?: Record<string, any>;
+
+  @Expose()
   @ApiProperty()
   createdAt!: Date;
 

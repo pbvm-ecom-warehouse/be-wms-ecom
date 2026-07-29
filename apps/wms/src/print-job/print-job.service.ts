@@ -74,8 +74,10 @@ export class PrintJobService {
   async createFromPrintRequested(
     orderId: string,
     items: PrintRequestedItem[],
+    payloadIsSample?: boolean,
+    orderDetail?: Record<string, any>,
   ): Promise<void> {
-    const isSample = orderId.endsWith('-sample');
+    const isSample = payloadIsSample ?? orderId.endsWith('-sample');
 
     const existing = await this.repo.findByOrderId(orderId);
     if (existing) {
@@ -137,7 +139,7 @@ export class PrintJobService {
           });
         }
       }
-      await this.repo.createPrintJob(orderId, lines, session, isSample);
+      await this.repo.createPrintJob(orderId, lines, session, isSample, orderDetail);
     });
 
     // Emit stock.changed CHỈ SAU KHI transaction đã commit thành công

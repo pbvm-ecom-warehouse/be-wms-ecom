@@ -75,6 +75,10 @@ export class PrintJob {
 
   @Prop({ type: [PrintJobItemSchema], required: true })
   items!: PrintJobItem[];
+
+  /** Toàn bộ thông tin đơn hàng từ Ecom để thợ in xem chi tiết sản phẩm / metadata */
+  @Prop({ type: Object })
+  orderDetail?: Record<string, any>;
 }
 
 export type PrintJobDocument = HydratedDocument<PrintJob>;

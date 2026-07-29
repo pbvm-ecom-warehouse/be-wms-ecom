@@ -47,6 +47,7 @@ export class PrintJobRepository {
     lines: CreatePrintJobLineInput[],
     session: ClientSession,
     isSample = false,
+    orderDetail?: Record<string, any>,
   ): Promise<PrintJobDocument> {
     const [doc] = await this.model.create(
       [
@@ -54,6 +55,7 @@ export class PrintJobRepository {
           orderId,
           isSample,
           status: PrintJobStatus.PENDING,
+          orderDetail,
           items: lines.map((l) => ({
             inputItemId: l.inputItemId,
             outputItemId: l.outputItemId,

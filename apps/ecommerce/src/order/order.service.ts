@@ -236,6 +236,8 @@ export class OrderService {
               quantity: 1,           // Chỉ in 1 bản mẫu
               designFile: i.designFile,
             })),
+          orderDetail,
+          isSample: true,
         });
         this.logger.log(
           `Đơn in custom ${orderId} -> Phát lệnh in BẢN MẪU (sample) thành công`,
@@ -256,6 +258,8 @@ export class OrderService {
               quantity: i.quantity,  // In toàn bộ số lượng chính thức
               designFile: i.designFile,
             })),
+          orderDetail,
+          isSample: false,
         });
         this.logger.log(
           `Đơn in custom ${orderId} -> Phát lệnh in CHÍNH THỨC thành công`,
