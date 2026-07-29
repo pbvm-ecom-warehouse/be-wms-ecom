@@ -28,10 +28,7 @@ import type {
   QueryGoodsReceiptNoteDto,
 } from './dto/goods-receipt-note.dto';
 
-const NON_RECEIVABLE_STATUSES = new Set([
-  PurchaseOrderStatus.CANCELLED,
-  PurchaseOrderStatus.COMPLETED,
-]);
+const NON_RECEIVABLE_STATUSES = new Set([PurchaseOrderStatus.COMPLETED]);
 
 // Giới hạn upload ảnh minh chứng GRN — theo đúng ràng buộc thiết kế IMG-01/IMG-04.
 const ALLOWED_IMAGE_MIMETYPES = ['image/jpeg', 'image/png', 'image/webp'];
@@ -87,6 +84,12 @@ export class GoodsReceiptNoteService {
     );
     if (NON_RECEIVABLE_STATUSES.has(po.status)) {
       throw new AppException('PO_NOT_RECEIVABLE');
+    }
+    const hasOpenGrn = await this.repo.existsOpenGrnForPurchaseOrder(
+      dto.purchaseOrderId,
+    );
+    if (hasOpenGrn) {
+      throw new AppException('PO_HAS_OPEN_GRN');
     }
 
     // Mỗi dòng GRN phải mang ngày sản xuất và thông tin lô do Receiver xác nhận.

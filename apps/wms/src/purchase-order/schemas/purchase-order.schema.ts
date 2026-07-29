@@ -2,12 +2,9 @@ import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { HydratedDocument, Types } from 'mongoose';
 
 export enum PurchaseOrderStatus {
-  DRAFT = 'DRAFT',
   CONFIRMED = 'CONFIRMED',
-  SENT = 'SENT',
   PARTIALLY_RECEIVED = 'PARTIALLY_RECEIVED',
   COMPLETED = 'COMPLETED',
-  CANCELLED = 'CANCELLED',
 }
 
 /** Sub-document: 1 dòng hàng đặt trong PO. Không audit riêng — kế thừa từ PO cha. */
