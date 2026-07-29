@@ -102,13 +102,13 @@ export class StockController {
     WmsRole.ADMIN,
     WmsRole.MANAGER,
     WmsRole.RECEIVER,
-    WmsRole.PICKER,
+    WmsRole.SHIPPER,
     WmsRole.COUNTER,
     WmsRole.PRINTER,
   )
   @ApiOperation({
     summary:
-      'Danh sách mặt hàng kho — [ADMIN, MANAGER, RECEIVER, PICKER, COUNTER, PRINTER]',
+      'Danh sách mặt hàng kho — [ADMIN, MANAGER, RECEIVER, SHIPPER, COUNTER, PRINTER]',
   })
   @ApiOkResponse({ type: [WarehouseItemResponseDto] })
   async list(@Query() query: QueryWarehouseItemDto): Promise<{
@@ -135,13 +135,13 @@ export class StockController {
     WmsRole.ADMIN,
     WmsRole.MANAGER,
     WmsRole.RECEIVER,
-    WmsRole.PICKER,
+    WmsRole.SHIPPER,
     WmsRole.COUNTER,
     WmsRole.PRINTER,
   )
   @ApiOperation({
     summary:
-      'Chi tiết mặt hàng kho — [ADMIN, MANAGER, RECEIVER, PICKER, COUNTER, PRINTER]',
+      'Chi tiết mặt hàng kho — [ADMIN, MANAGER, RECEIVER, SHIPPER, COUNTER, PRINTER]',
   })
   @ApiOkResponse({ type: WarehouseItemResponseDto })
   async getOne(@Param('id') id: string): Promise<WarehouseItemResponseDto> {
@@ -157,7 +157,8 @@ export class StockController {
   })
   @ApiConsumes('multipart/form-data')
   @ApiBody({
-    description: 'Cập nhật thông tin và thay ảnh mặt hàng (optional): field `images`, có thể nhiều file.',
+    description:
+      'Cập nhật thông tin và thay ảnh mặt hàng (optional): field `images`, có thể nhiều file.',
     schema: {
       type: 'object',
       properties: {
@@ -189,7 +190,12 @@ export class StockController {
       mimetype: file.mimetype,
       size: file.size,
     }));
-    const doc = await this.svc.updateWarehouseItem(id, dto, actorId, imageFiles);
+    const doc = await this.svc.updateWarehouseItem(
+      id,
+      dto,
+      actorId,
+      imageFiles,
+    );
     return plainToInstance(WarehouseItemResponseDto, doc.toObject(), TO_OPTS);
   }
 

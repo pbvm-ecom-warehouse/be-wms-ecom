@@ -141,6 +141,18 @@ export class GoodsIssueResponseDto {
   status!: GoodsIssueStatus;
 
   @Expose()
+  @Transform(
+    ({ obj }: { obj: { assignedShipperId?: Types.ObjectId | null } }) =>
+      obj.assignedShipperId?.toString(),
+  )
+  @ApiPropertyOptional()
+  assignedShipperId?: string;
+
+  @Expose()
+  @ApiPropertyOptional()
+  assignedAt?: Date;
+
+  @Expose()
   @Type(() => GoodsIssueItemResponseDto)
   @ApiProperty({ type: [GoodsIssueItemResponseDto] })
   items!: GoodsIssueItemResponseDto[];
@@ -171,7 +183,7 @@ export class PickSuggestionResponseDto {
 
   @Expose()
   @ApiProperty({
-    description: 'Barcode dán trên kệ — PICKER quét/đọc để tìm vị trí',
+    description: 'Barcode dán trên kệ — SHIPPER quét/đọc để tìm vị trí',
   })
   shelfCode!: string;
 

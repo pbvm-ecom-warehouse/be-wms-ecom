@@ -1,6 +1,7 @@
 import { InjectQueue } from '@nestjs/bullmq';
 import { Injectable, Logger } from '@nestjs/common';
 import { AppException } from '@app/common/errors/app.exception';
+import { WmsRole } from '@app/auth';
 import { EVENTS, QUEUES, type GoodsIssuedPayload } from '@app/events';
 import { Queue } from 'bullmq';
 import { Types } from 'mongoose';
@@ -9,7 +10,10 @@ import {
   QueryGoodsIssueInput,
 } from './goods-issue.repository';
 import type { ConfirmGoodsIssueLineDto } from './dto/goods-issue.dto';
-import type { GoodsIssueDocument } from './schemas/goods-issue.schema';
+import {
+  GoodsIssueStatus,
+  type GoodsIssueDocument,
+} from './schemas/goods-issue.schema';
 import {
   StockRepository,
   type PickSuggestion,
@@ -108,9 +112,12 @@ export class GoodsIssueService {
   async getPickSuggestions(
     id: string,
     itemId: string,
+    actorId: string,
+    actorRole: WmsRole,
   ): Promise<PickSuggestion[]> {
     const gi = await this.repo.findById(id);
     if (!gi) throw new AppException('GOODS_ISSUE_NOT_FOUND');
+    this.assertCanOperate(gi, actorId, actorRole);
     const line = gi.items.find((i) => i.itemId.toString() === itemId);
     if (!line) throw new AppException('GOODS_ISSUE_ITEM_MISMATCH');
 
@@ -167,7 +174,7 @@ export class GoodsIssueService {
   }
 
   /**
-   * PICKER quét itemBarcode + shelfCode để xác nhận xuất 1 dòng.
+   * SHIPPER owner quét itemBarcode + cellBarcode để xác nhận xuất 1 dòng.
    * Đối xứng với PutAwayService.confirmLine, nhưng trừ onHand+reserved
    * (available không đổi — đã trừ lúc reserve ở checkout) thay vì chỉ dịch
    * chuyển vị trí, và KHÔNG bắn stock.changed.
@@ -176,9 +183,11 @@ export class GoodsIssueService {
     id: string,
     dto: ConfirmGoodsIssueLineDto,
     actorId: string,
+    actorRole: WmsRole,
   ): Promise<GoodsIssueDocument> {
     const gi = await this.repo.findById(id);
     if (!gi) throw new AppException('GOODS_ISSUE_NOT_FOUND');
+    this.assertCanOperate(gi, actorId, actorRole);
 
     const itemId = await this.barcodeSvc.findItemIdByCode(dto.itemBarcode);
     if (!itemId) throw new AppException('GOODS_ISSUE_ITEM_NOT_FOUND');
@@ -315,13 +324,54 @@ export class GoodsIssueService {
 
   async listGoodsIssues(
     query: QueryGoodsIssueInput,
+    actorId?: string,
+    actorRole?: WmsRole,
   ): Promise<{ data: GoodsIssueDocument[]; total: number }> {
-    return this.repo.findAll(query);
+    return this.repo.findAll(
+      actorRole === WmsRole.SHIPPER && actorId
+        ? { ...query, assignedShipperId: actorId, includeUnassigned: true }
+        : query,
+    );
+  }
+
+  async claim(id: string, shipperId: string): Promise<GoodsIssueDocument> {
+    const claimed = await this.repo.claim(id, new Types.ObjectId(shipperId));
+    if (claimed) return claimed;
+
+    const current = await this.repo.findById(id);
+    if (!current) throw new AppException('GOODS_ISSUE_NOT_FOUND');
+    if (
+      current.status === GoodsIssueStatus.PICKING &&
+      current.assignedShipperId?.toString() === shipperId
+    ) {
+      return current;
+    }
+    if (current.status === GoodsIssueStatus.CONFIRMED) {
+      throw new AppException('GOODS_ISSUE_ALREADY_CONFIRMED');
+    }
+    throw new AppException('GOODS_ISSUE_ALREADY_CLAIMED');
   }
 
   async getGoodsIssue(id: string): Promise<GoodsIssueDocument> {
     const doc = await this.repo.findById(id);
     if (!doc) throw new AppException('GOODS_ISSUE_NOT_FOUND');
     return doc;
+  }
+
+  private assertCanOperate(
+    goodsIssue: GoodsIssueDocument,
+    actorId: string,
+    actorRole: WmsRole,
+  ): void {
+    if (actorRole === WmsRole.ADMIN) return;
+    if (!goodsIssue.assignedShipperId) {
+      throw new AppException('GOODS_ISSUE_NOT_CLAIMED');
+    }
+    if (goodsIssue.assignedShipperId.toString() !== actorId) {
+      throw new AppException('GOODS_ISSUE_NOT_OWNER');
+    }
+    if (goodsIssue.status !== GoodsIssueStatus.PICKING) {
+      throw new AppException('GOODS_ISSUE_ALREADY_CONFIRMED');
+    }
   }
 }

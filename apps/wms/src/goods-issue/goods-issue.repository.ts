@@ -26,6 +26,8 @@ export interface CreateGoodsIssueInput {
 
 export interface QueryGoodsIssueInput {
   status?: GoodsIssueStatus;
+  assignedShipperId?: string;
+  includeUnassigned?: boolean;
   page?: number;
   limit?: number;
 }
@@ -43,6 +45,29 @@ export class GoodsIssueRepository {
 
   findById(id: string): Promise<GoodsIssueDocument | null> {
     return this.model.findOne({ _id: id }).exec();
+  }
+
+  claim(
+    id: string,
+    shipperId: Types.ObjectId,
+  ): Promise<GoodsIssueDocument | null> {
+    return this.model
+      .findOneAndUpdate(
+        {
+          _id: id,
+          status: GoodsIssueStatus.PENDING,
+          assignedShipperId: null,
+        },
+        {
+          $set: {
+            status: GoodsIssueStatus.PICKING,
+            assignedShipperId: shipperId,
+            assignedAt: new Date(),
+          },
+        },
+        { new: true },
+      )
+      .exec();
   }
 
   // remainingQty = quantity lúc khởi tạo — chưa xuất gì nên còn lại đúng bằng số lượng cần xuất
@@ -82,6 +107,20 @@ export class GoodsIssueRepository {
     const limit = query.limit ?? 20;
     const filter: Record<string, unknown> = {};
     if (query.status) filter['status'] = query.status;
+    if (query.assignedShipperId) {
+      const owner = new Types.ObjectId(query.assignedShipperId);
+      if (query.includeUnassigned) {
+        filter['$or'] = [
+          { assignedShipperId: owner },
+          {
+            assignedShipperId: null,
+            status: GoodsIssueStatus.PENDING,
+          },
+        ];
+      } else {
+        filter['assignedShipperId'] = owner;
+      }
+    }
 
     const [data, total] = await Promise.all([
       this.model
@@ -106,7 +145,7 @@ export class GoodsIssueRepository {
       .findOneAndUpdate(
         {
           _id: id,
-          status: GoodsIssueStatus.PENDING,
+          status: GoodsIssueStatus.PICKING,
           items: { $elemMatch: { itemId, remainingQty: { $gte: quantity } } },
         },
         { $inc: { 'items.$.remainingQty': -quantity } },

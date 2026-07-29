@@ -3,12 +3,15 @@ import { ShipmentService } from './shipment.service';
 import { ShipmentStatus } from './schemas/shipment.schema';
 import { CarrierStatus } from './schemas/carrier.schema';
 import { EVENTS } from '@app/events';
+import { WmsRole } from '@app/auth';
 
 const makeRepo = () => ({
   findById: jest.fn(),
   findByGoodsIssueId: jest.fn(),
   createFromGoodsIssue: jest.fn(),
   assignCarrier: jest.fn(),
+  appendPackage: jest.fn(),
+  markReady: jest.fn(),
   pushStatus: jest.fn(),
   findAll: jest.fn(),
 });
@@ -27,7 +30,15 @@ const makeCloudinaryService = () => ({
 });
 
 const makeDocumentNumberService = () => ({
-  next: jest.fn().mockResolvedValue('SHP-20260730-0001'),
+  next: jest.fn((prefix: string) =>
+    Promise.resolve(
+      prefix === 'SHP' ? 'SHP-20260730-0001' : 'PKG-20260730-0001',
+    ),
+  ),
+});
+
+const makeGoodsIssueRepository = () => ({
+  findById: jest.fn(),
 });
 
 function fakeImageFile(
@@ -48,6 +59,7 @@ describe('ShipmentService', () => {
   let queue: ReturnType<typeof makeQueue>;
   let cloudinary: ReturnType<typeof makeCloudinaryService>;
   let documentNumber: ReturnType<typeof makeDocumentNumberService>;
+  let goodsIssueRepo: ReturnType<typeof makeGoodsIssueRepository>;
   const actorId = new Types.ObjectId().toString();
   const shipmentId = 'ship1';
   const carrierId = new Types.ObjectId().toString();
@@ -59,13 +71,99 @@ describe('ShipmentService', () => {
     queue = makeQueue();
     cloudinary = makeCloudinaryService();
     documentNumber = makeDocumentNumberService();
+    goodsIssueRepo = makeGoodsIssueRepository();
     svc = new ShipmentService(
       repo as never,
       carrierService as never,
       documentNumber as never,
+      goodsIssueRepo as never,
       queue as never,
       cloudinary as never,
     );
+  });
+
+  describe('createPackage', () => {
+    const goodsIssueId = new Types.ObjectId();
+    const itemId = new Types.ObjectId();
+    const packageActorId = new Types.ObjectId().toString();
+    const shipment = {
+      _id: shipmentId,
+      __v: 3,
+      goodsIssueId,
+      shipmentStatus: ShipmentStatus.PENDING,
+      packages: [],
+    };
+    const goodsIssue = {
+      _id: goodsIssueId,
+      status: 'CONFIRMED',
+      assignedShipperId: new Types.ObjectId(packageActorId),
+      items: [{ itemId, sku: 'SKU-1', quantity: 5, remainingQty: 0 }],
+    };
+
+    beforeEach(() => {
+      repo.findById.mockResolvedValue(shipment);
+      goodsIssueRepo.findById.mockResolvedValue(goodsIssue);
+    });
+
+    it('append package và chuyển READY khi allocations đã đủ Goods Issue', async () => {
+      repo.appendPackage.mockResolvedValue({
+        ...shipment,
+        packages: [
+          {
+            barcode: 'PKG-20260730-0001',
+            allocations: [{ itemId, sku: 'SKU-1', quantity: 5 }],
+          },
+        ],
+      });
+      repo.markReady.mockResolvedValue({
+        ...shipment,
+        shipmentStatus: ShipmentStatus.READY,
+      });
+
+      const result = await svc.createPackage(
+        shipmentId,
+        { allocations: [{ itemId: itemId.toString(), quantity: 5 }] },
+        packageActorId,
+        WmsRole.SHIPPER,
+      );
+
+      expect(repo.appendPackage).toHaveBeenCalledWith(
+        shipmentId,
+        3,
+        expect.objectContaining({
+          barcode: 'PKG-20260730-0001',
+          allocations: [{ itemId, sku: 'SKU-1', quantity: 5 }],
+        }),
+      );
+      expect(repo.markReady).toHaveBeenCalledWith(
+        shipmentId,
+        ShipmentStatus.PENDING,
+      );
+      expect(result.shipmentStatus).toBe(ShipmentStatus.READY);
+    });
+
+    it('chặn allocation vượt số lượng Goods Issue', async () => {
+      await expect(
+        svc.createPackage(
+          shipmentId,
+          { allocations: [{ itemId: itemId.toString(), quantity: 6 }] },
+          packageActorId,
+          WmsRole.SHIPPER,
+        ),
+      ).rejects.toMatchObject({ code: 'SHIPMENT_PACKAGE_QTY_EXCEEDS' });
+      expect(repo.appendPackage).not.toHaveBeenCalled();
+    });
+
+    it('chặn Shipper không phải owner đóng kiện', async () => {
+      await expect(
+        svc.createPackage(
+          shipmentId,
+          { allocations: [{ itemId: itemId.toString(), quantity: 1 }] },
+          new Types.ObjectId().toString(),
+          WmsRole.SHIPPER,
+        ),
+      ).rejects.toMatchObject({ code: 'SHIPMENT_NOT_OWNER' });
+    });
   });
 
   describe('createFromGoodsIssue', () => {

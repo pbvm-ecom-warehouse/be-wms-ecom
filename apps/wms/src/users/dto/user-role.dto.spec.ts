@@ -28,14 +28,19 @@ describe('WMS user single-role DTOs', () => {
   });
 
   it('requires one valid role when updating a user role', async () => {
-    const dto = plainToInstance(UpdateUserRoleDto, { role: WmsRole.PICKER });
+    const dto = plainToInstance(UpdateUserRoleDto, { role: WmsRole.SHIPPER });
     expect(await validate(dto)).toHaveLength(0);
 
     const invalidDto = plainToInstance(UpdateUserRoleDto, {
-      role: [WmsRole.PICKER],
+      role: [WmsRole.SHIPPER],
     });
     const errors = await validate(invalidDto);
     expect(errors.some((error) => error.property === 'role')).toBe(true);
+  });
+
+  it('rejects assigning the retired PICKER role while keeping legacy enum compatibility', async () => {
+    const dto = plainToInstance(UpdateUserRoleDto, { role: WmsRole.PICKER });
+    expect(await validate(dto)).not.toHaveLength(0);
   });
 
   it('serializes a scalar role in user response DTOs', () => {

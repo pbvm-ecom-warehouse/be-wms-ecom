@@ -443,6 +443,22 @@ export const ERROR_CATALOG = {
     status: HttpStatus.BAD_REQUEST,
     message: 'Phải xuất ít nhất một thùng nguyên',
   },
+  GOODS_ISSUE_NOT_CLAIMED: {
+    status: HttpStatus.CONFLICT,
+    message: 'Phiếu xuất chưa có Shipper nhận việc',
+  },
+  GOODS_ISSUE_ALREADY_CLAIMED: {
+    status: HttpStatus.CONFLICT,
+    message: 'Phiếu xuất đã được Shipper khác nhận',
+  },
+  GOODS_ISSUE_NOT_OWNER: {
+    status: HttpStatus.FORBIDDEN,
+    message: 'Chỉ Shipper đang phụ trách phiếu mới được thao tác',
+  },
+  GOODS_ISSUE_ALREADY_CONFIRMED: {
+    status: HttpStatus.CONFLICT,
+    message: 'Phiếu xuất đã hoàn tất',
+  },
 
   // ── WMS — Print Job ──────────────────────────────────────────────────────
   PRINT_JOB_NOT_FOUND: {
@@ -588,6 +604,34 @@ export const ERROR_CATALOG = {
   SHIPMENT_NOT_ASSIGNED: {
     status: HttpStatus.BAD_REQUEST,
     message: 'Vận đơn chưa được gán hãng vận chuyển',
+  },
+  SHIPMENT_NOT_OWNER: {
+    status: HttpStatus.FORBIDDEN,
+    message: 'Vận đơn không thuộc Shipper hiện tại',
+  },
+  SHIPMENT_PACKAGE_NOT_READY: {
+    status: HttpStatus.CONFLICT,
+    message: 'Phiếu xuất chưa pick đủ để đóng kiện',
+  },
+  SHIPMENT_PACKAGE_NOT_EDITABLE: {
+    status: HttpStatus.CONFLICT,
+    message: 'Vận đơn đã đóng đủ kiện hoặc không còn cho phép sửa kiện',
+  },
+  SHIPMENT_PACKAGE_ITEM_MISMATCH: {
+    status: HttpStatus.BAD_REQUEST,
+    message: 'Mặt hàng không thuộc phiếu xuất của vận đơn',
+  },
+  SHIPMENT_PACKAGE_DUPLICATE_ITEM: {
+    status: HttpStatus.BAD_REQUEST,
+    message: 'Một mặt hàng chỉ được khai một lần trong cùng kiện',
+  },
+  SHIPMENT_PACKAGE_QTY_EXCEEDS: {
+    status: HttpStatus.CONFLICT,
+    message: 'Tổng số lượng đóng kiện vượt số lượng đã pick',
+  },
+  SHIPMENT_PACKAGE_CONFLICT: {
+    status: HttpStatus.CONFLICT,
+    message: 'Kiện vừa được cập nhật bởi thao tác khác, vui lòng tải lại',
   },
 
   // ── WMS — SKU Template / Attribute Option / Barcode Registry (issue #25) ──

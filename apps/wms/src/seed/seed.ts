@@ -23,7 +23,6 @@ const SEED_PASSWORD = 'Seed@12345';
 const SEED_USERS: { username: string; role: WmsRole; name: string }[] = [
   { username: 'seed_manager', role: WmsRole.MANAGER, name: 'Seed Manager' },
   { username: 'seed_receiver', role: WmsRole.RECEIVER, name: 'Seed Receiver' },
-  { username: 'seed_picker', role: WmsRole.PICKER, name: 'Seed Picker' },
   { username: 'seed_printer', role: WmsRole.PRINTER, name: 'Seed Printer' },
   { username: 'seed_counter', role: WmsRole.COUNTER, name: 'Seed Counter' },
   { username: 'seed_shipper', role: WmsRole.SHIPPER, name: 'Seed Shipper' },

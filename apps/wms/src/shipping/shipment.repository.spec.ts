@@ -40,4 +40,42 @@ describe('ShipmentRepository', () => {
     );
     expect(exec).toHaveBeenCalledTimes(1);
   });
+
+  it('append package bằng optimistic version để tránh allocation race', async () => {
+    const exec = jest.fn().mockResolvedValue({ _id: 'shipment-1' });
+    const model = {
+      findOneAndUpdate: jest.fn().mockReturnValue({ exec }),
+    };
+    const repo = new ShipmentRepository(model as never);
+    const itemId = new Types.ObjectId();
+    const createdBy = new Types.ObjectId();
+    const createdAt = new Date();
+
+    await repo.appendPackage('shipment-1', 2, {
+      barcode: 'PKG-20260730-0001',
+      allocations: [{ itemId, sku: 'SKU-1', quantity: 2 }],
+      createdAt,
+      createdBy,
+    });
+
+    expect(model.findOneAndUpdate).toHaveBeenCalledWith(
+      {
+        _id: 'shipment-1',
+        shipmentStatus: ShipmentStatus.PENDING,
+        __v: 2,
+      },
+      {
+        $push: {
+          packages: {
+            barcode: 'PKG-20260730-0001',
+            allocations: [{ itemId, sku: 'SKU-1', quantity: 2 }],
+            createdAt,
+            createdBy,
+          },
+        },
+        $inc: { __v: 1 },
+      },
+      { new: true },
+    );
+  });
 });

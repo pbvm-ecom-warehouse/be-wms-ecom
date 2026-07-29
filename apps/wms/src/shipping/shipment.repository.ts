@@ -12,6 +12,7 @@ export interface CreateShipmentFromGoodsIssueInput {
   orderId: string;
   orderCode?: string;
   goodsIssueId: Types.ObjectId;
+  assignedShipperId?: Types.ObjectId;
   recipient: { name: string; phone: string; address: Record<string, unknown> };
   paymentMethod: 'COD' | 'ONLINE';
   codAmount: number;
@@ -21,6 +22,7 @@ export interface QueryShipmentInput {
   shipmentStatus?: ShipmentStatus;
   orderId?: string;
   carrierId?: string;
+  assignedShipperId?: string;
   page?: number;
   limit?: number;
 }
@@ -51,6 +53,9 @@ export class ShipmentRepository {
             orderId: input.orderId,
             orderCode: input.orderCode,
             goodsIssueId: input.goodsIssueId,
+            ...(input.assignedShipperId
+              ? { assignedShipperId: input.assignedShipperId }
+              : {}),
             shipmentStatus: ShipmentStatus.PENDING,
             recipient: input.recipient,
             paymentMethod: input.paymentMethod,
@@ -58,6 +63,45 @@ export class ShipmentRepository {
           },
         },
         { upsert: true, new: true, setDefaultsOnInsert: true },
+      )
+      .exec();
+  }
+
+  appendPackage(
+    id: string,
+    expectedVersion: number,
+    shipmentPackage: {
+      barcode: string;
+      allocations: { itemId: Types.ObjectId; sku: string; quantity: number }[];
+      createdAt: Date;
+      createdBy: Types.ObjectId;
+    },
+  ): Promise<ShipmentDocument | null> {
+    return this.model
+      .findOneAndUpdate(
+        {
+          _id: id,
+          shipmentStatus: ShipmentStatus.PENDING,
+          __v: expectedVersion,
+        },
+        {
+          $push: { packages: shipmentPackage },
+          $inc: { __v: 1 },
+        },
+        { new: true },
+      )
+      .exec();
+  }
+
+  markReady(
+    id: string,
+    fromStatus: ShipmentStatus,
+  ): Promise<ShipmentDocument | null> {
+    return this.model
+      .findOneAndUpdate(
+        { _id: id, shipmentStatus: fromStatus },
+        { $set: { shipmentStatus: ShipmentStatus.READY } },
+        { new: true },
       )
       .exec();
   }
@@ -119,6 +163,9 @@ export class ShipmentRepository {
     if (query.shipmentStatus) filter['shipmentStatus'] = query.shipmentStatus;
     if (query.orderId) filter['orderId'] = query.orderId;
     if (query.carrierId) filter['carrierId'] = query.carrierId;
+    if (query.assignedShipperId) {
+      filter['assignedShipperId'] = new Types.ObjectId(query.assignedShipperId);
+    }
 
     const [data, total] = await Promise.all([
       this.model

@@ -7,7 +7,7 @@ import {
   MinLength,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { WmsRole } from '@app/auth';
+import { ASSIGNABLE_WMS_ROLES, WmsRole } from '@app/auth';
 
 export class CreateUserDto {
   @ApiProperty({ example: 'nguyen.van.a', minLength: 3 })
@@ -35,8 +35,11 @@ export class CreateUserDto {
   @IsString()
   name?: string;
 
-  @ApiPropertyOptional({ example: WmsRole.RECEIVER, enum: WmsRole })
+  @ApiPropertyOptional({
+    example: WmsRole.RECEIVER,
+    enum: ASSIGNABLE_WMS_ROLES,
+  })
   @IsOptional()
-  @IsIn(Object.values(WmsRole))
+  @IsIn(ASSIGNABLE_WMS_ROLES)
   role?: WmsRole;
 }

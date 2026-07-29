@@ -3,6 +3,7 @@ import { HydratedDocument, Types } from 'mongoose';
 
 export enum GoodsIssueStatus {
   PENDING = 'PENDING',
+  PICKING = 'PICKING',
   CONFIRMED = 'CONFIRMED',
 }
 
@@ -20,7 +21,7 @@ export class GoodsIssueItem {
   @Prop({ type: Number, required: true, min: 0 })
   quantity!: number;
 
-  /** Còn lại chưa xuất — giảm dần mỗi lần PICKER quét xác nhận thành công */
+  /** Còn lại chưa xuất — giảm dần mỗi lần SHIPPER owner quét xác nhận thành công */
   @Prop({ type: Number, required: true, min: 0 })
   remainingQty!: number;
 }
@@ -64,6 +65,12 @@ export class GoodsIssue {
   @Prop({ enum: GoodsIssueStatus, default: GoodsIssueStatus.PENDING })
   status!: GoodsIssueStatus;
 
+  @Prop({ type: Types.ObjectId, default: null })
+  assignedShipperId?: Types.ObjectId | null;
+
+  @Prop({ type: Date })
+  assignedAt?: Date;
+
   @Prop({ type: [GoodsIssueItemSchema], required: true })
   items!: GoodsIssueItem[];
 }
@@ -73,3 +80,4 @@ export const GoodsIssueSchema = SchemaFactory.createForClass(GoodsIssue);
 
 // unique index cho orderId đã khai báo qua @Prop({ unique: true }) ở trên
 GoodsIssueSchema.index({ status: 1 });
+GoodsIssueSchema.index({ assignedShipperId: 1, status: 1 });

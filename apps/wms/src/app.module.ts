@@ -65,7 +65,7 @@ import { validateEnv } from './config/env.validation';
     PurchaseOrderModule, // UC-01: tạo/xem PO — dùng SupplierModule + LocationModule
     GoodsReceiptNoteModule, // UC-02: nhận hàng theo PO, cộng tồn 2 lớp — dùng PurchaseOrderModule + StockModule + LocationModule
     PutAwaySuggestionModule, // S2-05: gợi ý vị trí put-away theo thể tích — dùng StockModule + LocationModule
-    GoodsIssueModule, // UC-05: nhận order.ready_to_fulfill, sinh GoodsIssue, PICKER xuất kho, phát goods.issued
+    GoodsIssueModule, // UC-05: nhận order.ready_to_fulfill, SHIPPER claim/pick, phát goods.issued
     ReservationModule, // saga giữ tồn checkout: nhận stock.reserve_requested/order.cancelled, phát stock.reserved/stock.reserve_failed
     PrintJobModule, // UC-04: nhận print.requested, sinh PrintJob, PRINTER in ly make-to-order, phát print.completed
     StockCountModule, // UC-06: MANAGER tạo phiếu kiểm kho, COUNTER đếm thực, duyệt sinh ADJUST + stock.changed
@@ -73,7 +73,7 @@ import { validateEnv } from './config/env.validation';
     GoodsReturnModule, // UC-09: nhận order.returned, sinh GoodsReturn, RECEIVER inspect/confirm/cancel
     ReportModule, // S4-03: báo cáo tồn (theo SKU, theo lô) + hiệu suất kho, read-only — [ADMIN, MANAGER]
     InventoryReconciliationModule, // Phân khoang tồn cũ, không tạo StockMovement lịch sử giả
-    ShippingModule, // P7: carriers + shipments, auto-sinh sau goods.issued, phát shipment.shipped/delivered/returned
+    ShippingModule, // Shipper nội bộ: package + shipment carrierless; giữ Carrier cho legacy
   ],
   controllers: [AppController],
   providers: [
