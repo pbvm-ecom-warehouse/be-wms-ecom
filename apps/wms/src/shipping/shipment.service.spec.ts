@@ -166,6 +166,70 @@ describe('ShipmentService', () => {
     });
   });
 
+  describe('startForTrip', () => {
+    it('đưa READY sang IN_TRANSIT và phát shipment.shipped đúng một jobId', async () => {
+      const tripId = new Types.ObjectId().toString();
+      const shipperId = new Types.ObjectId().toString();
+      repo.findById.mockResolvedValue({
+        _id: shipmentId,
+        orderId,
+        assignedShipperId: new Types.ObjectId(shipperId),
+        activeTripId: new Types.ObjectId(tripId),
+        shipmentStatus: ShipmentStatus.READY,
+        packages: [
+          {
+            barcode: 'PKG-1',
+            loadedTripId: new Types.ObjectId(tripId),
+          },
+        ],
+      });
+      repo.pushStatus.mockResolvedValue({
+        _id: shipmentId,
+        orderId,
+        assignedShipperId: new Types.ObjectId(shipperId),
+        activeTripId: new Types.ObjectId(tripId),
+        shipmentStatus: ShipmentStatus.IN_TRANSIT,
+        packages: [],
+      });
+
+      const result = await svc.startForTrip(shipmentId, tripId, shipperId);
+
+      expect(repo.pushStatus).toHaveBeenCalledWith(
+        shipmentId,
+        ShipmentStatus.READY,
+        expect.objectContaining({
+          shipmentStatus: ShipmentStatus.IN_TRANSIT,
+          extra: { shippedAt: expect.any(Date) },
+        }),
+      );
+      expect(queue.add).toHaveBeenCalledWith(
+        EVENTS.SHIPMENT_SHIPPED,
+        expect.objectContaining({ orderId, shipmentId }),
+        { jobId: `${EVENTS.SHIPMENT_SHIPPED}:${shipmentId}` },
+      );
+      expect(result.shipmentStatus).toBe(ShipmentStatus.IN_TRANSIT);
+    });
+
+    it('chặn khi còn package chưa scan lên trip', async () => {
+      const tripId = new Types.ObjectId().toString();
+      const shipperId = new Types.ObjectId().toString();
+      repo.findById.mockResolvedValue({
+        _id: shipmentId,
+        orderId,
+        assignedShipperId: new Types.ObjectId(shipperId),
+        activeTripId: new Types.ObjectId(tripId),
+        shipmentStatus: ShipmentStatus.READY,
+        packages: [{ barcode: 'PKG-1' }],
+      });
+
+      await expect(
+        svc.startForTrip(shipmentId, tripId, shipperId),
+      ).rejects.toMatchObject({ code: 'DELIVERY_TRIP_PACKAGES_INCOMPLETE' });
+      expect(repo.pushStatus).not.toHaveBeenCalled();
+      expect(queue.add).not.toHaveBeenCalled();
+    });
+  });
+
   describe('createFromGoodsIssue', () => {
     const goodsIssueIdStr = new Types.ObjectId().toString();
 

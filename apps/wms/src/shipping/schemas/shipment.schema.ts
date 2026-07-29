@@ -98,6 +98,10 @@ export class Shipment {
   @Prop({ type: Types.ObjectId })
   assignedShipperId?: Types.ObjectId;
 
+  /** Chuyến đang giữ vận đơn; khóa CAS để một vận đơn không vào hai chuyến. */
+  @Prop({ type: Types.ObjectId })
+  activeTripId?: Types.ObjectId;
+
   @Prop({ type: Types.ObjectId })
   carrierId?: Types.ObjectId;
 
@@ -148,4 +152,5 @@ ShipmentSchema.index({ orderId: 1 });
 ShipmentSchema.index({ shipmentStatus: 1 });
 ShipmentSchema.index({ carrierId: 1 });
 ShipmentSchema.index({ assignedShipperId: 1, shipmentStatus: 1 });
+ShipmentSchema.index({ activeTripId: 1 });
 ShipmentSchema.index({ 'packages.barcode': 1 }, { unique: true, sparse: true });

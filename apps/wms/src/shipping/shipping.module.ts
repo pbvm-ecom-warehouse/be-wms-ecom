@@ -13,6 +13,13 @@ import { ShipmentController } from './shipment.controller';
 import { GoodsIssuedConsumer } from './goods-issued.consumer';
 import { GoodsIssueModule } from '../goods-issue/goods-issue.module';
 import { DocumentNumberModule } from '../document-number/document-number.module';
+import {
+  DeliveryTrip,
+  DeliveryTripSchema,
+} from './schemas/delivery-trip.schema';
+import { DeliveryTripRepository } from './delivery-trip.repository';
+import { DeliveryTripService } from './delivery-trip.service';
+import { DeliveryTripController } from './delivery-trip.controller';
 
 @Module({
   imports: [
@@ -26,6 +33,7 @@ import { DocumentNumberModule } from '../document-number/document-number.module'
     MongooseModule.forFeature([
       { name: Carrier.name, schema: CarrierSchema },
       { name: Shipment.name, schema: ShipmentSchema },
+      { name: DeliveryTrip.name, schema: DeliveryTripSchema },
     ]),
     GoodsIssueModule, // GoodsIssueRepository — đọc snapshot recipient/paymentMethod/codAmount
     DocumentNumberModule,
@@ -35,9 +43,11 @@ import { DocumentNumberModule } from '../document-number/document-number.module'
     CarrierService,
     ShipmentRepository,
     ShipmentService,
+    DeliveryTripRepository,
+    DeliveryTripService,
     GoodsIssuedConsumer,
   ],
-  controllers: [CarrierController, ShipmentController],
-  exports: [CarrierService, ShipmentService],
+  controllers: [CarrierController, ShipmentController, DeliveryTripController],
+  exports: [CarrierService, ShipmentService, DeliveryTripService],
 })
 export class ShippingModule {}

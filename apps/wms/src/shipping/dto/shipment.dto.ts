@@ -233,6 +233,13 @@ export class ShipmentResponseDto {
   assignedShipperId?: string;
 
   @Expose()
+  @Transform(({ obj }: { obj: { activeTripId?: Types.ObjectId } }) =>
+    obj.activeTripId?.toString(),
+  )
+  @ApiPropertyOptional()
+  activeTripId?: string;
+
+  @Expose()
   @Transform(({ obj }: { obj: { carrierId?: Types.ObjectId } }) =>
     obj.carrierId?.toString(),
   )
