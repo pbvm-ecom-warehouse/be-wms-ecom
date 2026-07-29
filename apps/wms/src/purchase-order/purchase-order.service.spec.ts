@@ -127,6 +127,50 @@ describe('PurchaseOrderService', () => {
       );
     });
 
+    it('poNumber trùng do race condition (E11000) → tự đếm lại và insert lại, không lỗi 500', async () => {
+      supplierSvc.getSupplierItemByItemAndSupplier.mockResolvedValue({
+        purchasePrice: 7000,
+        isActive: true,
+        supplierId,
+      });
+      const dupErr = Object.assign(new Error('E11000 duplicate key'), {
+        code: 11000,
+      });
+      repo.countByPoNumberPrefix
+        .mockResolvedValueOnce(8)
+        .mockResolvedValueOnce(9);
+      repo.createPurchaseOrder
+        .mockRejectedValueOnce(dupErr)
+        .mockResolvedValueOnce({ poNumber: 'PO-X' });
+
+      await svc.createPurchaseOrder(baseDto, actorId);
+
+      expect(repo.createPurchaseOrder).toHaveBeenCalledTimes(2);
+      expect(repo.createPurchaseOrder).toHaveBeenNthCalledWith(
+        2,
+        baseDto,
+        expect.stringMatching(/-0010$/),
+        expect.anything(),
+        actorId,
+      );
+    });
+
+    it('poNumber trùng liên tục vượt quá số lần retry → ném PO_NUMBER_GENERATION_CONFLICT thay vì để lộ MongoServerError', async () => {
+      supplierSvc.getSupplierItemByItemAndSupplier.mockResolvedValue({
+        purchasePrice: 7000,
+        isActive: true,
+        supplierId,
+      });
+      const dupErr = Object.assign(new Error('E11000 duplicate key'), {
+        code: 11000,
+      });
+      repo.createPurchaseOrder.mockRejectedValue(dupErr);
+
+      await expect(
+        svc.createPurchaseOrder(baseDto, actorId),
+      ).rejects.toMatchObject({ code: 'PO_NUMBER_GENERATION_CONFLICT' });
+    });
+
     it('giữ nguyên unitPrice nếu user đã nhập tay', async () => {
       const dtoWithPrice = {
         ...baseDto,

@@ -13,6 +13,7 @@ import { StockRepository } from '../stock/stock.repository';
 import { StockService } from '../stock/stock.service';
 import { StockTransactionHelper } from '../stock/helpers/with-stock-transaction.helper';
 import { PutAwayService } from '../put-away/put-away.service';
+import { isMongoDuplicateKeyError } from '../stock/barcode/barcode.service';
 import { MovementType } from '../stock/schemas/stock-movement.schema';
 import { SupplierService } from '../supplier/supplier.service';
 import { SupplierStatus } from '../supplier/schemas/supplier.schema';
@@ -35,6 +36,12 @@ const NON_RECEIVABLE_STATUSES = new Set([
 // Giới hạn upload ảnh minh chứng GRN — theo đúng ràng buộc thiết kế IMG-01/IMG-04.
 const ALLOWED_IMAGE_MIMETYPES = ['image/jpeg', 'image/png', 'image/webp'];
 const MAX_IMAGE_SIZE_BYTES = 5 * 1024 * 1024;
+
+// grnNumber sinh từ đếm document trong ngày (không atomic) — 2 request tạo GRN
+// gần như đồng thời có thể đọc cùng count và cùng sinh trùng số, insert bị
+// unique index chặn (E11000). Retry đếm lại + insert lại thay vì để lộ
+// MongoServerError 500 (xem GRN_NUMBER_GENERATION_CONFLICT).
+const MAX_GRN_NUMBER_RETRIES = 3;
 
 function manufacturedDateFromLotNumber(lotNumber?: string): Date | undefined {
   const match = /^LOT-(\d{2})(\d{2})(\d{2})-\d{3}$/.exec(lotNumber ?? '');
@@ -98,14 +105,21 @@ export class GoodsReceiptNoteService {
       images.push(url);
     }
 
-    const grnNumber = await this.generateGrnNumber();
-    return this.repo.createGoodsReceiptNote(
-      dto.purchaseOrderId,
-      grnNumber,
-      resolvedItems,
-      actorId,
-      images,
-    );
+    for (let attempt = 0; attempt < MAX_GRN_NUMBER_RETRIES; attempt++) {
+      const grnNumber = await this.generateGrnNumber();
+      try {
+        return await this.repo.createGoodsReceiptNote(
+          dto.purchaseOrderId,
+          grnNumber,
+          resolvedItems,
+          actorId,
+          images,
+        );
+      } catch (err) {
+        if (!isMongoDuplicateKeyError(err)) throw err;
+      }
+    }
+    throw new AppException('GRN_NUMBER_GENERATION_CONFLICT');
   }
 
   /**

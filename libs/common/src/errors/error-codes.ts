@@ -256,6 +256,10 @@ export const ERROR_CATALOG = {
     status: HttpStatus.BAD_REQUEST,
     message: 'Đơn vị đặt hàng phải khớp đơn vị cơ sở (thùng) của mặt hàng',
   },
+  PO_NUMBER_GENERATION_CONFLICT: {
+    status: HttpStatus.CONFLICT,
+    message: 'Không sinh được mã đơn đặt hàng do trùng lặp, thử lại thao tác',
+  },
 
   // ── WMS — Goods Receipt Note ────────────────────────────────────────────
   GRN_NOT_FOUND: {
@@ -306,6 +310,10 @@ export const ERROR_CATALOG = {
     status: HttpStatus.CONFLICT,
     message:
       'Đơn đặt hàng đã hủy hoặc đã nhận đủ, không thể tạo phiếu nhập mới',
+  },
+  GRN_NUMBER_GENERATION_CONFLICT: {
+    status: HttpStatus.CONFLICT,
+    message: 'Không sinh được mã phiếu nhập kho do trùng lặp, thử lại thao tác',
   },
 
   // ── WMS — Users ────────────────────────────────────────────────────────────
