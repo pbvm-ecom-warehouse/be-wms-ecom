@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
+import { PrintStage } from '@app/events';
 import { ClientSession, Model, Types } from 'mongoose';
 import {
   PrintJob,
@@ -9,6 +10,7 @@ import {
 } from './schemas/print-job.schema';
 
 export interface CreatePrintJobLineInput {
+  orderItemId: string;
   inputItemId: Types.ObjectId;
   outputItemId: Types.ObjectId;
   sku: string;
@@ -19,7 +21,7 @@ export interface CreatePrintJobLineInput {
 
 export interface QueryPrintJobInput {
   status?: PrintJobStatus;
-  isSample?: boolean;
+  stage?: PrintStage;
   page?: number;
   limit?: number;
 }
@@ -31,8 +33,11 @@ export class PrintJobRepository {
     private readonly model: Model<PrintJob>,
   ) {}
 
-  findByOrderId(orderId: string): Promise<PrintJobDocument | null> {
-    return this.model.findOne({ orderId }).exec();
+  findByOrderAndStage(
+    orderId: string,
+    stage: PrintStage,
+  ): Promise<PrintJobDocument | null> {
+    return this.model.findOne({ orderId, stage }).exec();
   }
 
   findById(id: string): Promise<PrintJobDocument | null> {
@@ -44,19 +49,20 @@ export class PrintJobRepository {
   // để tránh reserve "mồ côi" khi tạo PrintJob thất bại giữa chừng.
   async createPrintJob(
     orderId: string,
+    stage: PrintStage,
     lines: CreatePrintJobLineInput[],
     session: ClientSession,
-    isSample = false,
     orderDetail?: Record<string, any>,
   ): Promise<PrintJobDocument> {
     const [doc] = await this.model.create(
       [
         {
           orderId,
-          isSample,
+          stage,
           status: PrintJobStatus.PENDING,
           orderDetail,
           items: lines.map((l) => ({
+            orderItemId: l.orderItemId,
             inputItemId: l.inputItemId,
             outputItemId: l.outputItemId,
             sku: l.sku,
@@ -80,7 +86,7 @@ export class PrintJobRepository {
     const limit = query.limit ?? 20;
     const filter: Record<string, unknown> = {};
     if (query.status) filter['status'] = query.status;
-    if (query.isSample !== undefined) filter['isSample'] = query.isSample;
+    if (query.stage) filter['stage'] = query.stage;
 
     const [data, total] = await Promise.all([
       this.model

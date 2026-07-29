@@ -1,4 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { PrintStage } from '@app/events';
 import { Expose, Transform, Type } from 'class-transformer';
 import {
   IsEnum,
@@ -72,10 +73,13 @@ export class QueryPrintJobDto {
   @IsEnum(PrintJobStatus)
   status?: PrintJobStatus;
 
-  @ApiPropertyOptional({ description: 'Lọc lệnh in mẫu (true) hoặc chính thức (false)' })
+  @ApiPropertyOptional({
+    enum: PrintStage,
+    description: 'Lọc theo giai đoạn in mẫu hoặc in chính thức',
+  })
   @IsOptional()
-  @Transform(({ value }) => value === 'true' ? true : value === 'false' ? false : undefined)
-  isSample?: boolean;
+  @IsEnum(PrintStage)
+  stage?: PrintStage;
 
   @ApiPropertyOptional({ default: 1, minimum: 1 })
   @IsOptional()
@@ -94,6 +98,10 @@ export class QueryPrintJobDto {
 }
 
 export class PrintJobItemResponseDto {
+  @Expose()
+  @ApiProperty({ description: 'ID dòng đơn hàng bên Ecommerce' })
+  orderItemId!: string;
+
   @Expose()
   @Transform(({ obj }: { obj: { inputItemId?: Types.ObjectId } }) =>
     obj.inputItemId?.toString(),
@@ -145,13 +153,9 @@ export class PrintJobResponseDto {
   @ApiProperty()
   orderId!: string;
 
-  /**
-   * True nếu đây là lệnh in BẢN MẪU (orderId kết thúc bằng "-sample").
-   * Được lưu trực tiếp trong DB — thợ in dùng trường này để phân biệt mục đích lệnh in.
-   */
   @Expose()
-  @ApiProperty({ description: 'true = in bản mẫu, false = in chính thức' })
-  isSample!: boolean;
+  @ApiProperty({ enum: PrintStage })
+  stage!: PrintStage;
 
   @Expose()
   @ApiProperty({ enum: PrintJobStatus })
@@ -170,7 +174,10 @@ export class PrintJobResponseDto {
   items!: PrintJobItemResponseDto[];
 
   @Expose()
-  @ApiPropertyOptional({ type: Object, description: 'Chi tiết đơn hàng gốc từ Ecom' })
+  @ApiPropertyOptional({
+    type: Object,
+    description: 'Chi tiết đơn hàng gốc từ Ecom',
+  })
   orderDetail?: Record<string, any>;
 
   @Expose()

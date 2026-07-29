@@ -1,4 +1,5 @@
 import { Types } from 'mongoose';
+import { PrintStage } from '@app/events';
 import { PrintJobRepository } from './print-job.repository';
 import { PrintJobLineStatus, PrintJobStatus } from './schemas/print-job.schema';
 
@@ -27,13 +28,16 @@ describe('PrintJobRepository', () => {
     repo = new PrintJobRepository(model as never);
   });
 
-  describe('findByOrderId', () => {
-    it('gọi findOne với đúng orderId', async () => {
+  describe('findByOrderAndStage', () => {
+    it('gọi findOne với đúng khóa idempotency orderId + stage', async () => {
       model.findOne.mockReturnValue({
         exec: jest.fn().mockResolvedValue(null),
       });
-      const result = await repo.findByOrderId(orderId);
-      expect(model.findOne).toHaveBeenCalledWith({ orderId });
+      const result = await repo.findByOrderAndStage(orderId, PrintStage.SAMPLE);
+      expect(model.findOne).toHaveBeenCalledWith({
+        orderId,
+        stage: PrintStage.SAMPLE,
+      });
       expect(result).toBeNull();
     });
   });
@@ -44,8 +48,10 @@ describe('PrintJobRepository', () => {
       model.create.mockResolvedValue([{ _id: 'pj1' }]);
       await repo.createPrintJob(
         orderId,
+        PrintStage.PRODUCTION,
         [
           {
+            orderItemId: 'order-item-1',
             inputItemId,
             outputItemId,
             sku: 'CUP-PRINTED-1',
@@ -59,9 +65,11 @@ describe('PrintJobRepository', () => {
         [
           {
             orderId,
+            stage: PrintStage.PRODUCTION,
             status: PrintJobStatus.PENDING,
             items: [
               {
+                orderItemId: 'order-item-1',
                 inputItemId,
                 outputItemId,
                 sku: 'CUP-PRINTED-1',
@@ -92,10 +100,14 @@ describe('PrintJobRepository', () => {
         exec: jest.fn().mockResolvedValue(1),
       });
 
-      const result = await repo.findAll({ status: PrintJobStatus.PENDING });
+      const result = await repo.findAll({
+        status: PrintJobStatus.PENDING,
+        stage: PrintStage.SAMPLE,
+      });
 
       expect(model.find).toHaveBeenCalledWith({
         status: PrintJobStatus.PENDING,
+        stage: PrintStage.SAMPLE,
       });
       expect(result).toEqual({ data: [{ _id: 'pj1' }], total: 1 });
     });

@@ -1,7 +1,14 @@
 import { Injectable, Logger, Inject, forwardRef } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
-import { EVENTS, QUEUES, type PaymentSuccessPayload } from '@app/events';
+import {
+  EVENTS,
+  QUEUES,
+  PrintStage,
+  type PaymentSuccessPayload,
+  type PrintCompletedPayload,
+  type PrintRequestedPayload,
+} from '@app/events';
 import { AppException } from '@app/common';
 import { OrderRepository, type OrderFilterOptions } from './order.repository';
 import {
@@ -10,6 +17,7 @@ import {
   PaymentMethod,
   PaymentStatus,
   Order,
+  OrderItem,
 } from './schemas/order.schema';
 import { TxnStatus, TxnType } from './schemas/payment-transaction.schema';
 import { Types } from 'mongoose';
@@ -31,6 +39,329 @@ export class OrderService {
     private readonly paymentService: PaymentService,
     private readonly userRepo: UserRepository,
   ) {}
+
+  private validationError(message: string): AppException {
+    return new AppException('VALIDATION_FAILED', message);
+  }
+
+  private toOrderDetail(order: unknown): Record<string, unknown> {
+    return JSON.parse(JSON.stringify(order)) as Record<string, unknown>;
+  }
+
+  private toEventPaymentMethod(paymentMethod: PaymentMethod): 'COD' | 'ONLINE' {
+    return paymentMethod === PaymentMethod.COD ? 'COD' : 'ONLINE';
+  }
+
+  /** BullMQ cấm dấu ':' trong custom jobId (ngoại lệ legacy sẽ bị bỏ). */
+  private queueJobId(prefix: string, ...parts: unknown[]): string {
+    return [
+      prefix,
+      ...parts.map((part) => encodeURIComponent(String(part))),
+    ].join('-');
+  }
+
+  private async enqueuePrintRequested(
+    orderId: string,
+    order: Order,
+    stage: PrintStage,
+  ): Promise<void> {
+    const payload: PrintRequestedPayload = {
+      orderId,
+      stage,
+      items: this.buildPrintRequestedItems(order.items, stage),
+      orderDetail: this.toOrderDetail(order),
+    };
+    await this.printQueue.add(EVENTS.PRINT_REQUESTED, payload, {
+      jobId: this.queueJobId('print-requested', orderId, stage),
+    });
+  }
+
+  private async enqueueOrderReady(
+    orderId: string,
+    order: Order,
+    items: OrderItem[] = order.items,
+  ): Promise<void> {
+    await this.orderQueue.add(
+      EVENTS.ORDER_READY_TO_FULFILL,
+      {
+        orderId,
+        items: this.buildFulfillmentItems(items),
+        shippingAddress: order.shippingAddress,
+        recipient: {
+          name: order.shippingAddress.recipientName,
+          phone: order.shippingAddress.phone,
+        },
+        paymentMethod: this.toEventPaymentMethod(order.paymentMethod),
+        ...(order.paymentMethod === PaymentMethod.COD
+          ? { codAmount: order.total }
+          : {}),
+        orderDetail: this.toOrderDetail({
+          ...order,
+          items,
+        }),
+      },
+      { jobId: this.queueJobId('order-ready', orderId) },
+    );
+  }
+
+  private async enqueuePaymentNotification(
+    orderId: string,
+    order: Order,
+    amount: number,
+    providerTxnId: string,
+  ): Promise<void> {
+    const customer = await this.userRepo.findActiveById(order.customerId);
+    if (!customer) {
+      this.logger.warn(
+        `Không tìm thấy customer ${order.customerId.toString()} cho đơn ${orderId} → bỏ qua payment.success`,
+      );
+      return;
+    }
+    const payload: PaymentSuccessPayload = {
+      orderId,
+      customerId: order.customerId.toString(),
+      customerEmail: customer.email,
+      amount,
+    };
+    await this.notifyQueue.add(EVENTS.PAYMENT_SUCCESS, payload, {
+      jobId: this.queueJobId('payment-success', orderId, providerTxnId),
+    });
+  }
+
+  private async enqueuePrintCompletedNotification(
+    orderId: string,
+    order: Order,
+    stage: PrintStage,
+    printJobId: string,
+    proofImage?: string,
+  ): Promise<void> {
+    const customer = await this.userRepo.findActiveById(order.customerId);
+    if (!customer) return;
+    await this.notifyQueue.add(
+      EVENTS.PRINT_COMPLETED,
+      {
+        orderId,
+        customerEmail: customer.email,
+        customerId: order.customerId.toString(),
+        ...(proofImage ? { proofImage } : {}),
+      },
+      {
+        jobId: this.queueJobId(
+          'print-completed-notification',
+          orderId,
+          stage,
+          printJobId,
+        ),
+      },
+    );
+  }
+
+  /**
+   * DB đã lưu nhưng lần enqueue trước có thể lỗi. Webhook/event giao lại phải
+   * tái phát đúng side effect hiện tại thay vì return và làm mất lệnh vĩnh viễn.
+   */
+  private async reconcilePaymentSideEffects(
+    orderId: string,
+    order: Order,
+  ): Promise<void> {
+    if (order.hasPrintItems) {
+      const printItems = order.items.filter((item) => item.isPrintItem);
+      const hasSampleProof =
+        printItems.length > 0 &&
+        printItems.every((item) => !!item.sampleProofImage?.trim());
+
+      if (
+        order.paymentStatus === PaymentStatus.DEPOSIT_PAID &&
+        order.fulfillmentStatus === FulfillmentStatus.AWAITING_PRINT &&
+        !hasSampleProof
+      ) {
+        await this.enqueuePrintRequested(orderId, order, PrintStage.SAMPLE);
+        return;
+      }
+
+      if (
+        (order.paymentStatus === PaymentStatus.PROGRESS_PAID ||
+          order.paymentStatus === PaymentStatus.PAID) &&
+        order.fulfillmentStatus === FulfillmentStatus.AWAITING_PRINT &&
+        hasSampleProof
+      ) {
+        await this.enqueuePrintRequested(orderId, order, PrintStage.PRODUCTION);
+        return;
+      }
+
+      if (
+        order.paymentStatus === PaymentStatus.PAID &&
+        order.fulfillmentStatus === FulfillmentStatus.READY_TO_PICK &&
+        this.hasCompletePrintedSkuMapping(order.items)
+      ) {
+        await this.enqueueOrderReady(orderId, order);
+      }
+      return;
+    }
+
+    const shouldFulfillOnline =
+      order.paymentMethod === PaymentMethod.ONLINE &&
+      order.paymentStatus === PaymentStatus.PAID &&
+      (order.fulfillmentStatus === FulfillmentStatus.READY_TO_PICK ||
+        order.fulfillmentStatus === FulfillmentStatus.ISSUED);
+    const shouldFulfillCod =
+      order.paymentMethod === PaymentMethod.COD &&
+      order.paymentStatus === PaymentStatus.DEPOSIT_PAID &&
+      order.fulfillmentStatus === FulfillmentStatus.READY_TO_PICK;
+    if (shouldFulfillOnline || shouldFulfillCod) {
+      await this.enqueueOrderReady(orderId, order);
+    }
+  }
+
+  /**
+   * Event in chỉ dùng snapshot server-side trên OrderItem. Không nhận lại SKU
+   * ly trống từ client và không dùng SKU catalog mơ hồ làm SKU đầu ra.
+   */
+  private buildPrintRequestedItems(
+    items: OrderItem[],
+    stage: PrintStage,
+  ): PrintRequestedPayload['items'] {
+    const printItems = items.filter((item) => item.isPrintItem);
+    if (printItems.length === 0) {
+      throw this.validationError('Đơn hàng không có dòng sản phẩm cần in');
+    }
+
+    const seenLineIds = new Set<string>();
+    return printItems.map((item) => {
+      const orderItemId = item.orderItemId?.trim();
+      const blankSku = item.blankSku?.trim();
+      const designFile = item.designFile?.trim();
+      if (!orderItemId || seenLineIds.has(orderItemId)) {
+        throw this.validationError(
+          'Dòng sản phẩm in thiếu hoặc trùng orderItemId',
+        );
+      }
+      if (!blankSku) {
+        throw this.validationError(
+          `Dòng in ${orderItemId} thiếu snapshot blankSku`,
+        );
+      }
+      if (!designFile) {
+        throw this.validationError(
+          `Dòng in ${orderItemId} thiếu snapshot designFile`,
+        );
+      }
+      if (!Number.isInteger(item.quantity) || item.quantity <= 0) {
+        throw this.validationError(
+          `Dòng in ${orderItemId} có số lượng không hợp lệ`,
+        );
+      }
+      seenLineIds.add(orderItemId);
+
+      return {
+        orderItemId,
+        blankSku,
+        quantity: stage === PrintStage.SAMPLE ? 1 : item.quantity,
+        designFile,
+        designId: item.designId,
+      };
+    });
+  }
+
+  /**
+   * SKU xuất kho của dòng in là SKU CUP_PRINTED WMS đã trả về. Dòng thường
+   * tiếp tục dùng SKU catalog gốc.
+   */
+  private buildFulfillmentItems(items: OrderItem[]) {
+    return items.map((item) => {
+      const sku = item.isPrintItem ? item.printedSku?.trim() : item.sku?.trim();
+      if (!sku) {
+        throw this.validationError(
+          item.isPrintItem
+            ? `Dòng in ${item.orderItemId || '(không có id)'} chưa có printedSku`
+            : 'Dòng đơn hàng thường thiếu SKU',
+        );
+      }
+      if (
+        item.isPrintItem &&
+        (!item.blankSku?.trim() || sku === item.blankSku.trim())
+      ) {
+        throw this.validationError(
+          `Dòng in ${item.orderItemId || '(không có id)'} có mapping SKU không hợp lệ`,
+        );
+      }
+      if (!Number.isInteger(item.quantity) || item.quantity <= 0) {
+        throw this.validationError(
+          `Dòng ${item.orderItemId || sku} có số lượng không hợp lệ`,
+        );
+      }
+      return { sku, quantity: item.quantity };
+    });
+  }
+
+  private hasCompletePrintedSkuMapping(items: OrderItem[]): boolean {
+    const printItems = items.filter((item) => item.isPrintItem);
+    return (
+      printItems.length > 0 &&
+      printItems.every(
+        (item) =>
+          !!item.orderItemId?.trim() &&
+          !!item.blankSku?.trim() &&
+          !!item.printedSku?.trim() &&
+          item.printedSku.trim() !== item.blankSku.trim() &&
+          Number.isInteger(item.quantity) &&
+          item.quantity > 0,
+      )
+    );
+  }
+
+  private validatePrintCompletionMappings(
+    printItems: OrderItem[],
+    mappings: PrintCompletedPayload['items'] | undefined,
+    stage: PrintStage,
+  ) {
+    if (
+      !Array.isArray(mappings) ||
+      mappings.length === 0 ||
+      mappings.length !== printItems.length
+    ) {
+      throw this.validationError(
+        `print.completed ${stage} phải map đủ chính xác mọi dòng in`,
+      );
+    }
+
+    const mappingByLineId = new Map<string, (typeof mappings)[number]>();
+    for (const mapping of mappings) {
+      const lineId = String(mapping.orderItemId ?? '').trim();
+      const printedSku = String(mapping.printedSku ?? '').trim();
+      if (!lineId || !printedSku || mappingByLineId.has(lineId)) {
+        throw this.validationError(
+          `print.completed ${stage} có mapping dòng trống hoặc trùng`,
+        );
+      }
+      mappingByLineId.set(lineId, {
+        ...mapping,
+        orderItemId: lineId,
+        printedSku,
+      });
+    }
+
+    for (const item of printItems) {
+      const lineId = item.orderItemId?.trim();
+      const blankSku = item.blankSku?.trim();
+      const mapping = lineId ? mappingByLineId.get(lineId) : undefined;
+      const expectedQuantity = stage === PrintStage.SAMPLE ? 1 : item.quantity;
+      if (
+        !lineId ||
+        !blankSku ||
+        !mapping ||
+        !Number.isInteger(mapping.quantity) ||
+        mapping.quantity !== expectedQuantity ||
+        mapping.printedSku === blankSku
+      ) {
+        throw this.validationError(
+          `print.completed ${stage} không khớp dòng ${lineId || '(không có id)'}`,
+        );
+      }
+    }
+
+    return mappingByLineId;
+  }
 
   async findById(id: string) {
     if (!Types.ObjectId.isValid(id)) {
@@ -81,7 +412,7 @@ export class OrderService {
         },
         paymentMethod: 'COD',
         codAmount: order.total,
-        orderDetail: JSON.parse(JSON.stringify(order)),
+        orderDetail: this.toOrderDetail(order),
       });
 
       this.logger.log(
@@ -111,10 +442,30 @@ export class OrderService {
       this.logger.warn(
         `Thanh toán trùng lặp: Đơn hàng ${orderId} đã ở trạng thái PAID`,
       );
+      await this.reconcilePaymentSideEffects(orderId, order);
       return order;
     }
 
+    // Nút manual 60% chính là cổng Manager xác nhận mẫu. Không cho tạo giao
+    // dịch đợt 2 khi Printer chưa hoàn tất SAMPLE + proof, nếu không đơn sẽ
+    // tiến lên PROGRESS_PAID nhưng SAMPLE đến sau lại bị từ chối.
+    if (
+      provider === 'MANUAL_ADMIN' &&
+      order.hasPrintItems &&
+      order.paymentStatus === PaymentStatus.DEPOSIT_PAID &&
+      order.fulfillmentStatus !== FulfillmentStatus.SAMPLE_PRINTED
+    ) {
+      const existingTransaction =
+        await this.repo.findTransactionByProviderTxnId(providerTxnId);
+      if (!existingTransaction) {
+        throw this.validationError(
+          'Chỉ được xác nhận thanh toán 60% sau khi mẫu in đã hoàn tất và được duyệt',
+        );
+      }
+    }
+
     // Ghi nhận dòng tiền thanh toán
+    let duplicateTransaction = false;
     try {
       await this.repo.appendTransaction({
         orderId: new Types.ObjectId(order._id.toString()),
@@ -127,18 +478,35 @@ export class OrderService {
       });
     } catch (err: unknown) {
       if ((err as { code?: number }).code === DUPLICATE_KEY_CODE) {
+        duplicateTransaction = true;
+        const existingTransaction =
+          await this.repo.findTransactionByProviderTxnId(providerTxnId);
+        if (
+          !existingTransaction ||
+          existingTransaction.orderId?.toString() !== order._id.toString()
+        ) {
+          throw this.validationError(
+            `Mã giao dịch ${providerTxnId} không thuộc đơn hàng ${orderId}`,
+          );
+        }
         this.logger.warn(
-          `Mã giao dịch ${providerTxnId} đã được xử lý (idempotency) -> Bỏ qua`,
+          `Mã giao dịch ${providerTxnId} đã được xử lý (idempotency) -> Đối soát side effect`,
         );
-        return order;
+      } else {
+        throw err;
       }
-      throw err;
     }
 
-    // 2. Lấy danh sách giao dịch đã đóng để tính lũy kế
+    // Luôn tính lại lũy kế cả khi txn trùng: lần trước có thể đã lưu transaction
+    // nhưng update Order/enqueue event bị lỗi. Việc áp lại cùng trạng thái là
+    // idempotent và giúp retry tự chữa thay vì làm mất lệnh SAMPLE/PRODUCTION.
     const txns = await this.repo.listTransactions(orderId);
     const paidTotal = txns
-      .filter((t) => t.status === TxnStatus.SUCCESS && (t.type === TxnType.CHARGE || t.type === TxnType.COD_COLLECT))
+      .filter(
+        (t) =>
+          t.status === TxnStatus.SUCCESS &&
+          (t.type === TxnType.CHARGE || t.type === TxnType.COD_COLLECT),
+      )
       .reduce((sum, t) => sum + t.amount, 0);
 
     const paidRatio = paidTotal / order.total;
@@ -165,7 +533,17 @@ export class OrderService {
         nextPaymentStatus = PaymentStatus.PAID;
         nextOrderStatus = OrderStatus.CONFIRMED;
         if (order.fulfillmentStatus === FulfillmentStatus.READY_TO_PICK) {
-          nextFulfillmentStatus = FulfillmentStatus.ISSUED;
+          if (this.hasCompletePrintedSkuMapping(order.items)) {
+            // READY_TO_PICK nghĩa là đủ điều kiện tạo phiếu xuất. Chỉ callback
+            // goods.issued từ WMS mới được chuyển sang ISSUED.
+            nextFulfillmentStatus = FulfillmentStatus.READY_TO_PICK;
+          } else {
+            // Vẫn ghi nhận thanh toán PAID nhưng giữ hàng chờ recovery mapping;
+            // tuyệt đối không xuất nhầm SKU ly trống.
+            this.logger.error(
+              `Đơn in ${orderId} đã thanh toán đủ nhưng thiếu printedSku hợp lệ; giữ ${FulfillmentStatus.READY_TO_PICK}, không phát lệnh xuất kho`,
+            );
+          }
         }
         // Các trường hợp khác (AWAITING_PRINT, SAMPLE_PRINTED...): chỉ ghi nhận PAID, giữ nguyên fulfillmentStatus
       } else if (paidRatio >= 0.59) {
@@ -199,26 +577,25 @@ export class OrderService {
       orderStatus: nextOrderStatus,
       fulfillmentStatus: nextFulfillmentStatus,
     });
+    const eventOrder = {
+      ...order,
+      paymentStatus: nextPaymentStatus,
+      orderStatus: nextOrderStatus,
+      fulfillmentStatus: nextFulfillmentStatus,
+    } as Order;
 
     // Báo khách hàng thanh toán thành công (Ecom → Notification)
-    const customer = await this.userRepo.findActiveById(order.customerId);
-    if (customer) {
-      const payload: PaymentSuccessPayload = {
-        orderId,
-        customerId: order.customerId.toString(),
-        customerEmail: customer.email,
-        amount,
-      };
-      await this.notifyQueue.add(EVENTS.PAYMENT_SUCCESS, payload, {
-        removeOnComplete: true,
-      });
-    } else {
-      this.logger.warn(
-        `Không tìm thấy customer ${order.customerId.toString()} cho đơn ${orderId} → bỏ qua payment.success`,
-      );
-    }
+    await this.enqueuePaymentNotification(
+      orderId,
+      eventOrder,
+      amount,
+      providerTxnId,
+    );
 
-    const orderDetail = JSON.parse(JSON.stringify(order));
+    if (duplicateTransaction) {
+      await this.reconcilePaymentSideEffects(orderId, eventOrder);
+      return updated;
+    }
 
     // Phát lệnh in / lệnh xuất kho theo tiến trình mới
     if (order.hasPrintItems) {
@@ -227,18 +604,8 @@ export class OrderService {
         nextFulfillmentStatus === FulfillmentStatus.AWAITING_PRINT &&
         order.fulfillmentStatus === FulfillmentStatus.NONE
       ) {
-        await this.printQueue.add(EVENTS.PRINT_REQUESTED, {
-          orderId: `${orderId}-sample`,
-          items: order.items
-            .filter((i) => i.isPrintItem)
-            .map((i) => ({
-              sku: i.sku,
-              quantity: 1,           // Chỉ in 1 bản mẫu
-              designFile: i.designFile,
-            })),
-          orderDetail,
-          isSample: true,
-        });
+        const stage = PrintStage.SAMPLE;
+        await this.enqueuePrintRequested(orderId, eventOrder, stage);
         this.logger.log(
           `Đơn in custom ${orderId} -> Phát lệnh in BẢN MẪU (sample) thành công`,
         );
@@ -249,18 +616,8 @@ export class OrderService {
         nextFulfillmentStatus === FulfillmentStatus.AWAITING_PRINT &&
         order.fulfillmentStatus === FulfillmentStatus.SAMPLE_PRINTED
       ) {
-        await this.printQueue.add(EVENTS.PRINT_REQUESTED, {
-          orderId,
-          items: order.items
-            .filter((i) => i.isPrintItem)
-            .map((i) => ({
-              sku: i.sku,
-              quantity: i.quantity,  // In toàn bộ số lượng chính thức
-              designFile: i.designFile,
-            })),
-          orderDetail,
-          isSample: false,
-        });
+        const stage = PrintStage.PRODUCTION;
+        await this.enqueuePrintRequested(orderId, eventOrder, stage);
         this.logger.log(
           `Đơn in custom ${orderId} -> Phát lệnh in CHÍNH THỨC thành công`,
         );
@@ -270,21 +627,12 @@ export class OrderService {
       if (
         nextPaymentStatus === PaymentStatus.PAID &&
         prevPaymentStatus !== PaymentStatus.PAID &&
-        nextFulfillmentStatus === FulfillmentStatus.ISSUED
+        nextFulfillmentStatus === FulfillmentStatus.READY_TO_PICK &&
+        this.hasCompletePrintedSkuMapping(order.items)
       ) {
-        await this.orderQueue.add(EVENTS.ORDER_READY_TO_FULFILL, {
-          orderId,
-          items: order.items.map((i) => ({ sku: i.sku, quantity: i.quantity })),
-          shippingAddress: order.shippingAddress,
-          recipient: {
-            name: order.shippingAddress.recipientName,
-            phone: order.shippingAddress.phone,
-          },
-          paymentMethod: order.paymentMethod as any,
-          orderDetail,
-        });
+        await this.enqueueOrderReady(orderId, eventOrder);
         this.logger.log(
-          `Đơn in custom ${orderId} -> ISSUED -> Phát lệnh xuất kho thành công`,
+          `Đơn in custom ${orderId} -> READY_TO_PICK -> Phát lệnh xuất kho thành công`,
         );
       }
     } else {
@@ -301,17 +649,7 @@ export class OrderService {
         prevPaymentStatus !== PaymentStatus.PAID;
 
       if (isCodFulfill || isOnlineFulfill) {
-        await this.orderQueue.add(EVENTS.ORDER_READY_TO_FULFILL, {
-          orderId,
-          items: order.items.map((i) => ({ sku: i.sku, quantity: i.quantity })),
-          shippingAddress: order.shippingAddress,
-          recipient: {
-            name: order.shippingAddress.recipientName,
-            phone: order.shippingAddress.phone,
-          },
-          paymentMethod: order.paymentMethod as any,
-          orderDetail,
-        });
+        await this.enqueueOrderReady(orderId, eventOrder);
         this.logger.log(
           `Đơn hàng thường ${orderId} -> Phát lệnh xuất kho thành công`,
         );
@@ -438,97 +776,214 @@ export class OrderService {
     );
   }
 
-  async onPrintCompleted(rawOrderId: string, printJobId: string, proofImage?: string) {
-    // WMS báo về với orderId có thể kèm hậu tố "-sample" (in bản mẫu) hoặc không (in chính thức)
-    const isSample = rawOrderId.endsWith('-sample');
-    const orderId = isSample ? rawOrderId.slice(0, -7) : rawOrderId; // cắt '-sample'
+  async onPrintCompleted(payload: PrintCompletedPayload) {
+    const rawOrderId = String(payload?.orderId ?? '').trim();
+    if (!rawOrderId) {
+      throw this.validationError('print.completed thiếu orderId');
+    }
+
+    // Tương thích đúng một trường hợp legacy an toàn: sample từng dùng hậu tố
+    // "-sample". Legacy production không có stage/mapping sẽ bị từ chối.
+    const isLegacySample = rawOrderId.endsWith('-sample');
+    const orderId = isLegacySample ? rawOrderId.slice(0, -7) : rawOrderId;
+    const stage =
+      (payload as Partial<PrintCompletedPayload>).stage ??
+      (isLegacySample ? PrintStage.SAMPLE : undefined);
+    if (stage !== PrintStage.SAMPLE && stage !== PrintStage.PRODUCTION) {
+      throw this.validationError('print.completed thiếu hoặc sai stage');
+    }
+
+    const printJobId = String(payload.printJobId ?? '').trim();
+    if (!printJobId) {
+      throw this.validationError('print.completed thiếu printJobId');
+    }
 
     const order = await this.repo.findById(orderId);
-    if (!order) return;
+    if (!order) {
+      throw new AppException('ORDER_NOT_FOUND');
+    }
+    const isTerminalOrder =
+      order.orderStatus === OrderStatus.CANCELLED ||
+      order.orderStatus === OrderStatus.CLOSED ||
+      [
+        FulfillmentStatus.ISSUED,
+        FulfillmentStatus.SHIPPED,
+        FulfillmentStatus.DELIVERED,
+        FulfillmentStatus.RETURNED,
+      ].includes(order.fulfillmentStatus);
+    if (isTerminalOrder) {
+      throw this.validationError(
+        `Không nhận print.completed cho đơn ${orderId} ở trạng thái kết thúc`,
+      );
+    }
 
-    const orderDetail = JSON.parse(JSON.stringify(order));
+    const printItems = order.items.filter((item) => item.isPrintItem);
+    if (printItems.length === 0) {
+      throw this.validationError(
+        `Đơn ${orderId} không có dòng sản phẩm cần in`,
+      );
+    }
 
-    if (isSample) {
-      // Lưu link ảnh chụp mẫu vào OrderItem tương ứng
+    if (stage === PrintStage.SAMPLE) {
+      if (order.paymentStatus !== PaymentStatus.DEPOSIT_PAID) {
+        throw this.validationError(
+          `print.completed SAMPLE không đúng cửa sổ thanh toán của đơn ${orderId}`,
+        );
+      }
+      const proofImage = payload.proofImage?.trim();
+      if (!proofImage) {
+        throw this.validationError(
+          'print.completed SAMPLE thiếu ảnh proof hợp lệ',
+        );
+      }
+      this.validatePrintCompletionMappings(
+        printItems,
+        payload.items,
+        PrintStage.SAMPLE,
+      );
+      if (order.fulfillmentStatus === FulfillmentStatus.SAMPLE_PRINTED) {
+        const isExactDuplicate = printItems.every(
+          (item) => item.sampleProofImage?.trim() === proofImage,
+        );
+        if (isExactDuplicate) {
+          await this.enqueuePrintCompletedNotification(
+            orderId,
+            order,
+            stage,
+            printJobId,
+            proofImage,
+          );
+          this.logger.warn(
+            `Đối soát print.completed SAMPLE trùng cho đơn ${orderId}`,
+          );
+          return;
+        }
+        throw this.validationError(
+          `print.completed SAMPLE xung đột với kết quả đã lưu của đơn ${orderId}`,
+        );
+      }
+      if (order.fulfillmentStatus !== FulfillmentStatus.AWAITING_PRINT) {
+        throw this.validationError(
+          `Không thể áp dụng print.completed SAMPLE khi đơn ${orderId} ở ${order.fulfillmentStatus}`,
+        );
+      }
+
       const items = order.items.map((item) =>
         item.isPrintItem ? { ...item, sampleProofImage: proofImage } : item,
       );
 
-      // ── In BẢN MẪU xong: chuyển sang SAMPLE_PRINTED, thông báo khách/admin xem mẫu ──
       await this.repo.updateOrder(orderId, {
         fulfillmentStatus: FulfillmentStatus.SAMPLE_PRINTED,
         items,
       });
 
-      const customer = await this.userRepo.findActiveById(order.customerId);
-      if (customer) {
-        await this.notifyQueue.add(
-          EVENTS.PRINT_COMPLETED,
-          {
-            orderId,
-            customerEmail: customer.email,
-            customerId: order.customerId.toString(),
-            proofImage, // Gửi ảnh mẫu thực tế cho ecom để hiển thị/thông báo khách
-          },
-          { removeOnComplete: true },
-        );
-      }
+      await this.enqueuePrintCompletedNotification(
+        orderId,
+        order,
+        stage,
+        printJobId,
+        proofImage,
+      );
       this.logger.log(
         `WMS in xong BẢN MẪU đơn ${orderId} -> SAMPLE_PRINTED -> Chờ khách xác nhận & thanh toán đợt 2. Ảnh mẫu: ${proofImage}`,
       );
       return;
     }
 
-    // ── In CHÍNH THỨC xong: cập nhật printJobId và kiểm tra toàn bộ ──
-    const items = order.items.map((item) =>
-      item.isPrintItem && !item.printJobId ? { ...item, printJobId } : item,
+    const hasSampleProof = printItems.every(
+      (item) => !!item.sampleProofImage?.trim(),
     );
-    await this.repo.updateOrder(orderId, { items });
+    if (
+      (order.paymentStatus !== PaymentStatus.PROGRESS_PAID &&
+        order.paymentStatus !== PaymentStatus.PAID) ||
+      !hasSampleProof
+    ) {
+      throw this.validationError(
+        `print.completed PRODUCTION không đúng cửa sổ sau duyệt mẫu của đơn ${orderId}`,
+      );
+    }
 
-    const allPrinted = items
-      .filter((i) => i.isPrintItem)
-      .every((i) => !!i.printJobId);
-
-    if (allPrinted) {
-      await this.repo.updateOrder(orderId, {
-        fulfillmentStatus: FulfillmentStatus.READY_TO_PICK,
+    const mappingByLineId = this.validatePrintCompletionMappings(
+      printItems,
+      payload.items,
+      PrintStage.PRODUCTION,
+    );
+    if (order.fulfillmentStatus === FulfillmentStatus.READY_TO_PICK) {
+      const isExactDuplicate = printItems.every((item) => {
+        const mapping = mappingByLineId.get(item.orderItemId);
+        return (
+          mapping?.printedSku === item.printedSku?.trim() &&
+          item.printJobId === printJobId
+        );
       });
-
-      // Báo khách hàng in chính thức xong
-      const customer = await this.userRepo.findActiveById(order.customerId);
-      if (customer) {
-        await this.notifyQueue.add(
-          EVENTS.PRINT_COMPLETED,
-          {
-            orderId,
-            customerEmail: customer.email,
-            customerId: order.customerId.toString(),
-          },
-          { removeOnComplete: true },
-        );
-      }
-
-      // COD: xuất kho luôn (thu tiền khi giao). ONLINE: chỉ xuất khi đã PAID 100%.
-      if (order.paymentMethod === PaymentMethod.COD || order.paymentStatus === PaymentStatus.PAID) {
-        await this.orderQueue.add(EVENTS.ORDER_READY_TO_FULFILL, {
+      if (isExactDuplicate) {
+        await this.enqueuePrintCompletedNotification(
           orderId,
-          items: items.map((i) => ({ sku: i.sku, quantity: i.quantity })),
-          shippingAddress: order.shippingAddress,
-          recipient: {
-            name: order.shippingAddress.recipientName,
-            phone: order.shippingAddress.phone,
-          },
-          paymentMethod: order.paymentMethod as any,
-          orderDetail,
-        });
-        this.logger.log(
-          `WMS in xong CHÍNH THỨC đơn ${orderId} -> READY_TO_PICK -> Phát lệnh xuất kho`,
+          order,
+          stage,
+          printJobId,
         );
-      } else {
-        this.logger.log(
-          `WMS in xong CHÍNH THỨC đơn ${orderId} -> READY_TO_PICK -> Chờ khách thanh toán nốt online đợt 3`,
+        if (
+          order.paymentMethod === PaymentMethod.COD ||
+          order.paymentStatus === PaymentStatus.PAID
+        ) {
+          await this.enqueueOrderReady(orderId, order);
+        }
+        this.logger.warn(
+          `Đối soát print.completed PRODUCTION trùng cho đơn ${orderId}`,
         );
+        return;
       }
+      throw this.validationError(
+        `print.completed PRODUCTION xung đột với kết quả đã lưu của đơn ${orderId}`,
+      );
+    }
+    if (order.fulfillmentStatus !== FulfillmentStatus.AWAITING_PRINT) {
+      throw this.validationError(
+        `Không thể áp dụng print.completed PRODUCTION khi đơn ${orderId} ở ${order.fulfillmentStatus}`,
+      );
+    }
+
+    const items = order.items.map((item) => {
+      if (!item.isPrintItem) return item;
+      const mapping = mappingByLineId.get(item.orderItemId);
+      // Đã kiểm tra exact coverage ở trên.
+      return {
+        ...item,
+        printedSku: mapping!.printedSku,
+        printJobId,
+      };
+    });
+    await this.repo.updateOrder(orderId, {
+      fulfillmentStatus: FulfillmentStatus.READY_TO_PICK,
+      items,
+    });
+
+    await this.enqueuePrintCompletedNotification(
+      orderId,
+      order,
+      stage,
+      printJobId,
+    );
+
+    // COD: xuất kho luôn (thu tiền khi giao). ONLINE: chỉ xuất khi đã PAID 100%.
+    if (
+      order.paymentMethod === PaymentMethod.COD ||
+      order.paymentStatus === PaymentStatus.PAID
+    ) {
+      const readyOrder = {
+        ...order,
+        items,
+        fulfillmentStatus: FulfillmentStatus.READY_TO_PICK,
+      } as Order;
+      await this.enqueueOrderReady(orderId, readyOrder, items);
+      this.logger.log(
+        `WMS in xong CHÍNH THỨC đơn ${orderId} -> READY_TO_PICK -> Phát lệnh xuất kho`,
+      );
+    } else {
+      this.logger.log(
+        `WMS in xong CHÍNH THỨC đơn ${orderId} -> READY_TO_PICK -> Chờ khách thanh toán nốt online đợt 3`,
+      );
     }
   }
 
@@ -568,7 +1023,11 @@ export class OrderService {
     if (order.paymentMethod === PaymentMethod.COD) {
       const txns = await this.repo.listTransactions(orderId);
       const paidTotal = txns
-        .filter((t) => t.status === TxnStatus.SUCCESS && (t.type === TxnType.CHARGE || t.type === TxnType.COD_COLLECT))
+        .filter(
+          (t) =>
+            t.status === TxnStatus.SUCCESS &&
+            (t.type === TxnType.CHARGE || t.type === TxnType.COD_COLLECT),
+        )
         .reduce((sum, t) => sum + t.amount, 0);
       const remaining = order.total - paidTotal;
       if (remaining > 0) {
