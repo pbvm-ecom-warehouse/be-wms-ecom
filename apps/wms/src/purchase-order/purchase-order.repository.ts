@@ -39,9 +39,15 @@ export class PurchaseOrderRepository {
       status: PurchaseOrderStatus.CONFIRMED,
       expectedDate: dto.expectedDate ? new Date(dto.expectedDate) : undefined,
       note: dto.note,
-      // itemId giữ string — Mongoose tự cast sang ObjectId theo schema khi lưu.
-      // Cast tay vì overload của Model.create() yêu cầu ObjectId ở kiểu tĩnh.
-      items: resolvedItems as unknown as PurchaseOrder['items'],
+      // Cast tay itemId sang ObjectId — Mongoose KHÔNG tự cast subdocument array
+      // ({_id:false}) qua Model.create() trong bản đang dùng, item.itemId string
+      // bị lưu nguyên dạng string, làm mọi $inc/$set bằng 'items.itemId' (ObjectId)
+      // ở applyReceivedQtyAndStatus không bao giờ match (bug đã xác nhận bằng
+      // debug log + query trực tiếp Atlas: mọi PO cũ đều lưu itemId dạng string).
+      items: resolvedItems.map((item) => ({
+        ...item,
+        itemId: new Types.ObjectId(item.itemId),
+      })) as unknown as PurchaseOrder['items'],
       createdBy: new Types.ObjectId(actorId),
     });
   }
