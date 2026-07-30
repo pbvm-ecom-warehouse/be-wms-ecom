@@ -164,7 +164,24 @@ export class CheckoutService {
       hasPrintItems = itemsToBuy.some((i) => i.isPrintItem);
     }
 
-    // 2. Ràng buộc: Ly in bắt buộc thanh toán riêng biệt, không đi kèm sản phẩm nào khác
+    // 2. Kiểm tra tồn kho của từng mặt hàng ngay tại Ecommerce
+    for (const item of itemsToBuy) {
+      const variant = await this.catalogService.findVariantBySku(item.sku);
+      if (!variant) {
+        throw new AppException(
+          'CART_VARIANT_NOT_AVAILABLE',
+          `Sản phẩm với SKU ${item.sku} không tồn tại hoặc đã bị ẩn.`,
+        );
+      }
+      if (variant.availableQty < item.quantity) {
+        throw new AppException(
+          'STOCK_INSUFFICIENT',
+          `Sản phẩm với SKU ${item.sku} không đủ hàng tồn kho trên hệ thống. (Yêu cầu: ${item.quantity}, Hiện có: ${variant.availableQty})`,
+        );
+      }
+    }
+
+    // 3. Ràng buộc: Ly in bắt buộc thanh toán riêng biệt, không đi kèm sản phẩm nào khác
     if (hasPrintItems) {
       if (itemsToBuy.length > 1) {
         throw new AppException(
