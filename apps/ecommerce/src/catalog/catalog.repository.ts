@@ -71,11 +71,12 @@ export class CatalogRepository {
   }
 
   async findOrCreateProductForVariant(
+    name: string,
     sku: string,
     type: string,
     attributes: Record<string, string>,
   ): Promise<Types.ObjectId> {
-    let productName = `Sản phẩm kho - ${type}`;
+    let productName = name || `Sản phẩm kho - ${type}`;
 
     if (type === 'MATERIAL') {
       // Ví dụ: attributes.category = "Trà", "Sữa", "Đường"
@@ -109,6 +110,7 @@ export class CatalogRepository {
 
   async createProductVariantFromWms(
     jobId: string,
+    name: string,
     eventName: string,
     sku: string,
     type: string,
@@ -125,6 +127,7 @@ export class CatalogRepository {
           .lean();
         if (!existing) {
           const productId = await this.findOrCreateProductForVariant(
+            name,
             sku,
             type,
             attributes,
