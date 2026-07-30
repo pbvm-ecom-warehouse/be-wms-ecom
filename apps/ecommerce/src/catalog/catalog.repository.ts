@@ -105,8 +105,8 @@ export class CatalogRepository {
 
   async createProductVariantFromWms(
     jobId: string,
-    name: string,
     eventName: string,
+    name: string,
     sku: string,
     type: string,
     initialQty: number,
