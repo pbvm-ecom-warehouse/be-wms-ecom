@@ -2,7 +2,6 @@ import { BullModule } from '@nestjs/bullmq';
 import { Module } from '@nestjs/common';
 import { QUEUES } from '@app/events';
 import { ReservationService } from './reservation.service';
-import { ReservationConsumer } from './reservation.consumer';
 import { StockModule } from '../stock/stock.module';
 import { LocationModule } from '../location/location.module';
 import { GoodsIssueModule } from '../goods-issue/goods-issue.module';
@@ -20,7 +19,7 @@ import { GoodsIssueModule } from '../goods-issue/goods-issue.module';
     LocationModule, // findStagingShelf
     GoodsIssueModule, // GoodsIssueRepository — kiểm tra GoodsIssue tồn tại trước khi release
   ],
-  providers: [ReservationService, ReservationConsumer],
+  providers: [ReservationService],
   exports: [ReservationService],
 })
 export class ReservationModule {}

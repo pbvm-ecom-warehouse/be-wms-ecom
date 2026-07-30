@@ -32,6 +32,7 @@ import { GoodsReturnModule } from './goods-return/goods-return.module';
 import { ReportModule } from './report/report.module';
 import { ShippingModule } from './shipping/shipping.module';
 import { InventoryReconciliationModule } from './inventory-reconciliation/inventory-reconciliation.module';
+import { OrderConsumerModule } from './order-consumer/order-consumer.module';
 import { appConfig } from './config/app.config';
 import { authConfig } from './config/auth.config';
 import { validateEnv } from './config/env.validation';
@@ -74,6 +75,7 @@ import { validateEnv } from './config/env.validation';
     ReportModule, // S4-03: báo cáo tồn (theo SKU, theo lô) + hiệu suất kho, read-only — [ADMIN, MANAGER]
     InventoryReconciliationModule, // Phân khoang tồn cũ, không tạo StockMovement lịch sử giả
     ShippingModule, // Shipper nội bộ: package + shipment carrierless; giữ Carrier cho legacy
+    OrderConsumerModule, // Consumer hợp nhất cho order-queue để tránh xung đột BullMQ
   ],
   controllers: [AppController],
   providers: [

@@ -6,7 +6,6 @@ import { GoodsIssue, GoodsIssueSchema } from './schemas/goods-issue.schema';
 import { GoodsIssueRepository } from './goods-issue.repository';
 import { GoodsIssueService } from './goods-issue.service';
 import { GoodsIssueController } from './goods-issue.controller';
-import { OrderReadyConsumer } from './order-ready.consumer';
 import { LocationModule } from '../location/location.module';
 import { StockModule } from '../stock/stock.module';
 import { DocumentNumberModule } from '../document-number/document-number.module';
@@ -29,7 +28,7 @@ import { DocumentNumberModule } from '../document-number/document-number.module'
     StockModule, // StockRepository + StockTransactionHelper
     DocumentNumberModule,
   ],
-  providers: [GoodsIssueRepository, GoodsIssueService, OrderReadyConsumer],
+  providers: [GoodsIssueRepository, GoodsIssueService],
   controllers: [GoodsIssueController],
   exports: [GoodsIssueService, GoodsIssueRepository],
 })
