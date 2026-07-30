@@ -60,7 +60,8 @@ export class StockConsumer extends WorkerHost {
           const attributesObj: Record<string, string> = {};
           if (Array.isArray(payload.attributes)) {
             for (const attr of payload.attributes) {
-              attributesObj[attr.code.toLowerCase()] = attr.value;
+              const key = attr.code.toLowerCase().trim();
+              attributesObj[key] = attr.value;
             }
           }
           const applied = await this.catalogRepo.createProductVariantFromWms(
