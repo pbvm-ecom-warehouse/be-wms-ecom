@@ -237,7 +237,8 @@ export async function seed(): Promise<void> {
   try {
     await seedManager(app);
     await seedCustomers(app);
-    await seedCatalog(app);
+    // Bỏ qua seed sản phẩm mẫu để Ecommerce chỉ hiển thị sản phẩm đồng bộ thật từ WMS
+    // await seedCatalog(app);
     logger.log('Seed hoàn tất.');
   } finally {
     await app.close();
