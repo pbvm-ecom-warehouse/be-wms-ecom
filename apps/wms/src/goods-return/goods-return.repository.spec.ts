@@ -187,7 +187,7 @@ describe('GoodsReturnRepository', () => {
       model.findOne.mockReturnValue({ exec: jest.fn().mockResolvedValue(doc) });
 
       const map = new Map([[itemId.toString(), scrapNoteId]]);
-      await repo.setRestocked('gr1', map, session);
+      await repo.setRestocked('gr1', map, new Map(), session);
 
       expect(model.findOne).toHaveBeenCalledWith({ _id: 'gr1' }, null, {
         session,

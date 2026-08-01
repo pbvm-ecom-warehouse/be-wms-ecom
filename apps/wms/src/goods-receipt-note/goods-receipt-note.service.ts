@@ -348,6 +348,7 @@ export class GoodsReceiptNoteService {
 
           const putAwayLines: {
             itemId: string;
+            sku: string;
             lotId: Types.ObjectId | null;
             quantity: number;
             packageSpec?: {
@@ -387,6 +388,7 @@ export class GoodsReceiptNoteService {
 
             putAwayLines.push({
               itemId: line.itemId,
+              sku: line.sku,
               lotId,
               quantity: line.baseQty,
               packageSpec: line.packageSpec,

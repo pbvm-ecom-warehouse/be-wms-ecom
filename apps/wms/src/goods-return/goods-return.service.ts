@@ -24,6 +24,9 @@ import { ScrapNoteService } from '../scrap-note/scrap-note.service';
 import { StockTransactionHelper } from '../stock/helpers/with-stock-transaction.helper';
 import { MovementType } from '../stock/schemas/stock-movement.schema';
 import { DocumentNumberService } from '../document-number/document-number.service';
+import { PutAwayService } from '../put-away/put-away.service';
+import { PutAwayTaskSourceType } from '../put-away/schemas/put-away-task.schema';
+import { LotStatus } from '../stock/schemas/lot.schema';
 
 interface OrderReturnedItem {
   sku: string;
@@ -52,6 +55,7 @@ export class GoodsReturnService {
     private readonly scrapNoteService: ScrapNoteService,
     private readonly stockTransactionHelper: StockTransactionHelper,
     private readonly documentNumberService: DocumentNumberService,
+    private readonly putAwayService: PutAwayService,
     @InjectQueue(QUEUES.STOCK) private readonly stockQueue: Queue,
     private readonly cloudinary: CloudinaryService,
   ) {}
@@ -146,7 +150,7 @@ export class GoodsReturnService {
    * RECEIVER gán kho nhận trả + phân loại GOOD/DAMAGED từng dòng. Chưa đụng
    * tồn kho thật — cho phép rà soát/sửa trước khi confirm(). isPerishable +
    * condition=GOOD bắt buộc lotId (nhập lại đúng lô còn hạn); condition=
-   * DAMAGED không cần lotId (hàng sẽ bị hủy ngay, không cần biết đúng lô).
+   * DAMAGED không cần lotId (hàng được cách ly và chuyển khu hủy).
    *
    * `imagesByItemId` optional — ảnh minh chứng gắn theo đúng dòng (thường dùng
    * cho condition=DAMAGED nhưng không bắt buộc, xem AC IMG-05). Validate +
@@ -164,6 +168,11 @@ export class GoodsReturnService {
       throw new AppException('GOODS_RETURN_ALREADY_DECIDED');
     }
 
+    const stagingShelf = await this.locationRepo.findStagingShelf();
+    if (!stagingShelf) {
+      throw new AppException('GRN_STAGING_SHELF_NOT_FOUND');
+    }
+
     const lines: {
       itemId: Types.ObjectId;
       condition: GoodsReturnItemCondition;
@@ -178,9 +187,6 @@ export class GoodsReturnService {
       );
       if (!existingLine) throw new AppException('GOODS_RETURN_ITEM_NOT_FOUND');
 
-      const shelf = await this.locationRepo.findShelfById(itemDto.shelfId);
-      if (!shelf) throw new AppException('SHELF_NOT_FOUND');
-
       const item = await this.stockRepo.findItemById(itemDto.itemId);
       if (!item) throw new AppException('STOCK_ITEM_NOT_FOUND');
       if (
@@ -189,6 +195,19 @@ export class GoodsReturnService {
         !itemDto.lotId
       ) {
         throw new AppException('GOODS_RETURN_ITEM_ISPERISHABLE_NO_LOT');
+      }
+      if (itemDto.lotId) {
+        const lot = await this.stockRepo.findLotById(
+          new Types.ObjectId(itemDto.lotId),
+        );
+        if (
+          !lot ||
+          lot.itemId.toString() !== itemDto.itemId ||
+          lot.status !== LotStatus.ACTIVE ||
+          lot.expiryDate.getTime() <= Date.now()
+        ) {
+          throw new AppException('GOODS_RETURN_LOT_NOT_ACTIVE');
+        }
       }
 
       const files = imagesByItemId?.get(itemDto.itemId) ?? [];
@@ -205,7 +224,7 @@ export class GoodsReturnService {
       lines.push({
         itemId: new Types.ObjectId(itemDto.itemId),
         condition: itemDto.condition,
-        shelfId: new Types.ObjectId(itemDto.shelfId),
+        shelfId: stagingShelf._id,
         lotId: itemDto.lotId ? new Types.ObjectId(itemDto.lotId) : null,
         images,
       });
@@ -236,12 +255,11 @@ export class GoodsReturnService {
 
   /**
    * RECEIVER xác nhận — trong 1 transaction: dòng GOOD nhập lại kho thật
-   * (onHand+/InventoryStock+/RETURN_IN, sau commit bắn stock.changed(+) vì
-   * available tăng thật). Dòng DAMAGED nhập TẠM (onHand+/InventoryStock+/
-   * RETURN_IN) rồi NGAY LẬP TỨC hủy qua ScrapNoteService (onHand-/
-   * InventoryStock-/SCRAP + tạo ScrapNote APPROVED skipAvailableSync=true) —
-   * không bao giờ bắn stock.changed cho dòng này (net stock effect = 0,
-   * hàng chưa từng sellable).
+   * (onHand+/InventoryStock+/RETURN_IN), tạo PutAwayTask từ staging và sau
+   * commit bắn stock.changed(+) vì available tăng thật. Dòng DAMAGED cũng
+   * nhập staging nhưng đồng thời nằm trong bucket quarantine, rồi tạo
+   * ScrapNote APPROVED để COUNTER quét chuyển khu hủy; không bắn
+   * stock.changed vì available của dòng này không tăng.
    */
   async confirmGoodsReturn(
     id: string,
@@ -256,6 +274,7 @@ export class GoodsReturnService {
     const actorObjectId = new Types.ObjectId(actorId);
     const goodLines: { sku: string; quantity: number }[] = [];
     const scrapNoteIdByItemId = new Map<string, Types.ObjectId>();
+    const putAwayTaskIdByItemId = new Map<string, Types.ObjectId>();
     // S4-04: mọi dòng (GOOD và DAMAGED) đều chạm upsertBalance ở dưới — dòng DAMAGED
     // còn bị ScrapNoteService bù trừ ngay sau trong CÙNG transaction, nhưng vì
     // checkAndEmitStockLow đọc lại balance sau commit nên chỉ cần set 1 lần ở
@@ -263,8 +282,25 @@ export class GoodsReturnService {
     const touchedItemIds = new Set<string>();
 
     await this.stockTransactionHelper.withStockTransaction(async (session) => {
+      const goodPutAwayLines: Array<{
+        itemId: string;
+        sku: string;
+        lotId: Types.ObjectId | null;
+        quantity: number;
+        packageSpec: {
+          unit: string;
+          factor: number;
+          depthCm: number;
+          widthCm: number;
+          heightCm: number;
+          volumeCm3: number;
+        };
+      }> = [];
       for (const line of goodsReturn.items) {
         if (!line.shelfId) continue; // đã inspect nên luôn có shelfId — guard cho type-safety
+        const item = await this.stockRepo.findItemById(line.itemId.toString());
+        if (!item) throw new AppException('STOCK_ITEM_NOT_FOUND');
+        const isDamaged = line.condition === GoodsReturnItemCondition.DAMAGED;
 
         await this.stockRepo.upsertInventory(
           line.itemId,
@@ -272,6 +308,12 @@ export class GoodsReturnService {
           line.lotId,
           line.quantity,
           session,
+          isDamaged
+            ? {
+                isQuarantined: true,
+                quarantinedQuantityDelta: line.quantity,
+              }
+            : undefined,
         );
         await this.stockRepo.upsertBalance(
           line.itemId,
@@ -280,6 +322,14 @@ export class GoodsReturnService {
           0,
           session,
         );
+        if (isDamaged) {
+          const quarantined = await this.stockRepo.adjustQuarantinedBalance(
+            line.itemId,
+            line.quantity,
+            session,
+          );
+          if (!quarantined) throw new AppException('STOCK_BALANCE_NOT_FOUND');
+        }
         touchedItemIds.add(line.itemId.toString());
         await this.stockRepo.insertMovement(
           {
@@ -295,7 +345,7 @@ export class GoodsReturnService {
           session,
         );
 
-        if (line.condition === GoodsReturnItemCondition.DAMAGED) {
+        if (isDamaged) {
           const scrapNoteId =
             await this.scrapNoteService.createApprovedScrapNoteForReturn({
               itemId: line.itemId,
@@ -308,11 +358,56 @@ export class GoodsReturnService {
             });
           scrapNoteIdByItemId.set(line.itemId.toString(), scrapNoteId);
         } else {
+          if (!item.depth || !item.width || !item.height) {
+            throw new AppException('GOODS_RETURN_ITEM_NO_DIMENSIONS');
+          }
           goodLines.push({ sku: line.sku, quantity: line.quantity });
+          goodPutAwayLines.push({
+            itemId: line.itemId.toString(),
+            sku: line.sku,
+            lotId: line.lotId,
+            quantity: line.quantity,
+            packageSpec: {
+              unit: item.unit,
+              factor: 1,
+              depthCm: item.depth,
+              widthCm: item.width,
+              heightCm: item.height,
+              volumeCm3: item.depth * item.width * item.height,
+            },
+          });
         }
       }
 
-      await this.repo.setRestocked(id, scrapNoteIdByItemId, session);
+      if (goodPutAwayLines.length > 0) {
+        const stagingShelfId = goodsReturn.items.find(
+          (line) => line.condition === GoodsReturnItemCondition.GOOD,
+        )?.shelfId;
+        if (!stagingShelfId) {
+          throw new AppException('GRN_STAGING_SHELF_NOT_FOUND');
+        }
+        const task = await this.putAwayService.createTaskFromGrn(
+          goodsReturn._id,
+          goodPutAwayLines,
+          actorId,
+          session,
+          stagingShelfId,
+          {
+            type: PutAwayTaskSourceType.GOODS_RETURN,
+            number: goodsReturn.goodsReturnNumber,
+          },
+        );
+        for (const line of goodPutAwayLines) {
+          putAwayTaskIdByItemId.set(line.itemId, task._id);
+        }
+      }
+
+      await this.repo.setRestocked(
+        id,
+        scrapNoteIdByItemId,
+        putAwayTaskIdByItemId,
+        session,
+      );
     });
 
     for (const line of goodLines) {

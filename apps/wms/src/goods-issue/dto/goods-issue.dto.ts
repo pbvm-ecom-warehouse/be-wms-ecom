@@ -14,6 +14,14 @@ import { Types } from 'mongoose';
 import { GoodsIssueStatus } from '../schemas/goods-issue.schema';
 import { NavigationPathDto } from '../../put-away-suggestion/dto/put-away-suggestion.dto';
 
+export class AssignGoodsIssueDto {
+  @ApiProperty({
+    description: 'Nhân viên có role SHIPPER được Admin/Manager gán',
+  })
+  @IsMongoId()
+  shipperId!: string;
+}
+
 export class ConfirmGoodsIssueLineDto {
   @ApiProperty({ example: 'CUP-PLA-500-RED', description: 'Barcode quét SKU' })
   @IsString()

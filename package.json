@@ -32,7 +32,8 @@
     "backfill:barcode-registry": "ts-node -r tsconfig-paths/register apps/wms/scripts/backfill-barcode-registry.ts",
     "migrate:storage-cells": "ts-node -r tsconfig-paths/register apps/wms/scripts/migrate-storage-cells.ts",
     "migrate:print-job-stage": "ts-node -r tsconfig-paths/register apps/wms/scripts/migrate-print-job-stage.ts",
-    "migrate:picker-to-shipper": "ts-node -r tsconfig-paths/register apps/wms/scripts/migrate-picker-to-shipper.ts"
+    "migrate:picker-to-shipper": "ts-node -r tsconfig-paths/register apps/wms/scripts/migrate-picker-to-shipper.ts",
+    "migrate:warehouse-workflow-v2": "ts-node -r tsconfig-paths/register apps/wms/scripts/migrate-warehouse-workflow-v2.ts"
   },
   "dependencies": {
     "@nestjs/bullmq": "^11.0.4",

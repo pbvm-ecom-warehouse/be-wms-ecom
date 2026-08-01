@@ -4,6 +4,8 @@ import { HydratedDocument, Types } from 'mongoose';
 export enum ScrapNoteStatus {
   DRAFT = 'DRAFT',
   APPROVED = 'APPROVED',
+  QUARANTINED = 'QUARANTINED',
+  DISPOSED = 'DISPOSED',
   REJECTED = 'REJECTED',
 }
 
@@ -23,12 +25,23 @@ export class ScrapNoteItem {
   @Prop({ type: Types.ObjectId, required: true })
   shelfId!: Types.ObjectId;
 
-  /**
-   * null nếu item không isPerishable, hoặc perishable nhưng hủy vì lý do khác
-   * hết hạn (hỏng/vỡ) mà không cần gắn đúng lô — CÓ giá trị nghĩa là "hủy vì
-   * hết hạn" (dùng để quyết định có trừ StockBalance.expired hay không, xem
-   * scrap-note.service.ts).
-   */
+  /** Khoang nguồn bị khóa toàn dòng khi COUNTER đề xuất từ kiểm kê. */
+  @Prop({ type: Types.ObjectId, default: null })
+  sourceCellId!: Types.ObjectId | null;
+
+  /** Số lượng toàn dòng đã khóa, có thể lớn hơn quantity đề xuất hủy. */
+  @Prop({ type: Number, default: 0 })
+  lockedQuantity!: number;
+
+  /** Khoang thuộc zone SCRAP sau khi COUNTER quét chuyển hàng. */
+  @Prop({ type: Types.ObjectId, default: null })
+  scrapCellId!: Types.ObjectId | null;
+
+  /** true nếu dòng đã nằm trong bucket expired trước khi bị khóa. */
+  @Prop({ type: Boolean, default: false })
+  excludedByExpired!: boolean;
+
+  /** Lô vật lý của đúng dòng tồn cần chuyển/hủy; null với hàng không theo lô. */
   @Prop({ type: Types.ObjectId, default: null })
   lotId!: Types.ObjectId | null;
 
@@ -50,25 +63,13 @@ export class ScrapNoteItem {
   /** Ảnh minh chứng hàng hủy — đính lúc tạo phiếu, optional. */
   @Prop({ type: [String], default: [] })
   images!: string[];
-
-  /**
-   * true khi ScrapNote này được GoodsReturnService tạo tự động cho dòng
-   * DAMAGED (UC-09) — hàng đó vừa được nhập TẠM vào InventoryStock/onHand
-   * trong CÙNG bước confirm() rồi hủy ngay, nên chưa từng cộng vào
-   * `available`. Nếu approveScrapNote() vẫn bắn stock.changed(-) như bình
-   * thường thì available sẽ bị trừ nhầm (available vốn chưa từng tăng cho
-   * phần này). Mặc định false — dòng Scrap tạo tay qua POST /scrap-notes
-   * (UC-08 gốc) không bao giờ set cờ này.
-   */
-  @Prop({ default: false })
-  skipAvailableSync!: boolean;
 }
 const ScrapNoteItemSchema = SchemaFactory.createForClass(ScrapNoteItem);
 
 /**
- * Phiếu đề xuất hủy hàng hết hạn/hỏng (UC-08). COUNTER/RECEIVER tạo tay, kèm
- * toàn bộ dòng ngay từ đầu — không auto-generate như StockCount. Chứng từ
- * giao dịch — hủy bằng status, KHÔNG soft-delete.
+ * Phiếu đề xuất hủy hàng hết hạn/hỏng. COUNTER tạo từ đúng dòng Stock Count;
+ * hàng hoàn DAMAGED tạo phiếu APPROVED tự động. Chứng từ giao dịch chỉ đổi
+ * trạng thái, không soft-delete.
  */
 @Schema({ collection: 'scrap_notes', timestamps: true })
 export class ScrapNote {
@@ -89,7 +90,7 @@ export class ScrapNote {
   @Prop()
   note?: string;
 
-  /** COUNTER/RECEIVER đề xuất */
+  /** COUNTER đề xuất hoặc RECEIVER xác nhận hàng hoàn DAMAGED */
   @Prop({ type: Types.ObjectId, required: true })
   createdBy!: Types.ObjectId;
 
@@ -100,6 +101,12 @@ export class ScrapNote {
   /** Bắt buộc có giá trị khi status = REJECTED */
   @Prop()
   rejectReason?: string;
+
+  @Prop({ type: Types.ObjectId })
+  disposedBy?: Types.ObjectId;
+
+  @Prop({ type: Date })
+  disposedAt?: Date;
 
   @Prop({ type: [ScrapNoteItemSchema], required: true })
   items!: ScrapNoteItem[];

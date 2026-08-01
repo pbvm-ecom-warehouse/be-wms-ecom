@@ -16,13 +16,10 @@ describe('single-role migration regression', () => {
     expect(happyPath).not.toContain('roles: [role]');
   });
 
-  it('does not let Ecommerce seed scripts recreate the legacy roles field', () => {
-    for (const path of [
-      'scripts/seed-ecom-admin.js',
-      'scripts/seed-ecom-users.js',
-    ]) {
-      expect(source(path)).not.toMatch(/\broles\s*:/);
-    }
+  it('does not let the Ecommerce seed recreate the legacy roles field', () => {
+    expect(source('apps/ecommerce/src/seed/seed.ts')).not.toMatch(
+      /\broles\s*:/,
+    );
   });
 
   it('keeps supplier blacklist authorization tied to WmsRole', () => {

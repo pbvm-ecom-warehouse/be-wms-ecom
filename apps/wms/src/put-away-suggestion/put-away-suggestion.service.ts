@@ -9,6 +9,7 @@ import {
   type NavigationPath,
 } from '../location/navigation.service';
 import type { StorageCellDocument } from '../location/schemas/storage-cell.schema';
+import { ZonePurpose } from '../location/schemas/zone.schema';
 
 export interface PutAwaySuggestionOptions {
   lotId?: string;
@@ -51,6 +52,7 @@ interface Candidate {
   hasSameSku: boolean;
   hasSameLot: boolean;
   path: NavigationPath;
+  zoneTier: number;
 }
 
 const DEFAULT_FILL_FACTOR = 0.75;
@@ -88,12 +90,19 @@ export class PutAwaySuggestionService {
     }
 
     const lotId = options.lotId ? new Types.ObjectId(options.lotId) : null;
-    const [occupiedByCell, cellIdsWithSameSku, cellIdsWithSameLot] =
-      await Promise.all([
-        this.stockRepo.findOccupiedVolumeByCell(),
-        this.stockRepo.findCellIdsWithItem(item._id),
-        this.stockRepo.findCellIdsWithItemAndLot(item._id, lotId),
-      ]);
+    const [
+      occupiedByCell,
+      cellIdsWithSameSku,
+      cellIdsWithSameLot,
+      zonesByRack,
+    ] = await Promise.all([
+      this.stockRepo.findOccupiedVolumeByCell(),
+      this.stockRepo.findCellIdsWithItem(item._id),
+      this.stockRepo.findCellIdsWithItemAndLot(item._id, lotId),
+      this.locationRepo.findZonesByRackIds([
+        ...new Set(cells.map((cell) => cell.rackId.toString())),
+      ]),
+    ]);
     const defaultFillFactor =
       this.configService.get<number>('PUTAWAY_DEFAULT_FILL_FACTOR') ??
       DEFAULT_FILL_FACTOR;
@@ -101,6 +110,12 @@ export class PutAwaySuggestionService {
     const candidates: Candidate[] = [];
     let hasPhysicalFit = false;
     for (const cell of cells) {
+      const zone = zonesByRack.get(cell.rackId.toString());
+      if (zone?.zonePurpose === ZonePurpose.SCRAP) continue;
+      const allowedTypes = zone?.allowedItemTypes ?? [];
+      if (allowedTypes.length > 0 && !allowedTypes.includes(item.type)) {
+        continue;
+      }
       if (
         depth > cell.innerDepth ||
         width > cell.innerWidth ||
@@ -115,7 +130,9 @@ export class PutAwaySuggestionService {
         cell.innerHeight *
         (cell.fillFactor ?? defaultFillFactor);
       const occupied = occupiedByCell.get(cell._id.toString()) ?? 0;
-      const capacity = Math.floor(Math.max(0, usable - occupied) / packageVolume);
+      const capacity = Math.floor(
+        Math.max(0, usable - occupied) / packageVolume,
+      );
       if (capacity < 1) continue;
 
       try {
@@ -130,6 +147,7 @@ export class PutAwaySuggestionService {
           hasSameSku: cellIdsWithSameSku.has(cell._id.toString()),
           hasSameLot: cellIdsWithSameLot.has(cell._id.toString()),
           path,
+          zoneTier: allowedTypes.length > 0 ? 0 : 1,
         });
       } catch (error) {
         if (
@@ -155,6 +173,9 @@ export class PutAwaySuggestionService {
     }
 
     candidates.sort((left, right) => {
+      if (left.zoneTier !== right.zoneTier) {
+        return left.zoneTier - right.zoneTier;
+      }
       const affinity =
         Number(right.hasSameLot) - Number(left.hasSameLot) ||
         Number(right.hasSameSku) - Number(left.hasSameSku);
@@ -177,8 +198,7 @@ export class PutAwaySuggestionService {
 
     return {
       suggestions,
-      warning:
-        covered >= packageCount ? null : 'INSUFFICIENT_CAPACITY',
+      warning: covered >= packageCount ? null : 'INSUFFICIENT_CAPACITY',
     };
   }
 

@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { InjectConnection, InjectModel } from '@nestjs/mongoose';
 import { ClientSession, Connection, Model, Types } from 'mongoose';
 import { Zone, ZoneDocument } from './schemas/zone.schema';
+import { ZonePurpose } from './schemas/zone.schema';
 import { Rack, RackDocument } from './schemas/rack.schema';
 import { Shelf, ShelfDocument } from './schemas/shelf.schema';
 import {
@@ -195,6 +196,22 @@ export class LocationRepository {
     ).exec();
   }
 
+  /**
+   * Serialize inventory mutations with zone soft-delete/purpose changes.
+   */
+  async lockActiveZoneForInventory(
+    id: string,
+    session: ClientSession,
+  ): Promise<ZoneDocument | null> {
+    return this.zoneModel
+      .findOneAndUpdate(
+        { _id: id, ...SOFT_DELETE_FILTER },
+        { $set: { updatedAt: new Date() } },
+        { new: true, session },
+      )
+      .exec();
+  }
+
   async findZoneByCode(
     code: string,
     session?: ClientSession,
@@ -203,6 +220,47 @@ export class LocationRepository {
       this.zoneModel.findOne({ code, ...SOFT_DELETE_FILTER }),
       session,
     ).exec();
+  }
+
+  async findScrapZone(session?: ClientSession): Promise<ZoneDocument | null> {
+    return this.withSession(
+      this.zoneModel.findOne({
+        zonePurpose: ZonePurpose.SCRAP,
+        ...SOFT_DELETE_FILTER,
+      }),
+      session,
+    ).exec();
+  }
+
+  async findZonesByRackIds(
+    rackIds: string[],
+    session?: ClientSession,
+  ): Promise<Map<string, ZoneDocument>> {
+    if (rackIds.length === 0) return new Map();
+    const racks = await this.withSession(
+      this.rackModel
+        .find({
+          _id: { $in: rackIds.map((id) => new Types.ObjectId(id)) },
+          ...SOFT_DELETE_FILTER,
+        })
+        .select('_id zoneId'),
+      session,
+    ).exec();
+    const zoneIds = [...new Set(racks.map((rack) => rack.zoneId.toString()))];
+    const zones = await this.withSession(
+      this.zoneModel.find({
+        _id: { $in: zoneIds.map((id) => new Types.ObjectId(id)) },
+        ...SOFT_DELETE_FILTER,
+      }),
+      session,
+    ).exec();
+    const zoneById = new Map(zones.map((zone) => [zone._id.toString(), zone]));
+    return new Map(
+      racks.flatMap((rack) => {
+        const zone = zoneById.get(rack.zoneId.toString());
+        return zone ? [[rack._id.toString(), zone] as const] : [];
+      }),
+    );
   }
 
   async updateZone(
@@ -298,6 +356,22 @@ export class LocationRepository {
       this.rackModel.findOne({ _id: id, ...SOFT_DELETE_FILTER }),
       session,
     ).exec();
+  }
+
+  /**
+   * Serialize inventory mutations with rack relocation/soft-delete.
+   */
+  async lockActiveRackForInventory(
+    id: string,
+    session: ClientSession,
+  ): Promise<RackDocument | null> {
+    return this.rackModel
+      .findOneAndUpdate(
+        { _id: id, ...SOFT_DELETE_FILTER },
+        { $set: { updatedAt: new Date() } },
+        { new: true, session },
+      )
+      .exec();
   }
 
   async findRackByCode(
@@ -515,13 +589,23 @@ export class LocationRepository {
    * (Shelf không denormalize zoneId trực tiếp). Dùng khi StockCountService
    * tạo phiếu giới hạn theo zone (UC-06).
    */
-  async findShelfIdsByZone(zoneId: string): Promise<Types.ObjectId[]> {
-    const racks = await this.findRacksByZone(zoneId);
-    const rackIds = racks.map((r) => r._id.toString());
-    const shelvesByRack = await Promise.all(
-      rackIds.map((rackId) => this.findShelvesByRack(rackId)),
-    );
-    return shelvesByRack.flat().map((s) => s._id);
+  async findShelfIdsByZone(
+    zoneId: string,
+    session?: ClientSession,
+  ): Promise<Types.ObjectId[]> {
+    const racks = await this.findRacksByZone(zoneId, session);
+    const rackIds = racks.map((rack) => rack._id);
+    if (rackIds.length === 0) return [];
+    const shelves = await this.withSession(
+      this.shelfModel
+        .find({
+          rackId: { $in: rackIds },
+          ...SOFT_DELETE_FILTER,
+        })
+        .select('_id'),
+      session,
+    ).exec();
+    return shelves.map((shelf) => shelf._id);
   }
 
   /** Tìm shelf staging (khu nhận hàng tạm) duy nhất toàn hệ thống — dùng khi GRN APPROVED cộng tồn. */

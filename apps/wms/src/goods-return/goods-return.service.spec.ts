@@ -18,18 +18,23 @@ const makeRepo = () => ({
 const makeStockRepo = () => ({
   findItemById: jest.fn(),
   findItemBySku: jest.fn(),
+  findLotById: jest.fn(),
   upsertInventory: jest.fn(),
   upsertBalance: jest.fn(),
+  adjustQuarantinedBalance: jest.fn(),
   insertMovement: jest.fn(),
 });
 
 const makeLocationRepo = () => ({
   findShelfById: jest.fn(),
+  findStagingShelf: jest.fn(),
 });
 
 const makeScrapNoteService = () => ({
   createApprovedScrapNoteForReturn: jest.fn(),
 });
+
+const makePutAwayService = () => ({ createTaskFromGrn: jest.fn() });
 
 const makeStockService = () => ({
   checkAndEmitStockLow: jest.fn(),
@@ -69,6 +74,7 @@ describe('GoodsReturnService', () => {
   let stockRepo: ReturnType<typeof makeStockRepo>;
   let locationRepo: ReturnType<typeof makeLocationRepo>;
   let scrapNoteService: ReturnType<typeof makeScrapNoteService>;
+  let putAwayService: ReturnType<typeof makePutAwayService>;
   let stockService: ReturnType<typeof makeStockService>;
   let txHelper: ReturnType<typeof makeTxHelper>;
   let stockQueue: ReturnType<typeof makeStockQueue>;
@@ -85,11 +91,29 @@ describe('GoodsReturnService', () => {
     stockRepo = makeStockRepo();
     locationRepo = makeLocationRepo();
     scrapNoteService = makeScrapNoteService();
+    putAwayService = makePutAwayService();
     stockService = makeStockService();
     txHelper = makeTxHelper();
     stockQueue = makeStockQueue();
     cloudinary = makeCloudinaryService();
     documentNumber = makeDocumentNumberService();
+    locationRepo.findStagingShelf.mockResolvedValue({ _id: shelfId });
+    stockRepo.findItemById.mockResolvedValue({
+      _id: itemId,
+      unit: 'piece',
+      depth: 10,
+      width: 10,
+      height: 10,
+    });
+    stockRepo.adjustQuarantinedBalance.mockResolvedValue(true);
+    stockRepo.findLotById.mockResolvedValue({
+      itemId,
+      status: 'ACTIVE',
+      expiryDate: new Date(Date.now() + 24 * 60 * 60 * 1000),
+    });
+    putAwayService.createTaskFromGrn.mockResolvedValue({
+      _id: new Types.ObjectId(),
+    });
     svc = new GoodsReturnService(
       repo as never,
       stockRepo as never,
@@ -98,6 +122,7 @@ describe('GoodsReturnService', () => {
       scrapNoteService as never,
       txHelper as never,
       documentNumber as never,
+      putAwayService as never,
       stockQueue as never,
       cloudinary as never,
     );
@@ -212,7 +237,7 @@ describe('GoodsReturnService', () => {
       ).rejects.toThrow();
     });
 
-    it('shelf không tồn tại → throw SHELF_NOT_FOUND', async () => {
+    it('bỏ qua shelfId từ client và luôn ghi nhận vào staging shelf', async () => {
       repo.findById.mockResolvedValue({
         _id: 'gr1',
         status: GoodsReturnStatus.DRAFT,
@@ -239,7 +264,7 @@ describe('GoodsReturnService', () => {
           },
           actorId,
         ),
-      ).rejects.toThrow();
+      ).resolves.toBeDefined();
     });
 
     it('item isPerishable, condition=GOOD, thiếu lotId → throw GOODS_RETURN_ITEM_ISPERISHABLE_NO_LOT', async () => {
@@ -521,6 +546,7 @@ describe('GoodsReturnService', () => {
     it('dòng GOOD → nhập lại kho, StockMovement RETURN_IN dương, CÓ bắn stock.changed(+)', async () => {
       repo.findById.mockResolvedValue({
         _id: 'gr1',
+        goodsReturnNumber: 'RET-20260730-0001',
         status: GoodsReturnStatus.INSPECTED,
         items: [
           {
@@ -542,6 +568,7 @@ describe('GoodsReturnService', () => {
         null,
         4,
         expect.anything(),
+        undefined,
       );
       expect(stockRepo.upsertBalance).toHaveBeenCalledWith(
         itemId,
@@ -560,6 +587,23 @@ describe('GoodsReturnService', () => {
       expect(
         scrapNoteService.createApprovedScrapNoteForReturn,
       ).not.toHaveBeenCalled();
+      expect(putAwayService.createTaskFromGrn).toHaveBeenCalledWith(
+        expect.anything(),
+        [
+          expect.objectContaining({
+            itemId: itemId.toString(),
+            sku: 'SKU-1',
+            quantity: 4,
+          }),
+        ],
+        actorId,
+        expect.anything(),
+        shelfId,
+        {
+          type: 'GOODS_RETURN',
+          number: 'RET-20260730-0001',
+        },
+      );
       expect(stockQueue.add).toHaveBeenCalledWith(
         'stock.changed',
         { sku: 'SKU-1', delta: 4 },
@@ -567,7 +611,7 @@ describe('GoodsReturnService', () => {
       );
     });
 
-    it('dòng DAMAGED → nhập tạm rồi hủy ngay qua ScrapNoteService, KHÔNG bắn stock.changed', async () => {
+    it('dòng DAMAGED → cách ly và tạo nhiệm vụ chuyển khu hủy, KHÔNG bắn stock.changed', async () => {
       const scrapNoteId = new Types.ObjectId();
       scrapNoteService.createApprovedScrapNoteForReturn.mockResolvedValue(
         scrapNoteId,
@@ -595,6 +639,7 @@ describe('GoodsReturnService', () => {
         null,
         3,
         expect.anything(),
+        { isQuarantined: true },
       );
       expect(stockRepo.upsertBalance).toHaveBeenCalledWith(
         itemId,
@@ -621,6 +666,7 @@ describe('GoodsReturnService', () => {
       expect(repo.setRestocked).toHaveBeenCalledWith(
         'gr1',
         new Map([[itemId.toString(), scrapNoteId]]),
+        new Map(),
         expect.anything(),
       );
       expect(stockQueue.add).not.toHaveBeenCalled();

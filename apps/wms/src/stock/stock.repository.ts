@@ -177,6 +177,24 @@ export class StockRepository {
     return this.itemModel.findById(itemId).exec();
   }
 
+  /**
+   * Khóa master-data mặt hàng trong transaction xuất kho. Phép ghi no-op trên
+   * cùng document buộc thay đổi isActive/soft-delete đồng thời phải serialize
+   * với transaction đang xác nhận xuất.
+   */
+  lockActiveItemForIssue(
+    itemId: string,
+    session: ClientSession,
+  ): Promise<WarehouseItemDocument | null> {
+    return this.itemModel
+      .findOneAndUpdate(
+        { _id: itemId, isActive: true, deletedAt: null },
+        { $set: { updatedAt: new Date() } },
+        { new: true, session },
+      )
+      .exec();
+  }
+
   findBalance(
     itemId: Types.ObjectId,
     session?: ClientSession,
@@ -208,6 +226,200 @@ export class StockRepository {
         { upsert: true, new: true, session },
       )
       .exec();
+  }
+
+  findLotById(
+    lotId: Types.ObjectId,
+    session?: ClientSession,
+  ): Promise<LotDocument | null> {
+    return this.lotModel.findById(lotId, null, { session }).exec();
+  }
+
+  /**
+   * Khóa và xác nhận lô vẫn thuộc đúng mặt hàng, còn ACTIVE và chưa hết hạn
+   * ngay trong transaction xuất kho.
+   */
+  lockActiveLotForIssue(
+    lotId: Types.ObjectId,
+    itemId: Types.ObjectId,
+    now: Date,
+    session: ClientSession,
+  ): Promise<LotDocument | null> {
+    return this.lotModel
+      .findOneAndUpdate(
+        {
+          _id: lotId,
+          itemId,
+          status: LotStatus.ACTIVE,
+          expiryDate: { $gt: now },
+        },
+        { $set: { updatedAt: new Date() } },
+        { new: true, session },
+      )
+      .exec();
+  }
+
+  async adjustQuarantinedBalance(
+    itemId: Types.ObjectId,
+    delta: number,
+    session?: ClientSession,
+  ): Promise<boolean> {
+    const filter: Record<string, unknown> = { itemId };
+    if (delta < 0) filter['quarantined'] = { $gte: Math.abs(delta) };
+    const updated = await this.balanceModel
+      .findOneAndUpdate(
+        filter,
+        { $inc: { quarantined: delta } },
+        { new: true, session },
+      )
+      .exec();
+    return updated !== null;
+  }
+
+  async moveQuarantinedBalanceToExpired(
+    itemId: Types.ObjectId,
+    quantity: number,
+    session: ClientSession,
+  ): Promise<boolean> {
+    const updated = await this.balanceModel
+      .findOneAndUpdate(
+        { itemId, quarantined: { $gte: quantity } },
+        { $inc: { quarantined: -quantity, expired: quantity } },
+        { new: true, session },
+      )
+      .exec();
+    return updated !== null;
+  }
+
+  async releaseQuarantinedBalance(
+    itemId: Types.ObjectId,
+    quantity: number,
+    fromExpired: boolean,
+    session: ClientSession,
+  ): Promise<boolean> {
+    return fromExpired
+      ? this.moveQuarantinedBalanceToExpired(itemId, quantity, session)
+      : this.adjustQuarantinedBalance(itemId, -quantity, session);
+  }
+
+  /** Khóa toàn bộ row exact-cell và ghi nhận số lượng bị cách ly. */
+  async lockQuarantinedInventoryRow(
+    itemId: Types.ObjectId,
+    shelfId: Types.ObjectId,
+    cellId: Types.ObjectId | null,
+    lotId: Types.ObjectId | null,
+    session: ClientSession,
+    quantityToLock?: number,
+  ): Promise<InventoryStockDocument | null> {
+    const requested = quantityToLock ?? Number.MAX_SAFE_INTEGER;
+    return this.inventoryModel
+      .findOneAndUpdate(
+        {
+          itemId,
+          shelfId,
+          cellId,
+          lotId,
+          $expr: {
+            $gte: [
+              {
+                $subtract: [
+                  '$quantity',
+                  { $ifNull: ['$quarantinedQuantity', 0] },
+                ],
+              },
+              requested,
+            ],
+          },
+        },
+        [
+          {
+            $set: {
+              isQuarantined: true,
+              quarantinedQuantity: {
+                $add: [{ $ifNull: ['$quarantinedQuantity', 0] }, requested],
+              },
+            },
+          },
+        ],
+        { new: true, session },
+      )
+      .exec();
+  }
+
+  /** Giảm đúng phần q của một allocation, không mở khóa phần còn lại của row. */
+  async releaseQuarantinedQuantity(
+    itemId: Types.ObjectId,
+    shelfId: Types.ObjectId,
+    cellId: Types.ObjectId | null,
+    lotId: Types.ObjectId | null,
+    quantity: number,
+    session: ClientSession,
+  ): Promise<InventoryStockDocument | null> {
+    const updated = await this.inventoryModel
+      .findOneAndUpdate(
+        {
+          itemId,
+          shelfId,
+          cellId,
+          lotId,
+          quarantinedQuantity: { $gte: quantity },
+        },
+        { $inc: { quarantinedQuantity: -quantity } },
+        { new: true, session },
+      )
+      .exec();
+    if (!updated) return null;
+    if (updated.quarantinedQuantity <= 0) {
+      await this.inventoryModel
+        .updateOne(
+          { _id: updated._id, quarantinedQuantity: { $lte: 0 } },
+          { $set: { quarantinedQuantity: 0, isQuarantined: false } },
+          { session },
+        )
+        .exec();
+      updated.quarantinedQuantity = 0;
+      updated.isQuarantined = false;
+    }
+    return updated;
+  }
+
+  async releaseInventoryQuarantine(
+    itemId: Types.ObjectId,
+    shelfId: Types.ObjectId,
+    cellId: Types.ObjectId | null,
+    lotId: Types.ObjectId | null,
+    quantity: number,
+    session: ClientSession,
+  ): Promise<InventoryStockDocument | null> {
+    return this.releaseQuarantinedQuantity(
+      itemId,
+      shelfId,
+      cellId,
+      lotId,
+      quantity,
+      session,
+    );
+  }
+
+  async disposeQuarantinedBalance(
+    itemId: Types.ObjectId,
+    quantity: number,
+    fromExpired: boolean,
+    session: ClientSession,
+  ): Promise<boolean> {
+    const bucket = fromExpired ? 'expired' : 'quarantined';
+    const updated = await this.balanceModel
+      .findOneAndUpdate(
+        {
+          itemId,
+          onHand: { $gte: quantity },
+          [bucket]: { $gte: quantity },
+        },
+        { $inc: { onHand: -quantity, [bucket]: -quantity } },
+        { new: true, session },
+      )
+      .exec();
+    return updated !== null;
   }
 
   /**
@@ -258,7 +470,17 @@ export class StockRepository {
           itemId,
           $expr: {
             $gte: [
-              { $subtract: ['$onHand', '$reserved', '$expired'] },
+              {
+                $subtract: [
+                  {
+                    $subtract: [
+                      { $subtract: ['$onHand', '$reserved'] },
+                      '$expired',
+                    ],
+                  },
+                  { $ifNull: ['$quarantined', 0] },
+                ],
+              },
               quantity,
             ],
           },
@@ -312,6 +534,8 @@ export class StockRepository {
       cellId?: Types.ObjectId | null;
       packageFactor?: number;
       packageVolumeCm3Snapshot?: number;
+      isQuarantined?: boolean;
+      quarantinedQuantityDelta?: number;
     },
   ): Promise<InventoryStockDocument | null> {
     const cellId = packageMeta?.cellId ?? null;
@@ -319,7 +543,12 @@ export class StockRepository {
       .findOneAndUpdate(
         { itemId, shelfId, cellId, lotId },
         {
-          $inc: { quantity: deltaQty },
+          $inc: {
+            quantity: deltaQty,
+            ...(packageMeta?.quarantinedQuantityDelta !== undefined
+              ? { quarantinedQuantity: packageMeta.quarantinedQuantityDelta }
+              : {}),
+          },
           $set: {
             ...(packageMeta?.packageFactor !== undefined
               ? { packageFactor: packageMeta.packageFactor }
@@ -329,6 +558,9 @@ export class StockRepository {
                   packageVolumeCm3Snapshot:
                     packageMeta.packageVolumeCm3Snapshot,
                 }
+              : {}),
+            ...(packageMeta?.isQuarantined !== undefined
+              ? { isQuarantined: packageMeta.isQuarantined }
               : {}),
           },
         },
@@ -344,6 +576,81 @@ export class StockRepository {
     lotId: Types.ObjectId | null,
     quantity: number,
     session: ClientSession,
+    includeQuarantined = true,
+  ): Promise<InventoryStockDocument | null> {
+    const filter: Record<string, unknown> = {
+      itemId,
+      shelfId,
+      cellId,
+      lotId,
+      quantity: { $gte: quantity },
+    };
+    if (!includeQuarantined) filter.isQuarantined = { $ne: true };
+    return this.inventoryModel
+      .findOneAndUpdate(
+        includeQuarantined
+          ? {
+              ...filter,
+              $expr: {
+                $gte: [
+                  {
+                    $subtract: [
+                      '$quantity',
+                      { $ifNull: ['$quarantinedQuantity', 0] },
+                    ],
+                  },
+                  quantity,
+                ],
+              },
+            }
+          : filter,
+        { $inc: { quantity: -quantity } },
+        { new: true, session },
+      )
+      .exec();
+  }
+
+  lockInventoryRowForQuarantine(
+    itemId: Types.ObjectId,
+    shelfId: Types.ObjectId,
+    cellId: Types.ObjectId | null,
+    lotId: Types.ObjectId | null,
+    session: ClientSession,
+    quantityToLock?: number,
+  ): Promise<InventoryStockDocument | null> {
+    return this.lockQuarantinedInventoryRow(
+      itemId,
+      shelfId,
+      cellId,
+      lotId,
+      session,
+      quantityToLock,
+    );
+  }
+
+  unlockInventoryRowFromQuarantine(
+    itemId: Types.ObjectId,
+    shelfId: Types.ObjectId,
+    cellId: Types.ObjectId | null,
+    lotId: Types.ObjectId | null,
+    session?: ClientSession,
+  ): Promise<InventoryStockDocument | null> {
+    return this.inventoryModel
+      .findOneAndUpdate(
+        { itemId, shelfId, cellId, lotId, isQuarantined: true },
+        { $set: { isQuarantined: false } },
+        { new: true, session },
+      )
+      .exec();
+  }
+
+  decrementQuarantinedInventoryIfAvailable(
+    itemId: Types.ObjectId,
+    shelfId: Types.ObjectId,
+    cellId: Types.ObjectId | null,
+    lotId: Types.ObjectId | null,
+    quantity: number,
+    session: ClientSession,
   ): Promise<InventoryStockDocument | null> {
     return this.inventoryModel
       .findOneAndUpdate(
@@ -352,9 +659,31 @@ export class StockRepository {
           shelfId,
           cellId,
           lotId,
+          isQuarantined: true,
           quantity: { $gte: quantity },
+          quarantinedQuantity: { $gte: quantity },
         },
-        { $inc: { quantity: -quantity } },
+        [
+          {
+            $set: {
+              quantity: { $subtract: ['$quantity', quantity] },
+              quarantinedQuantity: {
+                $subtract: [{ $ifNull: ['$quarantinedQuantity', 0] }, quantity],
+              },
+              isQuarantined: {
+                $gt: [
+                  {
+                    $subtract: [
+                      { $ifNull: ['$quarantinedQuantity', 0] },
+                      quantity,
+                    ],
+                  },
+                  0,
+                ],
+              },
+            },
+          },
+        ],
         { new: true, session },
       )
       .exec();
@@ -391,6 +720,7 @@ export class StockRepository {
         lotId,
         decrement,
         session,
+        false,
       );
       if (!updated) return false;
       remaining -= decrement;
@@ -969,6 +1299,18 @@ export class StockRepository {
     };
     const unwindShelfStage = { $unwind: '$shelf' };
     const unwindCellStage = { $unwind: '$cell' };
+    const activeShelfStage = {
+      $match: {
+        'shelf.isStaging': false,
+        'shelf.deletedAt': null,
+      },
+    };
+    const activeCellStage = {
+      $match: {
+        'cell.status': 'ACTIVE',
+        'cell.deletedAt': null,
+      },
+    };
 
     if (!isPerishable) {
       const rows = await this.inventoryModel.aggregate<{
@@ -988,12 +1330,40 @@ export class StockRepository {
             lotId: null,
             cellId: { $ne: null },
             quantity: { $gt: 0 },
+            isQuarantined: { $ne: true },
           },
         },
         shelfLookupStage,
         unwindShelfStage,
+        activeShelfStage,
         cellLookupStage,
         unwindCellStage,
+        activeCellStage,
+        {
+          $lookup: {
+            from: 'racks',
+            localField: 'cell.rackId',
+            foreignField: '_id',
+            as: 'rack',
+          },
+        },
+        { $unwind: '$rack' },
+        { $match: { 'rack.deletedAt': null } },
+        {
+          $lookup: {
+            from: 'zones',
+            localField: 'rack.zoneId',
+            foreignField: '_id',
+            as: 'zone',
+          },
+        },
+        { $unwind: '$zone' },
+        {
+          $match: {
+            'zone.deletedAt': null,
+            'zone.zonePurpose': { $ne: 'SCRAP' },
+          },
+        },
         { $sort: { quantity: -1 } },
         {
           $project: {
@@ -1046,6 +1416,7 @@ export class StockRepository {
           cellId: { $ne: null },
           quantity: { $gt: 0 },
           lotId: { $ne: null },
+          isQuarantined: { $ne: true },
         },
       },
       {
@@ -1057,11 +1428,43 @@ export class StockRepository {
         },
       },
       { $unwind: '$lot' },
-      { $match: { 'lot.status': LotStatus.ACTIVE } },
+      {
+        $match: {
+          'lot.status': LotStatus.ACTIVE,
+          'lot.expiryDate': { $gt: new Date() },
+        },
+      },
       shelfLookupStage,
       unwindShelfStage,
+      activeShelfStage,
       cellLookupStage,
       unwindCellStage,
+      activeCellStage,
+      {
+        $lookup: {
+          from: 'racks',
+          localField: 'cell.rackId',
+          foreignField: '_id',
+          as: 'rack',
+        },
+      },
+      { $unwind: '$rack' },
+      { $match: { 'rack.deletedAt': null } },
+      {
+        $lookup: {
+          from: 'zones',
+          localField: 'rack.zoneId',
+          foreignField: '_id',
+          as: 'zone',
+        },
+      },
+      { $unwind: '$zone' },
+      {
+        $match: {
+          'zone.deletedAt': null,
+          'zone.zonePurpose': { $ne: 'SCRAP' },
+        },
+      },
       { $sort: { 'lot.expiryDate': 1 } },
       {
         $project: {
@@ -1211,11 +1614,28 @@ export class StockRepository {
     lotId: Types.ObjectId,
   ): Promise<LotInventorySummary[]> {
     const pipeline: PipelineStage[] = [
-      { $match: { lotId, quantity: { $gt: 0 } } },
+      { $match: { lotId, quantity: { $gt: 0 }, isQuarantined: { $ne: true } } },
+      {
+        $set: {
+          availableQty: {
+            $subtract: [
+              '$quantity',
+              {
+                $cond: [
+                  { $eq: ['$isQuarantined', true] },
+                  { $ifNull: ['$quarantinedQuantity', '$quantity'] },
+                  0,
+                ],
+              },
+            ],
+          },
+        },
+      },
+      { $match: { availableQty: { $gt: 0 } } },
       {
         $group: {
           _id: '$itemId',
-          qty: { $sum: '$quantity' },
+          qty: { $sum: '$availableQty' },
         },
       },
       {

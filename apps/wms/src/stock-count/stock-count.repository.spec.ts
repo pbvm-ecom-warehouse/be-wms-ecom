@@ -15,6 +15,7 @@ describe('StockCountRepository', () => {
 
   const itemId = new Types.ObjectId();
   const shelfId = new Types.ObjectId();
+  const cellId = new Types.ObjectId();
   const lotId: Types.ObjectId | null = null;
   const createdBy = new Types.ObjectId();
 
@@ -50,7 +51,7 @@ describe('StockCountRepository', () => {
         null,
         undefined,
         createdBy,
-        [{ itemId, sku: 'SKU-1', shelfId, lotId: null, systemQty: 50 }],
+        [{ itemId, sku: 'SKU-1', shelfId, cellId, lotId: null, systemQty: 50 }],
         'SC-20260730-0001',
       );
       expect(model.create).toHaveBeenCalledWith([
@@ -65,6 +66,7 @@ describe('StockCountRepository', () => {
               itemId,
               sku: 'SKU-1',
               shelfId,
+              cellId,
               lotId: null,
               systemQty: 50,
               actualQty: null,
@@ -110,6 +112,7 @@ describe('StockCountRepository', () => {
           {
             itemId,
             shelfId,
+            cellId,
             lotId,
             systemQty: 50,
             actualQty: 45,
@@ -136,7 +139,9 @@ describe('StockCountRepository', () => {
         'sc1',
         itemId,
         shelfId,
+        cellId,
         lotId,
+        50,
         45,
         'Hao hụt',
         [],
@@ -145,21 +150,22 @@ describe('StockCountRepository', () => {
       expect(model.findOneAndUpdate).toHaveBeenCalledWith(
         {
           _id: 'sc1',
-          items: { $elemMatch: { itemId, shelfId, lotId } },
+          status: {
+            $in: [StockCountStatus.DRAFT, StockCountStatus.IN_PROGRESS],
+          },
+          items: { $elemMatch: { itemId, shelfId, cellId, lotId } },
         },
         {
           $set: {
+            'items.$.systemQty': 50,
             'items.$.actualQty': 45,
+            'items.$.delta': -5,
             'items.$.reason': 'Hao hụt',
             'items.$.images': [],
           },
         },
         { new: true },
       );
-      expect(doc.items[0].delta).toBe(-5);
-      expect(doc.items[1].actualQty).toBeNull();
-      expect(doc.items[1].delta).toBeNull();
-      expect(doc.save).toHaveBeenCalled();
       expect(result).toBe(doc);
     });
 
@@ -184,15 +190,25 @@ describe('StockCountRepository', () => {
         exec: jest.fn().mockResolvedValue(doc),
       });
 
-      await repo.countItem('sc1', itemId, shelfId, lotId, 45, 'Hao hụt', [
-        'https://res.cloudinary.com/demo/image/upload/x.jpg',
-      ]);
+      await repo.countItem(
+        'sc1',
+        itemId,
+        shelfId,
+        cellId,
+        lotId,
+        50,
+        45,
+        'Hao hụt',
+        ['https://res.cloudinary.com/demo/image/upload/x.jpg'],
+      );
 
       expect(model.findOneAndUpdate).toHaveBeenCalledWith(
         expect.anything(),
         {
           $set: {
+            'items.$.systemQty': 50,
             'items.$.actualQty': 45,
+            'items.$.delta': -5,
             'items.$.reason': 'Hao hụt',
             'items.$.images': [
               'https://res.cloudinary.com/demo/image/upload/x.jpg',
@@ -240,7 +256,9 @@ describe('StockCountRepository', () => {
         'sc1',
         itemId,
         shelfId,
+        cellId,
         lotId,
+        50,
         45,
         'Hao hụt',
         [],
@@ -249,25 +267,22 @@ describe('StockCountRepository', () => {
       expect(model.findOneAndUpdate).toHaveBeenCalledWith(
         {
           _id: 'sc1',
-          items: { $elemMatch: { itemId, shelfId, lotId } },
+          status: {
+            $in: [StockCountStatus.DRAFT, StockCountStatus.IN_PROGRESS],
+          },
+          items: { $elemMatch: { itemId, shelfId, cellId, lotId } },
         },
         {
           $set: {
+            'items.$.systemQty': 50,
             'items.$.actualQty': 45,
+            'items.$.delta': -5,
             'items.$.reason': 'Hao hụt',
             'items.$.images': [],
           },
         },
         { new: true },
       );
-      expect(doc.items[0].actualQty).toBe(45);
-      expect(doc.items[0].delta).toBe(-5);
-      expect(doc.items[0].reason).toBe('Hao hụt');
-      // dòng cùng itemId nhưng khác shelfId phải hoàn toàn không đổi
-      expect(doc.items[1].actualQty).toBeNull();
-      expect(doc.items[1].delta).toBeNull();
-      expect(doc.items[1].reason).toBeNull();
-      expect(doc.save).toHaveBeenCalled();
       expect(result).toBe(doc);
     });
 
@@ -279,7 +294,9 @@ describe('StockCountRepository', () => {
         'sc1',
         itemId,
         shelfId,
+        cellId,
         lotId,
+        50,
         45,
         null,
         [],
@@ -316,9 +333,14 @@ describe('StockCountRepository', () => {
         save: jest.fn().mockResolvedValue(undefined),
       };
       model.findOne.mockResolvedValue(doc);
+      model.updateOne.mockReturnValue({
+        exec: jest.fn().mockResolvedValue({}),
+      });
       await repo.markCompletedIfAllCounted('sc1');
-      expect(doc.status).toBe(StockCountStatus.COMPLETED);
-      expect(doc.save).toHaveBeenCalled();
+      expect(model.updateOne).toHaveBeenCalledWith(
+        { _id: 'sc1', status: StockCountStatus.IN_PROGRESS },
+        { $set: { status: StockCountStatus.COMPLETED } },
+      );
     });
 
     it('không đổi status nếu còn dòng chưa đếm (actualQty null)', async () => {

@@ -11,6 +11,7 @@ export interface CreateStockCountLineInput {
   itemId: Types.ObjectId;
   sku: string;
   shelfId: Types.ObjectId;
+  cellId: Types.ObjectId;
   lotId: Types.ObjectId | null;
   systemQty: number;
 }
@@ -50,6 +51,7 @@ export class StockCountRepository {
           itemId: l.itemId,
           sku: l.sku,
           shelfId: l.shelfId,
+          cellId: l.cellId,
           lotId: l.lotId,
           systemQty: l.systemQty,
           actualQty: null,
@@ -82,7 +84,7 @@ export class StockCountRepository {
   }
 
   /**
-   * Set actualQty/delta/reason cho đúng dòng khớp (itemId, shelfId, lotId).
+   * Set snapshot mới + actualQty/delta cho đúng dòng (itemId, shelfId, cellId, lotId).
    * Không dùng transaction — chỉ sửa mảng items của chính StockCount, chưa
    * đụng InventoryStock/StockBalance thật (việc đó chỉ xảy ra lúc approve).
    */
@@ -90,7 +92,9 @@ export class StockCountRepository {
     id: string,
     itemId: Types.ObjectId,
     shelfId: Types.ObjectId,
+    cellId: Types.ObjectId,
     lotId: Types.ObjectId | null,
+    systemQty: number,
     actualQty: number,
     reason: string | null,
     images: string[],
@@ -99,33 +103,23 @@ export class StockCountRepository {
       .findOneAndUpdate(
         {
           _id: id,
-          items: { $elemMatch: { itemId, shelfId, lotId } },
+          status: {
+            $in: [StockCountStatus.DRAFT, StockCountStatus.IN_PROGRESS],
+          },
+          items: { $elemMatch: { itemId, shelfId, cellId, lotId } },
         },
         {
           $set: {
+            'items.$.systemQty': systemQty,
             'items.$.actualQty': actualQty,
+            'items.$.delta': actualQty - systemQty,
             'items.$.reason': reason,
             'items.$.images': images,
           },
         },
         { new: true },
       )
-      .exec()
-      .then(async (doc) => {
-        if (!doc) return null;
-        // delta cần systemQty của đúng dòng vừa update — tính lại sau khi có doc mới
-        const line = doc.items.find(
-          (i) =>
-            i.itemId.toString() === itemId.toString() &&
-            i.shelfId.toString() === shelfId.toString() &&
-            (i.lotId?.toString() ?? null) === (lotId?.toString() ?? null),
-        );
-        if (line) {
-          line.delta = actualQty - line.systemQty;
-          await doc.save();
-        }
-        return doc;
-      });
+      .exec();
   }
 
   /** Gọi khi đây là lần nhập đầu tiên (status đang DRAFT) — chuyển IN_PROGRESS + set countedBy. */
@@ -146,10 +140,39 @@ export class StockCountRepository {
     const doc = await this.model.findOne({ _id: id });
     if (!doc) return;
     const allCounted = doc.items.every((i) => i.actualQty !== null);
-    if (allCounted && doc.status !== StockCountStatus.COMPLETED) {
-      doc.status = StockCountStatus.COMPLETED;
-      await doc.save();
+    if (allCounted && doc.status === StockCountStatus.IN_PROGRESS) {
+      await this.model
+        .updateOne(
+          { _id: id, status: StockCountStatus.IN_PROGRESS },
+          { $set: { status: StockCountStatus.COMPLETED } },
+        )
+        .exec();
     }
+  }
+
+  async reopenLineForRecount(
+    id: string,
+    itemId: Types.ObjectId,
+    shelfId: Types.ObjectId,
+    cellId: Types.ObjectId,
+    lotId: Types.ObjectId | null,
+  ): Promise<void> {
+    await this.model
+      .updateOne(
+        {
+          _id: id,
+          status: StockCountStatus.COMPLETED,
+          items: { $elemMatch: { itemId, shelfId, cellId, lotId } },
+        },
+        {
+          $set: {
+            status: StockCountStatus.IN_PROGRESS,
+            'items.$.actualQty': null,
+            'items.$.delta': null,
+          },
+        },
+      )
+      .exec();
   }
 
   async setApproved(

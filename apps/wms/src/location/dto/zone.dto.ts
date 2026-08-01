@@ -1,7 +1,18 @@
 import { ApiProperty, ApiPropertyOptional, PartialType } from '@nestjs/swagger';
 import { Expose, Transform } from 'class-transformer';
-import { IsIn, IsNumber, IsOptional, IsString, MinLength } from 'class-validator';
+import {
+  ArrayUnique,
+  IsArray,
+  IsEnum,
+  IsIn,
+  IsNumber,
+  IsOptional,
+  IsString,
+  MinLength,
+} from 'class-validator';
 import { Types } from 'mongoose';
+import { ItemType } from '../../stock/schemas/warehouse-item.schema';
+import { ZonePurpose } from '../schemas/zone.schema';
 
 export class CreateZoneDto {
   @ApiProperty({ example: 'Khu A' })
@@ -13,6 +24,27 @@ export class CreateZoneDto {
   @IsString()
   @MinLength(1)
   code!: string;
+
+  @ApiPropertyOptional({
+    enum: ZonePurpose,
+    default: ZonePurpose.STORAGE,
+    description: 'STORAGE: lưu trữ thường; SCRAP: cách ly chờ tiêu hủy',
+  })
+  @IsOptional()
+  @IsEnum(ZonePurpose)
+  zonePurpose?: ZonePurpose;
+
+  @ApiPropertyOptional({
+    enum: ItemType,
+    isArray: true,
+    default: [],
+    description: 'Rỗng nghĩa là khu lưu trữ chung',
+  })
+  @IsOptional()
+  @IsArray()
+  @ArrayUnique()
+  @IsEnum(ItemType, { each: true })
+  allowedItemTypes?: ItemType[];
 
   @ApiPropertyOptional({ example: 1, description: 'Toạ độ X trên sơ đồ (mét)' })
   @IsOptional()
@@ -57,6 +89,14 @@ export class ZoneResponseDto {
   @Expose()
   @ApiProperty()
   code!: string;
+
+  @Expose()
+  @ApiProperty({ enum: ZonePurpose })
+  zonePurpose!: ZonePurpose;
+
+  @Expose()
+  @ApiProperty({ enum: ItemType, isArray: true })
+  allowedItemTypes!: ItemType[];
 
   @Expose()
   @ApiProperty()

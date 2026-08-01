@@ -25,6 +25,8 @@ import { MovementType } from '../stock/schemas/stock-movement.schema';
 import { BarcodeService } from '../stock/barcode/barcode.service';
 import { WarehouseNavigationService } from '../location/navigation.service';
 import { DocumentNumberService } from '../document-number/document-number.service';
+import { UsersService } from '../users/users.service';
+import { ZonePurpose } from '../location/schemas/zone.schema';
 
 interface OrderReadyItem {
   sku: string;
@@ -44,6 +46,7 @@ export class GoodsIssueService {
     private readonly barcodeSvc: BarcodeService,
     private readonly navigationService: WarehouseNavigationService,
     private readonly documentNumberService: DocumentNumberService,
+    private readonly usersService: UsersService,
     @InjectQueue(QUEUES.SHIPMENT) private readonly shipmentQueue: Queue,
     @InjectQueue(QUEUES.SHIPMENT_INTERNAL)
     private readonly shipmentInternalQueue: Queue,
@@ -217,6 +220,9 @@ export class GoodsIssueService {
       cell._id,
     );
     if (!inventory) throw new AppException('STOCK_INSUFFICIENT');
+    if (inventory.isQuarantined) {
+      throw new AppException('GOODS_ISSUE_SOURCE_QUARANTINED');
+    }
 
     // quantity = số thùng nguyên cần xuất — không còn quy đổi qua factor
     // (quyết định: quantity luôn là thùng, factor chỉ để hiển thị).
@@ -240,15 +246,61 @@ export class GoodsIssueService {
 
     let justConfirmed = false;
     await this.stockTransactionHelper.withStockTransaction(async (session) => {
+      const activeItem = await this.stockRepo.lockActiveItemForIssue(
+        item._id.toString(),
+        session,
+      );
+      if (!activeItem) {
+        throw new AppException('GOODS_ISSUE_ITEM_NOT_FOUND');
+      }
+      if (activeItem.isPerishable && !lotId) {
+        throw new AppException('GOODS_ISSUE_SOURCE_NOT_PICKABLE');
+      }
+      if (lotId) {
+        const activeLot = await this.stockRepo.lockActiveLotForIssue(
+          lotId,
+          activeItem._id,
+          new Date(),
+          session,
+        );
+        if (!activeLot) {
+          throw new AppException('GOODS_ISSUE_SOURCE_NOT_PICKABLE');
+        }
+      }
+
       const activeCell = await this.locationRepo.lockActiveCellForInventory(
         cell._id.toString(),
         session,
       );
       if (!activeCell) throw new AppException('GOODS_ISSUE_CELL_NOT_FOUND');
+      const activeShelf = await this.locationRepo.lockActiveShelfForInventory(
+        activeCell.shelfId.toString(),
+        session,
+      );
+      if (!activeShelf || activeShelf.isStaging) {
+        throw new AppException('GOODS_ISSUE_SOURCE_NOT_PICKABLE');
+      }
+      if (activeShelf.rackId.toString() !== activeCell.rackId.toString()) {
+        throw new AppException('GOODS_ISSUE_SOURCE_NOT_PICKABLE');
+      }
+      const rack = await this.locationRepo.lockActiveRackForInventory(
+        activeCell.rackId.toString(),
+        session,
+      );
+      const zone = rack
+        ? await this.locationRepo.lockActiveZoneForInventory(
+            rack.zoneId.toString(),
+            session,
+          )
+        : null;
+      if (!zone) throw new AppException('GOODS_ISSUE_SOURCE_NOT_PICKABLE');
+      if (zone.zonePurpose === ZonePurpose.SCRAP) {
+        throw new AppException('GOODS_ISSUE_SOURCE_QUARANTINED');
+      }
 
       const issueUpdated = await this.repo.decrementRemainingQty(
         id,
-        item._id,
+        activeItem._id,
         quantity,
         session,
       );
@@ -256,17 +308,29 @@ export class GoodsIssueService {
 
       const inventoryUpdated =
         await this.stockRepo.decrementInventoryIfAvailable(
-          item._id,
-          shelf._id,
-          cell._id,
+          activeItem._id,
+          activeShelf._id,
+          activeCell._id,
           lotId,
           quantity,
           session,
         );
-      if (!inventoryUpdated) throw new AppException('STOCK_INSUFFICIENT');
+      if (!inventoryUpdated) {
+        const latest = await this.stockRepo.findInventory(
+          activeItem._id,
+          activeShelf._id,
+          lotId,
+          session,
+          activeCell._id,
+        );
+        if (latest?.isQuarantined) {
+          throw new AppException('GOODS_ISSUE_SOURCE_QUARANTINED');
+        }
+        throw new AppException('STOCK_INSUFFICIENT');
+      }
 
       const balanceUpdated = await this.stockRepo.issueReservedIfAvailable(
-        item._id,
+        activeItem._id,
         quantity,
         session,
       );
@@ -274,9 +338,9 @@ export class GoodsIssueService {
 
       await this.stockRepo.insertMovement(
         {
-          itemId: item._id,
-          shelfId: shelf._id,
-          cellId: cell._id,
+          itemId: activeItem._id,
+          shelfId: activeShelf._id,
+          cellId: activeCell._id,
           lotId,
           type: MovementType.ISSUE,
           quantity: -quantity,
@@ -286,7 +350,7 @@ export class GoodsIssueService {
           packageFactor: inventory.packageFactor,
           packageVolumeCm3Snapshot: inventory.packageVolumeCm3Snapshot,
           suggestedCellId,
-          actualCellId: cell._id,
+          actualCellId: activeCell._id,
           isOverride,
         },
         session,
@@ -329,14 +393,18 @@ export class GoodsIssueService {
   ): Promise<{ data: GoodsIssueDocument[]; total: number }> {
     return this.repo.findAll(
       actorRole === WmsRole.SHIPPER && actorId
-        ? { ...query, assignedShipperId: actorId, includeUnassigned: true }
+        ? { ...query, assignedShipperId: actorId }
         : query,
     );
   }
 
-  async claim(id: string, shipperId: string): Promise<GoodsIssueDocument> {
-    const claimed = await this.repo.claim(id, new Types.ObjectId(shipperId));
-    if (claimed) return claimed;
+  async assign(id: string, shipperId: string): Promise<GoodsIssueDocument> {
+    const shipper = await this.usersService.getById(shipperId);
+    if (shipper.role !== WmsRole.SHIPPER) {
+      throw new AppException('GOODS_ISSUE_ASSIGNEE_NOT_SHIPPER');
+    }
+    const assigned = await this.repo.assign(id, new Types.ObjectId(shipperId));
+    if (assigned) return assigned;
 
     const current = await this.repo.findById(id);
     if (!current) throw new AppException('GOODS_ISSUE_NOT_FOUND');
@@ -349,12 +417,22 @@ export class GoodsIssueService {
     if (current.status === GoodsIssueStatus.CONFIRMED) {
       throw new AppException('GOODS_ISSUE_ALREADY_CONFIRMED');
     }
-    throw new AppException('GOODS_ISSUE_ALREADY_CLAIMED');
+    throw new AppException('GOODS_ISSUE_ALREADY_ASSIGNED');
   }
 
-  async getGoodsIssue(id: string): Promise<GoodsIssueDocument> {
+  async getGoodsIssue(
+    id: string,
+    actorId?: string,
+    actorRole?: WmsRole,
+  ): Promise<GoodsIssueDocument> {
     const doc = await this.repo.findById(id);
     if (!doc) throw new AppException('GOODS_ISSUE_NOT_FOUND');
+    if (
+      actorRole === WmsRole.SHIPPER &&
+      doc.assignedShipperId?.toString() !== actorId
+    ) {
+      throw new AppException('GOODS_ISSUE_NOT_OWNER');
+    }
     return doc;
   }
 
@@ -363,9 +441,11 @@ export class GoodsIssueService {
     actorId: string,
     actorRole: WmsRole,
   ): void {
-    if (actorRole === WmsRole.ADMIN) return;
+    if (actorRole !== WmsRole.SHIPPER) {
+      throw new AppException('GOODS_ISSUE_SHIPPER_REQUIRED');
+    }
     if (!goodsIssue.assignedShipperId) {
-      throw new AppException('GOODS_ISSUE_NOT_CLAIMED');
+      throw new AppException('GOODS_ISSUE_NOT_ASSIGNED');
     }
     if (goodsIssue.assignedShipperId.toString() !== actorId) {
       throw new AppException('GOODS_ISSUE_NOT_OWNER');

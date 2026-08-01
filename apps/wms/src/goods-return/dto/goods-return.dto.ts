@@ -61,10 +61,6 @@ export class InspectGoodsReturnItemDto {
   @IsEnum(GoodsReturnItemCondition)
   condition!: GoodsReturnItemCondition;
 
-  @ApiProperty({ example: '665f1a2b3c4d5e6f7a8b9c1c' })
-  @IsMongoId()
-  shelfId!: string;
-
   @ApiPropertyOptional({
     example: '665f1a2b3c4d5e6f7a8b9c1b',
     description:
@@ -94,7 +90,7 @@ export class InspectGoodsReturnDto {
 export class InspectGoodsReturnFormDto {
   @ApiProperty({
     description: 'JSON string của mảng InspectGoodsReturnItemDto',
-    example: '[{"itemId":"665f...","condition":"DAMAGED","shelfId":"665f..."}]',
+    example: '[{"itemId":"665f...","condition":"DAMAGED"}]',
   })
   @IsString()
   items!: string;
@@ -167,6 +163,13 @@ export class GoodsReturnItemResponseDto {
   )
   @ApiPropertyOptional()
   scrapNoteId!: string | null;
+
+  @Expose()
+  @Transform(({ obj }: { obj: { putAwayTaskId?: Types.ObjectId | null } }) =>
+    obj.putAwayTaskId ? obj.putAwayTaskId.toString() : null,
+  )
+  @ApiPropertyOptional()
+  putAwayTaskId!: string | null;
 
   @Expose()
   @ApiProperty({ type: [String] })

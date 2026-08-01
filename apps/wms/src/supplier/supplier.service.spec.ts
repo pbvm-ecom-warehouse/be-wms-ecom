@@ -28,7 +28,7 @@ describe('SupplierService', () => {
   let stockRepo: ReturnType<typeof makeStockRepo>;
   const actorId = 'actor123';
   const supplierId = 'sup001';
-  const itemId = 'item001';
+  const itemId = '507f1f77bcf86cd799439011';
 
   beforeEach(() => {
     repo = makeRepo();

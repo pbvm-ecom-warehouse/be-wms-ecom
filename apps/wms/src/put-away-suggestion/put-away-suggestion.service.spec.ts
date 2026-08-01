@@ -50,6 +50,9 @@ describe('PutAwaySuggestionService theo khoang', () => {
   beforeEach(() => {
     stockRepo = makeStockRepo();
     locationRepo = makeLocationRepo();
+    Object.assign(locationRepo, {
+      findZonesByRackIds: jest.fn().mockResolvedValue(new Map()),
+    });
     navigation = makeNavigation();
     service = new PutAwaySuggestionService(
       stockRepo as never,
@@ -60,6 +63,7 @@ describe('PutAwaySuggestionService theo khoang', () => {
     stockRepo.findItemBySku.mockResolvedValue({
       _id: new Types.ObjectId(),
       sku: 'SKU-1',
+      type: 'MATERIAL',
       depth: 10,
       width: 10,
       height: 10,
@@ -144,5 +148,42 @@ describe('PutAwaySuggestionService theo khoang', () => {
     });
 
     expect(result).toEqual({ suggestions: [], warning: 'NO_NAVIGATION_PATH' });
+  });
+
+  it('loại khu hủy và ưu tiên khu lưu trữ đúng loại trước khu chung', async () => {
+    const specialized = cell('R1-T1-B1', 5000, 'rack-specialized');
+    const general = cell('R2-T1-B1', 2000, 'rack-general');
+    const scrap = cell('R3-T1-B1', 1000, 'rack-scrap');
+    locationRepo.findCells.mockResolvedValue([general, scrap, specialized]);
+    (
+      locationRepo as typeof locationRepo & {
+        findZonesByRackIds: jest.Mock;
+      }
+    ).findZonesByRackIds.mockResolvedValue(
+      new Map([
+        [
+          'rack-specialized',
+          {
+            zonePurpose: 'STORAGE',
+            allowedItemTypes: ['MATERIAL'],
+          },
+        ],
+        ['rack-general', { zonePurpose: 'STORAGE', allowedItemTypes: [] }],
+        ['rack-scrap', { zonePurpose: 'SCRAP', allowedItemTypes: [] }],
+      ]),
+    );
+
+    const result = await service.suggest('SKU-1', 10, {
+      packageVolumeCm3: 1000,
+      packageDepthCm: 10,
+      packageWidthCm: 10,
+      packageHeightCm: 10,
+    });
+
+    expect(result.suggestions.map((entry) => entry.rackId)).toEqual([
+      'rack-specialized',
+      'rack-general',
+    ]);
+    expect(result.suggestions).toHaveLength(2);
   });
 });

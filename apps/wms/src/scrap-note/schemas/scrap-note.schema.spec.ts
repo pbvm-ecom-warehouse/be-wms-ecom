@@ -29,25 +29,18 @@ describe('ScrapNoteSchema', () => {
     expect(statusOnly).toBeDefined();
   });
 
-  it('ScrapNoteStatus có đủ 3 giá trị', () => {
+  it('ScrapNoteStatus bao phủ lifecycle đến quarantine và dispose', () => {
     expect(Object.values(ScrapNoteStatus)).toEqual([
       'DRAFT',
       'APPROVED',
+      'QUARANTINED',
+      'DISPOSED',
       'REJECTED',
     ]);
   });
 
   it('export ScrapNote class dùng được với SchemaFactory (smoke test)', () => {
     expect(ScrapNote).toBeDefined();
-  });
-
-  it('ScrapNoteItem.skipAvailableSync mặc định false', () => {
-    const itemPaths = (
-      ScrapNoteSchema.path('items') as unknown as {
-        schema: { paths: Record<string, { defaultValue: unknown }> };
-      }
-    ).schema.paths;
-    expect(itemPaths['skipAvailableSync'].defaultValue).toBe(false);
   });
 
   it('ScrapNoteItem có field images (default [])', () => {

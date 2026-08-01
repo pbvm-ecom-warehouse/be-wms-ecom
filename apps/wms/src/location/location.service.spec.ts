@@ -2,6 +2,8 @@
 import { Types } from 'mongoose';
 import { LocationService } from './location.service';
 import type { StockRepository } from '../stock/stock.repository';
+import { ItemType } from '../stock/schemas/warehouse-item.schema';
+import { ZonePurpose } from './schemas/zone.schema';
 
 const transactionSession = {} as never;
 
@@ -20,9 +22,11 @@ const makeRepo = () => ({
   incrementLayoutRevision: jest.fn(),
   findStagingShelf: jest.fn(),
   findShelfById: jest.fn(),
+  findShelfIdsByZone: jest.fn(),
   findRackById: jest.fn(),
   findZoneById: jest.fn(),
   findZoneByCode: jest.fn(),
+  findScrapZone: jest.fn(),
   findRackByCode: jest.fn(),
   findShelfByCode: jest.fn(),
   findAisleByCode: jest.fn(),
@@ -32,6 +36,7 @@ const makeRepo = () => ({
   softDeleteRack: jest.fn(),
   softDeleteShelf: jest.fn(),
   createZone: jest.fn(),
+  updateZone: jest.fn(),
   createRack: jest.fn(),
   createShelf: jest.fn(),
   createStorageCellsForShelf: jest.fn(),
@@ -136,6 +141,115 @@ describe('LocationService', () => {
         transactionSession,
       );
       expect(result).toEqual(created);
+    });
+
+    it('chặn tạo khu hủy thứ hai', async () => {
+      repo.findZoneByCode.mockResolvedValue(null);
+      repo.findScrapZone.mockResolvedValue({ _id: 'scrap-existing' });
+
+      await expect(
+        svc.createZone(
+          {
+            name: 'Khu hủy 2',
+            code: 'SCRAP-2',
+            zonePurpose: 'SCRAP' as never,
+          },
+          'actor1',
+        ),
+      ).rejects.toMatchObject({ code: 'SCRAP_ZONE_ALREADY_EXISTS' });
+      expect(repo.createZone).not.toHaveBeenCalled();
+    });
+
+    it('khu HỦY luôn bỏ phân loại hàng vì chỉ dùng để cách ly', async () => {
+      repo.findZoneByCode.mockResolvedValue(null);
+      repo.findScrapZone.mockResolvedValue(null);
+      repo.createZone.mockResolvedValue({ _id: 'scrap-zone' });
+
+      await svc.createZone(
+        {
+          name: 'Khu hủy',
+          code: 'SCRAP',
+          zonePurpose: ZonePurpose.SCRAP,
+          allowedItemTypes: [ItemType.CUP_BLANK],
+        },
+        'actor1',
+      );
+
+      expect(repo.createZone).toHaveBeenCalledWith(
+        {
+          name: 'Khu hủy',
+          code: 'SCRAP',
+          zonePurpose: ZonePurpose.SCRAP,
+          allowedItemTypes: [],
+        },
+        'actor1',
+        transactionSession,
+      );
+    });
+  });
+
+  describe('updateZone', () => {
+    it('khi đổi thành khu HỦY thì luôn xóa phân loại hàng', async () => {
+      repo.findZoneByCode.mockResolvedValue(null);
+      repo.findScrapZone.mockResolvedValue(null);
+      repo.findZoneById.mockResolvedValue({
+        _id: 'zone1',
+        zonePurpose: ZonePurpose.STORAGE,
+      });
+      repo.findShelfIdsByZone.mockResolvedValue([]);
+      repo.updateZone.mockResolvedValue({
+        _id: 'zone1',
+        zonePurpose: ZonePurpose.SCRAP,
+        allowedItemTypes: [],
+      });
+
+      await svc.updateZone(
+        'zone1',
+        {
+          zonePurpose: ZonePurpose.SCRAP,
+          allowedItemTypes: [ItemType.CUP_PRINTED],
+        },
+        'actor1',
+      );
+
+      expect(repo.updateZone).toHaveBeenCalledWith(
+        'zone1',
+        {
+          zonePurpose: ZonePurpose.SCRAP,
+          allowedItemTypes: [],
+        },
+        'actor1',
+        transactionSession,
+      );
+    });
+
+    it('chặn đổi mục đích zone khi bất kỳ shelf nào còn tồn dương', async () => {
+      const shelfId = new Types.ObjectId();
+      repo.findZoneById.mockResolvedValue({
+        _id: 'zone1',
+        zonePurpose: ZonePurpose.STORAGE,
+      });
+      repo.findScrapZone.mockResolvedValue(null);
+      repo.findShelfIdsByZone.mockResolvedValue([shelfId]);
+      stockRepo.hasPositiveInventoryOnAnyShelf.mockResolvedValue(true);
+
+      await expect(
+        svc.updateZone(
+          'zone1',
+          { zonePurpose: ZonePurpose.SCRAP },
+          'actor1',
+        ),
+      ).rejects.toMatchObject({ code: 'SHELF_HAS_STOCK' });
+
+      expect(repo.findShelfIdsByZone).toHaveBeenCalledWith(
+        'zone1',
+        transactionSession,
+      );
+      expect(stockRepo.hasPositiveInventoryOnAnyShelf).toHaveBeenCalledWith(
+        [shelfId],
+        transactionSession,
+      );
+      expect(repo.updateZone).not.toHaveBeenCalled();
     });
   });
 

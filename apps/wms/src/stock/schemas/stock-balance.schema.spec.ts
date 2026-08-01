@@ -7,11 +7,16 @@ describe('StockBalance schema', () => {
     expect(paths['onHand']).toBeDefined();
     expect(paths['reserved']).toBeDefined();
     expect(paths['expired']).toBeDefined();
+    expect(paths['quarantined']).toBeDefined();
     expect(paths['minQuantity']).toBeDefined();
     // Snapshot — chỉ updatedAt, KHÔNG có createdAt/deletedAt
     expect(paths['updatedAt']).toBeDefined();
     expect(paths['createdAt']).toBeUndefined();
     expect(paths['deletedAt']).toBeUndefined();
+  });
+
+  it('quarantined mặc định 0 và tách riêng bucket expired', () => {
+    expect(StockBalanceSchema.path('quarantined').options.default).toBe(0);
   });
 
   it('collection name là stock_balances', () => {

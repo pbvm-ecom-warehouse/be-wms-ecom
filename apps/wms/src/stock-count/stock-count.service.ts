@@ -94,10 +94,14 @@ export class StockCountService {
       itemId: Types.ObjectId;
       sku: string;
       shelfId: Types.ObjectId;
+      cellId: Types.ObjectId;
       lotId: Types.ObjectId | null;
       systemQty: number;
     }[] = [];
     for (const inv of inventory) {
+      // Staging và dữ liệu legacy chưa có khoang không phải là vị trí kiểm kê
+      // vật lý. Preflight/migration xử lý legacy riêng, không gộp nhiều khoang.
+      if (!inv.cellId) continue;
       const sku = skuByItemId.get(inv.itemId.toString());
       if (!sku) {
         this.logger.warn(
@@ -109,6 +113,7 @@ export class StockCountService {
         itemId: inv.itemId,
         sku,
         shelfId: inv.shelfId,
+        cellId: inv.cellId,
         lotId: inv.lotId,
         systemQty: inv.quantity,
       });
@@ -146,8 +151,16 @@ export class StockCountService {
   ): Promise<StockCountDocument> {
     const stockCount = await this.repo.findById(id);
     if (!stockCount) throw new AppException('STOCK_COUNT_NOT_FOUND');
-    if (stockCount.status === StockCountStatus.APPROVED) {
-      throw new AppException('STOCK_COUNT_ALREADY_APPROVED');
+    if (
+      ![StockCountStatus.DRAFT, StockCountStatus.IN_PROGRESS].includes(
+        stockCount.status,
+      )
+    ) {
+      throw new AppException(
+        stockCount.status === StockCountStatus.APPROVED
+          ? 'STOCK_COUNT_ALREADY_APPROVED'
+          : 'STOCK_COUNT_NOT_COUNTABLE',
+      );
     }
 
     const itemObjId = new Types.ObjectId(itemId);
@@ -158,9 +171,20 @@ export class StockCountService {
       (i) =>
         i.itemId.toString() === itemId &&
         i.shelfId.toString() === dto.shelfId &&
+        i.cellId?.toString() === dto.cellId &&
         (i.lotId?.toString() ?? null) === (dto.lotId ?? null),
     );
     if (!line) throw new AppException('STOCK_COUNT_ITEM_MISMATCH');
+    const cellObjId = new Types.ObjectId(dto.cellId);
+
+    const currentInventory = await this.stockRepo.findInventory(
+      itemObjId,
+      shelfObjId,
+      lotObjId,
+      undefined,
+      cellObjId,
+    );
+    const currentSystemQty = currentInventory?.quantity ?? 0;
 
     if (stockCount.status === StockCountStatus.DRAFT) {
       await this.repo.setCountedByIfDraft(id, new Types.ObjectId(actorId));
@@ -180,7 +204,9 @@ export class StockCountService {
       id,
       itemObjId,
       shelfObjId,
+      cellObjId,
       lotObjId,
+      currentSystemQty,
       dto.actualQty,
       dto.reason ?? null,
       images,
@@ -229,48 +255,115 @@ export class StockCountService {
     // gọi 1 lần cho mỗi itemId, dồn vào set để dedup trước.
     const touchedItemIds = new Set<string>();
 
-    await this.stockTransactionHelper.withStockTransaction(async (session) => {
-      const claimed = await this.repo.claimApprovedIfCompleted(
-        id,
-        new Types.ObjectId(actorId),
-        dto.reason,
-        session,
-      );
-      if (!claimed) throw new AppException('STOCK_COUNT_ALREADY_APPROVED');
+    type StaleLineKey = {
+      itemId: Types.ObjectId;
+      shelfId: Types.ObjectId;
+      cellId: Types.ObjectId;
+      lotId: Types.ObjectId | null;
+    };
+    let staleLine: StaleLineKey | null = null;
+    try {
+      await this.stockTransactionHelper.withStockTransaction(
+        async (session) => {
+          const claimed = await this.repo.claimApprovedIfCompleted(
+            id,
+            new Types.ObjectId(actorId),
+            dto.reason,
+            session,
+          );
+          if (!claimed) throw new AppException('STOCK_COUNT_ALREADY_APPROVED');
 
-      for (const line of changedLines) {
-        const delta = line.delta!;
-        await this.stockRepo.upsertInventory(
-          line.itemId,
-          line.shelfId,
-          line.lotId,
-          delta,
-          session,
-        );
-        await this.stockRepo.upsertBalance(line.itemId, delta, 0, 0, session);
-        touchedItemIds.add(line.itemId.toString());
-        await this.stockRepo.insertMovement(
-          {
-            itemId: line.itemId,
-            shelfId: line.shelfId,
-            lotId: line.lotId,
-            type: MovementType.ADJUST,
-            quantity: delta,
-            refType: 'stock_count',
-            refId: stockCount._id,
-            createdBy: new Types.ObjectId(actorId),
-          },
-          session,
+          for (const line of stockCount.items) {
+            const current = await this.stockRepo.findInventory(
+              line.itemId,
+              line.shelfId,
+              line.lotId,
+              session,
+              line.cellId,
+            );
+            if ((current?.quantity ?? 0) !== line.systemQty) {
+              staleLine = {
+                itemId: line.itemId,
+                shelfId: line.shelfId,
+                cellId: line.cellId,
+                lotId: line.lotId,
+              };
+              throw new AppException('STOCK_COUNT_STALE_LINE');
+            }
+            if (!line.delta) continue;
+            const delta = line.delta;
+            if (delta < 0 && (current?.quarantinedQuantity ?? 0) > 0) {
+              const adjusted =
+                await this.stockRepo.decrementInventoryIfAvailable(
+                  line.itemId,
+                  line.shelfId,
+                  line.cellId,
+                  line.lotId,
+                  -delta,
+                  session,
+                  true,
+                );
+              if (!adjusted) throw new AppException('STOCK_COUNT_STALE_LINE');
+            } else {
+              await this.stockRepo.upsertInventory(
+                line.itemId,
+                line.shelfId,
+                line.lotId,
+                delta,
+                session,
+                { cellId: line.cellId },
+              );
+            }
+            await this.stockRepo.upsertBalance(
+              line.itemId,
+              delta,
+              0,
+              0,
+              session,
+            );
+            touchedItemIds.add(line.itemId.toString());
+            await this.stockRepo.insertMovement(
+              {
+                itemId: line.itemId,
+                shelfId: line.shelfId,
+                cellId: line.cellId,
+                lotId: line.lotId,
+                type: MovementType.ADJUST,
+                quantity: delta,
+                refType: 'stock_count',
+                refId: stockCount._id,
+                createdBy: new Types.ObjectId(actorId),
+              },
+              session,
+            );
+          }
+        },
+      );
+    } catch (error) {
+      const stale = staleLine as StaleLineKey | null;
+      if (stale) {
+        await this.repo.reopenLineForRecount(
+          id,
+          stale.itemId,
+          stale.shelfId,
+          stale.cellId,
+          stale.lotId,
         );
       }
-    });
+      throw error;
+    }
 
+    const deltaBySku = new Map<string, number>();
     for (const line of changedLines) {
+      deltaBySku.set(line.sku, (deltaBySku.get(line.sku) ?? 0) + line.delta!);
+    }
+    for (const [sku, delta] of deltaBySku) {
+      if (delta === 0) continue;
       const payload: StockChangedPayload = {
-        sku: line.sku,
-        delta: line.delta!,
+        sku,
+        delta,
       };
-      const jobId = `stock_count:${id}:${line.sku}`;
+      const jobId = `stock_count:${id}:${sku}`;
       await this.stockQueue.add(EVENTS.STOCK_CHANGED, payload, { jobId });
     }
 

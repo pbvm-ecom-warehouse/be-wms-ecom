@@ -17,6 +17,10 @@ describe('PutAwayService theo khoang', () => {
   const stagingShelfId = new Types.ObjectId();
   const taskSourceShelfId = new Types.ObjectId();
   const cellId = new Types.ObjectId();
+  const rackId = new Types.ObjectId();
+  const zoneId = new Types.ObjectId();
+  const sourceRackId = new Types.ObjectId();
+  const sourceZoneId = new Types.ObjectId();
   const taskId = new Types.ObjectId().toString();
 
   const repo = {
@@ -37,8 +41,12 @@ describe('PutAwayService theo khoang', () => {
     findCellByCode: jest.fn(),
     findShelfById: jest.fn(),
     findShelfByCode: jest.fn(),
+    findRackById: jest.fn(),
+    findZoneById: jest.fn(),
     lockActiveCellForInventory: jest.fn(),
     lockActiveShelfForInventory: jest.fn(),
+    lockActiveRackForInventory: jest.fn(),
+    lockActiveZoneForInventory: jest.fn(),
   };
   const locationService = { findStagingShelf: jest.fn() };
   const tx = {
@@ -63,13 +71,18 @@ describe('PutAwayService theo khoang', () => {
   const cell = () => ({
     _id: cellId,
     shelfId,
-    rackId: new Types.ObjectId(),
+    rackId,
     innerDepth: 100,
     innerWidth: 100,
     innerHeight: 100,
     fillFactor: 1,
   });
-  const shelf = () => ({ _id: shelfId, isStaging: false });
+  const shelf = () => ({ _id: shelfId, rackId, isStaging: false });
+  const sourceShelf = (id = stagingShelfId) => ({
+    _id: id,
+    rackId: sourceRackId,
+    isStaging: true,
+  });
 
   beforeEach(() => {
     jest.clearAllMocks();
@@ -86,11 +99,37 @@ describe('PutAwayService theo khoang', () => {
     stockRepo.findItemByIdDocument.mockResolvedValue({
       _id: itemId,
       isPerishable: false,
+      type: 'CUP_BLANK',
     });
     locationRepo.findCellByCode.mockResolvedValue(cell());
     locationRepo.findShelfById.mockResolvedValue(shelf());
     locationRepo.lockActiveCellForInventory.mockResolvedValue(cell());
-    locationRepo.lockActiveShelfForInventory.mockResolvedValue(shelf());
+    locationRepo.lockActiveShelfForInventory.mockImplementation((id: string) =>
+      Promise.resolve(
+        id === shelfId.toString()
+          ? shelf()
+          : sourceShelf(new Types.ObjectId(id)),
+      ),
+    );
+    locationRepo.findRackById.mockResolvedValue({
+      _id: rackId,
+      zoneId,
+    });
+    locationRepo.findZoneById.mockResolvedValue({
+      zonePurpose: 'STORAGE',
+      allowedItemTypes: [],
+    });
+    locationRepo.lockActiveRackForInventory.mockImplementation((id: string) =>
+      Promise.resolve(
+        id === rackId.toString()
+          ? { _id: rackId, zoneId }
+          : { _id: sourceRackId, zoneId: sourceZoneId },
+      ),
+    );
+    locationRepo.lockActiveZoneForInventory.mockResolvedValue({
+      zonePurpose: 'STORAGE',
+      allowedItemTypes: [],
+    });
     locationService.findStagingShelf.mockResolvedValue({ _id: stagingShelfId });
     stockRepo.findOccupiedVolumeForCell.mockResolvedValue(0);
     stockRepo.decrementInventoryIfAvailable.mockResolvedValue({ quantity: 3 });
@@ -142,6 +181,43 @@ describe('PutAwayService theo khoang', () => {
         actorId,
       ),
     ).rejects.toMatchObject({ code: 'PUTAWAY_CELL_CAPACITY_EXCEEDED' });
+  });
+
+  it('chặn zone đích vừa bị chuyển sang khu HỦY trong transaction', async () => {
+    locationRepo.lockActiveZoneForInventory.mockImplementation((id: string) =>
+      Promise.resolve({
+        zonePurpose: id === zoneId.toString() ? 'SCRAP' : 'STORAGE',
+        allowedItemTypes: [],
+      }),
+    );
+
+    await expect(
+      service.confirmLine(
+        taskId,
+        { itemBarcode: 'SKU-1', cellBarcode: 'R1-T1-B1', quantity: 1 },
+        actorId,
+      ),
+    ).rejects.toMatchObject({ code: 'PUTAWAY_ZONE_NOT_ALLOWED' });
+
+    expect(stockRepo.decrementInventoryIfAvailable).not.toHaveBeenCalled();
+    expect(stockRepo.upsertInventory).not.toHaveBeenCalled();
+  });
+
+  it('chặn nguồn staging vừa bị xóa trước khi transaction dịch chuyển tồn', async () => {
+    locationRepo.lockActiveShelfForInventory.mockImplementation((id: string) =>
+      Promise.resolve(id === stagingShelfId.toString() ? null : shelf()),
+    );
+
+    await expect(
+      service.confirmLine(
+        taskId,
+        { itemBarcode: 'SKU-1', cellBarcode: 'R1-T1-B1', quantity: 1 },
+        actorId,
+      ),
+    ).rejects.toMatchObject({ code: 'PUTAWAY_SHELF_NOT_FOUND' });
+
+    expect(stockRepo.decrementInventoryIfAvailable).not.toHaveBeenCalled();
+    expect(stockRepo.upsertInventory).not.toHaveBeenCalled();
   });
 
   it('chuyển staging sang đúng cell, giữ onHand và ghi audit override', async () => {

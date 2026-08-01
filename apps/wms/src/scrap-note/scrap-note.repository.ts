@@ -11,11 +11,14 @@ export interface CreateScrapNoteLineInput {
   itemId: Types.ObjectId;
   sku: string;
   shelfId: Types.ObjectId;
+  sourceCellId?: Types.ObjectId | null;
+  lockedQuantity?: number;
+  scrapCellId?: Types.ObjectId | null;
+  excludedByExpired?: boolean;
   lotId: Types.ObjectId | null;
   quantity: number;
   reason: string;
   images?: string[];
-  skipAvailableSync?: boolean;
 }
 
 export interface QueryScrapNoteInput {
@@ -44,8 +47,9 @@ export class ScrapNoteRepository {
 
   findBySourceStockCountId(
     sourceStockCountId: Types.ObjectId,
+    session?: ClientSession,
   ): Promise<ScrapNoteDocument | null> {
-    return this.model.findOne({ sourceStockCountId }).exec();
+    return this.model.findOne({ sourceStockCountId }, null, { session }).exec();
   }
 
   /**
@@ -55,10 +59,12 @@ export class ScrapNoteRepository {
    */
   async upsertFromStockCount(
     input: UpsertStockCountScrapInput,
+    session?: ClientSession,
   ): Promise<ScrapNoteDocument | null> {
     const key = {
       itemId: input.line.itemId,
       shelfId: input.line.shelfId,
+      sourceCellId: input.line.sourceCellId,
       lotId: input.line.lotId,
     };
     const line = {
@@ -67,6 +73,9 @@ export class ScrapNoteRepository {
       quantity: input.line.quantity,
       reason: input.line.reason,
       images: input.line.images ?? [],
+      lockedQuantity: input.line.lockedQuantity ?? input.line.quantity,
+      scrapCellId: input.line.scrapCellId ?? null,
+      excludedByExpired: input.line.excludedByExpired ?? false,
     };
 
     const updateExisting = () =>
@@ -86,7 +95,7 @@ export class ScrapNoteRepository {
                 : {}),
             },
           },
-          { new: true },
+          { new: true, session },
         )
         .exec();
 
@@ -99,7 +108,7 @@ export class ScrapNoteRepository {
             items: { $not: { $elemMatch: key } },
           },
           { $push: { items: line } },
-          { new: true },
+          { new: true, session },
         )
         .exec();
 
@@ -109,15 +118,18 @@ export class ScrapNoteRepository {
     if (appended) return appended;
 
     try {
-      const [created] = await this.model.create([
-        {
-          sourceStockCountId: input.sourceStockCountId,
-          scrapNoteNumber: input.scrapNoteNumber,
-          status: ScrapNoteStatus.DRAFT,
-          createdBy: input.createdBy,
-          items: [line],
-        },
-      ]);
+      const [created] = await this.model.create(
+        [
+          {
+            sourceStockCountId: input.sourceStockCountId,
+            scrapNoteNumber: input.scrapNoteNumber,
+            status: ScrapNoteStatus.DRAFT,
+            createdBy: input.createdBy,
+            items: [line],
+          },
+        ],
+        session ? { session } : undefined,
+      );
       return created;
     } catch (error) {
       if (
@@ -130,32 +142,6 @@ export class ScrapNoteRepository {
       }
       return (await updateExisting()) ?? (await appendNew());
     }
-  }
-
-  async createScrapNote(
-    note: string | undefined,
-    createdBy: Types.ObjectId,
-    lines: CreateScrapNoteLineInput[],
-    scrapNoteNumber: string,
-  ): Promise<ScrapNoteDocument> {
-    const [doc] = await this.model.create([
-      {
-        scrapNoteNumber,
-        note,
-        status: ScrapNoteStatus.DRAFT,
-        createdBy,
-        items: lines.map((l) => ({
-          itemId: l.itemId,
-          sku: l.sku,
-          shelfId: l.shelfId,
-          lotId: l.lotId,
-          quantity: l.quantity,
-          reason: l.reason,
-          images: l.images ?? [],
-        })),
-      },
-    ]);
-    return doc;
   }
 
   /**
@@ -181,10 +167,13 @@ export class ScrapNoteRepository {
             itemId: l.itemId,
             sku: l.sku,
             shelfId: l.shelfId,
+            sourceCellId: l.sourceCellId ?? null,
+            lockedQuantity: l.lockedQuantity ?? l.quantity,
+            scrapCellId: l.scrapCellId ?? null,
+            excludedByExpired: l.excludedByExpired ?? false,
             lotId: l.lotId,
             quantity: l.quantity,
             reason: l.reason,
-            skipAvailableSync: l.skipAvailableSync ?? false,
           })),
         },
       ],
@@ -259,5 +248,93 @@ export class ScrapNoteRepository {
         },
       )
       .exec();
+  }
+
+  async claimRejectedIfDraft(
+    id: string,
+    approvedBy: Types.ObjectId,
+    rejectReason: string,
+    session: ClientSession,
+  ): Promise<boolean> {
+    const updated = await this.model
+      .findOneAndUpdate(
+        { _id: id, status: ScrapNoteStatus.DRAFT },
+        {
+          $set: {
+            status: ScrapNoteStatus.REJECTED,
+            approvedBy,
+            rejectReason,
+          },
+        },
+        { new: true, session },
+      )
+      .exec();
+    return updated !== null;
+  }
+
+  async markItemMovedToScrap(
+    id: string,
+    itemId: Types.ObjectId,
+    sourceCellId: Types.ObjectId | null,
+    scrapCellId: Types.ObjectId,
+    session: ClientSession,
+  ): Promise<ScrapNoteDocument | null> {
+    return this.model
+      .findOneAndUpdate(
+        {
+          _id: id,
+          status: ScrapNoteStatus.APPROVED,
+          items: {
+            $elemMatch: {
+              itemId,
+              sourceCellId,
+              scrapCellId: null,
+            },
+          },
+        },
+        { $set: { 'items.$.scrapCellId': scrapCellId } },
+        { new: true, session },
+      )
+      .exec();
+  }
+
+  async markQuarantinedIfAllMoved(
+    id: string,
+    session: ClientSession,
+  ): Promise<void> {
+    const doc = await this.model.findOne({ _id: id }).session(session).exec();
+    if (
+      doc?.status === ScrapNoteStatus.APPROVED &&
+      doc.items.every((item) => item.scrapCellId)
+    ) {
+      await this.model
+        .updateOne(
+          { _id: id, status: ScrapNoteStatus.APPROVED },
+          { $set: { status: ScrapNoteStatus.QUARANTINED } },
+          { session },
+        )
+        .exec();
+    }
+  }
+
+  async claimDisposedIfQuarantined(
+    id: string,
+    disposedBy: Types.ObjectId,
+    session: ClientSession,
+  ): Promise<boolean> {
+    const updated = await this.model
+      .findOneAndUpdate(
+        { _id: id, status: ScrapNoteStatus.QUARANTINED },
+        {
+          $set: {
+            status: ScrapNoteStatus.DISPOSED,
+            disposedBy,
+            disposedAt: new Date(),
+          },
+        },
+        { new: true, session },
+      )
+      .exec();
+    return updated !== null;
   }
 }

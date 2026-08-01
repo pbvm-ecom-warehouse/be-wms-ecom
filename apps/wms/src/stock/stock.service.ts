@@ -39,7 +39,7 @@ export interface UploadedImageFile {
 }
 
 /**
- * PRODUCER: khi `available` (= onHand - reserved - expired) của 1 SKU đổi
+ * PRODUCER: khi `available` (= onHand - reserved - expired - quarantined) đổi
  * do biến động phía WMS, bắn event stock.changed sang Ecommerce (Σ mọi kho).
  * Service production — được gọi thật từ GRN, kiểm kho, chuyển kho, in ly,
  * scrap-note, goods-return (xem các domain đó để biết nơi gọi).
@@ -110,7 +110,11 @@ export class StockService {
     const balance = await this.stockRepo.findBalance(itemId);
     if (!balance) return;
 
-    const available = balance.onHand - balance.reserved - balance.expired;
+    const available =
+      balance.onHand -
+      balance.reserved -
+      balance.expired -
+      (balance.quarantined ?? 0);
     if (available >= item.minQuantity) return;
 
     const payload: StockLowPayload = {

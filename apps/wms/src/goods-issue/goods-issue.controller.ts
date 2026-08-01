@@ -23,6 +23,7 @@ import {
 import { plainToInstance } from 'class-transformer';
 import { GoodsIssueService } from './goods-issue.service';
 import {
+  AssignGoodsIssueDto,
   ConfirmGoodsIssueLineDto,
   GoodsIssueResponseDto,
   PickSuggestionResponseDto,
@@ -77,30 +78,33 @@ export class GoodsIssueController {
     summary: 'Chi tiết phiếu xuất kho — [SHIPPER, MANAGER, ADMIN]',
   })
   @ApiOkResponse({ type: GoodsIssueResponseDto })
-  async getGoodsIssue(@Param('id') id: string): Promise<GoodsIssueResponseDto> {
-    const doc = await this.svc.getGoodsIssue(id);
+  async getGoodsIssue(
+    @Param('id') id: string,
+    @CurrentUser('sub') actorId: string,
+    @CurrentUser('role') actorRole: WmsRole,
+  ): Promise<GoodsIssueResponseDto> {
+    const doc = await this.svc.getGoodsIssue(id, actorId, actorRole);
     return plainToInstance(GoodsIssueResponseDto, doc.toObject(), TO_OPTS);
   }
 
-  @Post(':id/claim')
-  @Roles(WmsRole.SHIPPER, WmsRole.ADMIN)
+  @Post(':id/assign')
+  @Roles(WmsRole.MANAGER, WmsRole.ADMIN)
   @ApiOperation({
-    summary: 'Nhận phiếu xuất kho atomically — [SHIPPER, ADMIN]',
+    summary: 'Admin/Manager gán phiếu xuất cho Shipper — [MANAGER, ADMIN]',
   })
   @ApiOkResponse({ type: GoodsIssueResponseDto })
-  async claim(
+  async assign(
     @Param('id') id: string,
-    @CurrentUser('sub') actorId: string,
+    @Body() dto: AssignGoodsIssueDto,
   ): Promise<GoodsIssueResponseDto> {
-    const doc = await this.svc.claim(id, actorId);
+    const doc = await this.svc.assign(id, dto.shipperId);
     return plainToInstance(GoodsIssueResponseDto, doc.toObject(), TO_OPTS);
   }
 
   @Get(':id/items/:itemId/suggestions')
-  @Roles(WmsRole.SHIPPER, WmsRole.ADMIN)
+  @Roles(WmsRole.SHIPPER)
   @ApiOperation({
-    summary:
-      'Gợi ý vị trí pick (FEFO nếu hàng có hạn sử dụng) — [SHIPPER owner, ADMIN]',
+    summary: 'Gợi ý vị trí pick FEFO — [SHIPPER được gán]',
   })
   @ApiOkResponse({ type: [PickSuggestionResponseDto] })
   async getPickSuggestions(
@@ -119,10 +123,9 @@ export class GoodsIssueController {
   }
 
   @Post(':id/confirm-line')
-  @Roles(WmsRole.SHIPPER, WmsRole.ADMIN)
+  @Roles(WmsRole.SHIPPER)
   @ApiOperation({
-    summary:
-      'Xác nhận 1 dòng xuất kho (quét item + cell) — trừ onHand+reserved — [SHIPPER owner, ADMIN]',
+    summary: 'Xác nhận 1 dòng xuất kho (quét item + cell) — [SHIPPER được gán]',
   })
   @ApiOkResponse({ type: GoodsIssueResponseDto })
   async confirmLine(

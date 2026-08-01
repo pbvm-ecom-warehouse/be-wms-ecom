@@ -9,6 +9,7 @@ import { GoodsIssueController } from './goods-issue.controller';
 import { LocationModule } from '../location/location.module';
 import { StockModule } from '../stock/stock.module';
 import { DocumentNumberModule } from '../document-number/document-number.module';
+import { UsersModule } from '../users/users.module';
 
 @Module({
   imports: [
@@ -27,6 +28,7 @@ import { DocumentNumberModule } from '../document-number/document-number.module'
     LocationModule, // findShelfByCode
     StockModule, // StockRepository + StockTransactionHelper
     DocumentNumberModule,
+    UsersModule,
   ],
   providers: [GoodsIssueRepository, GoodsIssueService],
   controllers: [GoodsIssueController],

@@ -61,88 +61,22 @@ describe('ScrapNoteRepository', () => {
       });
 
       expect(result).toEqual({ _id: 'sn1' });
-      expect(model.create).toHaveBeenCalledWith([
-        expect.objectContaining({
-          sourceStockCountId,
-          scrapNoteNumber: 'SCR-20260730-0004',
-          status: ScrapNoteStatus.DRAFT,
-          items: [expect.objectContaining({ quantity: 2, reason: 'Vỡ' })],
-        }),
-      ]);
-    });
-  });
-
-  describe('createScrapNote', () => {
-    it('tạo document với status DRAFT, items đúng shape (images mặc định rỗng)', async () => {
-      model.create.mockResolvedValue([{ _id: 'sn1' }]);
-      await repo.createScrapNote(
-        'Ghi chú',
-        createdBy,
+      expect(model.create).toHaveBeenCalledWith(
         [
-          {
-            itemId,
-            sku: 'SKU-1',
-            shelfId,
-            lotId: null,
-            quantity: 5,
-            reason: 'Vỡ',
-          },
+          expect.objectContaining({
+            sourceStockCountId,
+            scrapNoteNumber: 'SCR-20260730-0004',
+            status: ScrapNoteStatus.DRAFT,
+            items: [expect.objectContaining({ quantity: 2, reason: 'Vỡ' })],
+          }),
         ],
-        'SCR-20260730-0001',
-      );
-      expect(model.create).toHaveBeenCalledWith([
-        {
-          scrapNoteNumber: 'SCR-20260730-0001',
-          note: 'Ghi chú',
-          status: ScrapNoteStatus.DRAFT,
-          createdBy,
-          items: [
-            {
-              itemId,
-              sku: 'SKU-1',
-              shelfId,
-              lotId: null,
-              quantity: 5,
-              reason: 'Vỡ',
-              images: [],
-            },
-          ],
-        },
-      ]);
-    });
-
-    it('lưu images vào đúng dòng khi có ảnh minh chứng', async () => {
-      model.create.mockResolvedValue([{ _id: 'sn1' }]);
-      await repo.createScrapNote(
         undefined,
-        createdBy,
-        [
-          {
-            itemId,
-            sku: 'SKU-1',
-            shelfId,
-            lotId: null,
-            quantity: 5,
-            reason: 'Vỡ',
-            images: ['https://res.cloudinary.com/demo/image/upload/x.jpg'],
-          },
-        ],
-        'SCR-20260730-0002',
       );
-      expect(model.create).toHaveBeenCalledWith([
-        expect.objectContaining({
-          items: [
-            expect.objectContaining({
-              images: ['https://res.cloudinary.com/demo/image/upload/x.jpg'],
-            }),
-          ],
-        }),
-      ]);
     });
   });
 
   describe('createApprovedScrapNote', () => {
-    it('tạo document với status APPROVED, approvedBy=createdBy, skipAvailableSync đúng', async () => {
+    it('tạo document với status APPROVED và approvedBy=createdBy', async () => {
       const session = {} as never;
       model.create.mockResolvedValue([{ _id: 'sn1' }]);
       await repo.createApprovedScrapNote(
@@ -155,7 +89,6 @@ describe('ScrapNoteRepository', () => {
             lotId: null,
             quantity: 5,
             reason: 'Hàng hoàn trả bị hỏng (RMA)',
-            skipAvailableSync: true,
           },
         ],
         session,
@@ -163,23 +96,22 @@ describe('ScrapNoteRepository', () => {
       );
       expect(model.create).toHaveBeenCalledWith(
         [
-          {
+          expect.objectContaining({
             scrapNoteNumber: 'SCR-20260730-0003',
             status: ScrapNoteStatus.APPROVED,
             createdBy,
             approvedBy: createdBy,
             items: [
-              {
+              expect.objectContaining({
                 itemId,
                 sku: 'SKU-1',
                 shelfId,
                 lotId: null,
                 quantity: 5,
                 reason: 'Hàng hoàn trả bị hỏng (RMA)',
-                skipAvailableSync: true,
-              },
+              }),
             ],
-          },
+          }),
         ],
         { session },
       );

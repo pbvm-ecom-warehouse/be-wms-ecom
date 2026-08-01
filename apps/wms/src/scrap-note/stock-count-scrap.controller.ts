@@ -53,6 +53,7 @@ export class StockCountScrapController {
       properties: {
         itemBarcode: { type: 'string' },
         shelfId: { type: 'string' },
+        cellId: { type: 'string' },
         lotId: { type: 'string' },
         quantity: { type: 'integer', minimum: 1 },
         reason: { type: 'string' },

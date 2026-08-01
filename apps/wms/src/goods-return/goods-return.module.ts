@@ -10,6 +10,7 @@ import { LocationModule } from '../location/location.module';
 import { StockModule } from '../stock/stock.module';
 import { ScrapNoteModule } from '../scrap-note/scrap-note.module';
 import { DocumentNumberModule } from '../document-number/document-number.module';
+import { PutAwayModule } from '../put-away/put-away.module';
 
 @Module({
   imports: [
@@ -22,6 +23,7 @@ import { DocumentNumberModule } from '../document-number/document-number.module'
     StockModule, // StockRepository + StockTransactionHelper
     ScrapNoteModule, // createApprovedScrapNoteForReturn (dòng DAMAGED)
     DocumentNumberModule,
+    PutAwayModule,
   ],
   providers: [GoodsReturnRepository, GoodsReturnService],
   controllers: [GoodsReturnController],

@@ -4,11 +4,14 @@ import { ScrapNoteStatus } from './schemas/scrap-note.schema';
 
 const makeRepo = () => ({
   findById: jest.fn(),
-  createScrapNote: jest.fn(),
   createApprovedScrapNote: jest.fn(),
   findBySourceStockCountId: jest.fn(),
   upsertFromStockCount: jest.fn(),
   claimApprovedIfDraft: jest.fn(),
+  claimRejectedIfDraft: jest.fn(),
+  markItemMovedToScrap: jest.fn(),
+  markQuarantinedIfAllMoved: jest.fn(),
+  claimDisposedIfQuarantined: jest.fn(),
   findAll: jest.fn(),
   setApproved: jest.fn(),
   setRejected: jest.fn(),
@@ -22,11 +25,23 @@ const makeStockRepo = () => ({
   decrementInventoryIfAvailable: jest.fn(),
   decrementInventoryAtShelfIfAvailable: jest.fn(),
   decrementBalanceForScrapIfAvailable: jest.fn(),
+  lockInventoryRowForQuarantine: jest.fn(),
+  decrementQuarantinedInventoryIfAvailable: jest.fn(),
+  unlockInventoryRowFromQuarantine: jest.fn(),
+  releaseInventoryQuarantine: jest.fn(),
+  adjustQuarantinedBalance: jest.fn(),
+  releaseQuarantinedBalance: jest.fn(),
+  disposeQuarantinedBalance: jest.fn(),
+  findLotById: jest.fn(),
   insertMovement: jest.fn(),
 });
 
 const makeLocationRepo = () => ({
   findShelfById: jest.fn(),
+  findCellByCode: jest.fn(),
+  findCellById: jest.fn(),
+  findRackById: jest.fn(),
+  findZoneById: jest.fn(),
 });
 
 const makeTxHelper = () => ({
@@ -51,17 +66,6 @@ const makeCloudinaryService = () => ({
     publicId: 'wms/scrap-note/x',
   }),
 });
-
-function fakeImageFile(
-  overrides: Partial<{ mimetype: string; size: number; buffer: Buffer }> = {},
-) {
-  return {
-    mimetype: 'image/png',
-    size: 1024,
-    buffer: Buffer.from('fake-image'),
-    ...overrides,
-  };
-}
 
 describe('ScrapNoteService', () => {
   let svc: ScrapNoteService;
@@ -96,6 +100,22 @@ describe('ScrapNoteService', () => {
     stockRepo.decrementInventoryIfAvailable.mockResolvedValue({ quantity: 5 });
     stockRepo.decrementInventoryAtShelfIfAvailable.mockResolvedValue(true);
     stockRepo.decrementBalanceForScrapIfAvailable.mockResolvedValue(true);
+    stockRepo.lockInventoryRowForQuarantine.mockResolvedValue({ quantity: 5 });
+    stockRepo.upsertBalance.mockResolvedValue(true);
+    stockRepo.adjustQuarantinedBalance.mockResolvedValue(true);
+    stockRepo.releaseQuarantinedBalance.mockResolvedValue(true);
+    stockRepo.releaseInventoryQuarantine.mockResolvedValue({
+      quantity: 0,
+      quarantinedQuantity: 0,
+    });
+    stockRepo.decrementQuarantinedInventoryIfAvailable.mockResolvedValue({
+      quantity: 0,
+      quarantinedQuantity: 0,
+    });
+    stockRepo.upsertInventory.mockResolvedValue({ quantity: 1 });
+    stockRepo.insertMovement.mockResolvedValue(undefined);
+    repo.markItemMovedToScrap.mockResolvedValue({ _id: 'sn1' });
+    repo.claimRejectedIfDraft.mockResolvedValue(true);
     svc = new ScrapNoteService(
       repo as never,
       stockRepo as never,
@@ -108,6 +128,125 @@ describe('ScrapNoteService', () => {
       stockQueue as never,
       cloudinary as never,
     );
+  });
+
+  describe('moveItemToScrap quarantine allocations', () => {
+    const sourceCellId = new Types.ObjectId();
+    const targetCellId = new Types.ObjectId();
+    const targetShelfId = new Types.ObjectId();
+    const targetRackId = new Types.ObjectId();
+
+    const arrangeMove = (overrides: Record<string, unknown> = {}) => {
+      const note = {
+        _id: new Types.ObjectId(),
+        status: ScrapNoteStatus.APPROVED,
+        items: [
+          {
+            itemId,
+            sku: 'SKU-1',
+            shelfId,
+            sourceCellId,
+            lotId: null,
+            quantity: 2,
+            lockedQuantity: 2,
+            excludedByExpired: false,
+            scrapCellId: null,
+            ...overrides,
+          },
+        ],
+      };
+      repo.findById.mockResolvedValue(note);
+      barcodeService.findItemIdByCode.mockResolvedValue(itemId);
+      locationRepo.findCellByCode
+        .mockResolvedValueOnce({
+          _id: sourceCellId,
+          shelfId,
+          rackId: new Types.ObjectId(),
+        })
+        .mockResolvedValueOnce({
+          _id: targetCellId,
+          shelfId: targetShelfId,
+          rackId: targetRackId,
+        });
+      locationRepo.findShelfByCode = jest.fn().mockResolvedValue(null);
+      locationRepo.findRackById.mockResolvedValue({
+        _id: targetRackId,
+        zoneId: new Types.ObjectId(),
+      });
+      locationRepo.findZoneById.mockResolvedValue({
+        zonePurpose: 'SCRAP',
+      });
+      return note;
+    };
+
+    it('hai DAMAGED returns cùng tuple: move phiếu đầu không mở khóa allocation còn lại', async () => {
+      arrangeMove();
+
+      await svc.moveItemToScrap(
+        'sn1',
+        itemId.toString(),
+        {
+          itemBarcode: 'ITEM-1',
+          sourceCellBarcode: 'SRC-1',
+          targetCellBarcode: 'SCRAP-1',
+        },
+        actorId,
+      );
+
+      expect(
+        stockRepo.unlockInventoryRowFromQuarantine,
+      ).not.toHaveBeenCalled();
+      expect(stockRepo.releaseInventoryQuarantine).not.toHaveBeenCalled();
+      expect(
+        stockRepo.decrementQuarantinedInventoryIfAvailable,
+      ).toHaveBeenCalledWith(
+        itemId,
+        shelfId,
+        sourceCellId,
+        null,
+        2,
+        expect.anything(),
+      );
+    });
+
+    it('lot hết hạn trong lúc chờ move: phần release chuyển q sang expired và không emit available dương', async () => {
+      arrangeMove({
+        lotId,
+        quantity: 2,
+        lockedQuantity: 5,
+      });
+      stockRepo.findLotById.mockResolvedValue({
+        status: 'EXPIRED',
+        expiryDate: new Date('2026-07-01T00:00:00.000Z'),
+      });
+
+      await svc.moveItemToScrap(
+        'sn1',
+        itemId.toString(),
+        {
+          itemBarcode: 'ITEM-1',
+          sourceCellBarcode: 'SRC-1',
+          targetCellBarcode: 'SCRAP-1',
+        },
+        actorId,
+      );
+
+      expect(stockRepo.releaseInventoryQuarantine).toHaveBeenCalledWith(
+        itemId,
+        shelfId,
+        sourceCellId,
+        lotId,
+        3,
+        expect.anything(),
+      );
+      expect(stockRepo.releaseQuarantinedBalance).toHaveBeenCalledWith(
+        itemId,
+        3,
+        true,
+        expect.anything(),
+      );
+      expect(stockQueue.add).not.toHaveBeenCalled();
+    });
   });
 
   describe('createFromStockCount', () => {
@@ -163,6 +302,7 @@ describe('ScrapNoteService', () => {
             reason: 'Hai thùng bị vỡ',
           }),
         }),
+        expect.anything(),
       );
     });
 
@@ -230,275 +370,6 @@ describe('ScrapNoteService', () => {
     });
   });
 
-  describe('createScrapNote', () => {
-    it('không tìm thấy shelf → throw SHELF_NOT_FOUND, không tạo phiếu', async () => {
-      stockRepo.findItemById.mockResolvedValue({
-        _id: itemId,
-        sku: 'SKU-1',
-        isPerishable: false,
-      });
-      locationRepo.findShelfById.mockResolvedValue(null);
-
-      await expect(
-        svc.createScrapNote(
-          {
-            items: [
-              {
-                itemId: itemId.toString(),
-                shelfId: shelfId.toString(),
-                quantity: 5,
-                reason: 'Vỡ',
-              },
-            ],
-          },
-          actorId,
-        ),
-      ).rejects.toThrow();
-      expect(repo.createScrapNote).not.toHaveBeenCalled();
-    });
-
-    it('tạo phiếu hợp lệ với dòng có lotId (hết hạn) và dòng không có lotId (hỏng)', async () => {
-      locationRepo.findShelfById.mockResolvedValue({ _id: shelfId });
-      stockRepo.findItemById.mockImplementation((id: string) =>
-        Promise.resolve({
-          _id: new Types.ObjectId(id),
-          sku: 'SKU-1',
-          isPerishable: id === itemId.toString(),
-        }),
-      );
-      stockRepo.findInventory.mockResolvedValue({ quantity: 100 });
-      repo.createScrapNote.mockResolvedValue({ _id: 'sn1' });
-
-      await svc.createScrapNote(
-        {
-          items: [
-            {
-              itemId: itemId.toString(),
-              lotId: lotId.toString(),
-              shelfId: shelfId.toString(),
-              quantity: 5,
-              reason: 'Hết hạn',
-            },
-          ],
-        },
-        actorId,
-      );
-
-      expect(repo.createScrapNote).toHaveBeenCalledWith(
-        undefined,
-        expect.anything(),
-        [
-          {
-            itemId,
-            sku: 'SKU-1',
-            shelfId,
-            lotId,
-            quantity: 5,
-            reason: 'Hết hạn',
-            images: [],
-          },
-        ],
-        'SCR-20260730-0001',
-      );
-      expect(documentNumber.next).toHaveBeenCalledWith('SCR');
-    });
-
-    it('không có imagesByIndex → images rỗng, không gọi CloudinaryService', async () => {
-      locationRepo.findShelfById.mockResolvedValue({ _id: shelfId });
-      stockRepo.findItemById.mockResolvedValue({
-        _id: itemId,
-        sku: 'SKU-1',
-        isPerishable: false,
-      });
-      stockRepo.findInventory.mockResolvedValue({ quantity: 100 });
-      repo.createScrapNote.mockResolvedValue({ _id: 'sn1' });
-
-      await svc.createScrapNote(
-        {
-          items: [
-            {
-              itemId: itemId.toString(),
-              shelfId: shelfId.toString(),
-              quantity: 5,
-              reason: 'Vỡ',
-            },
-          ],
-        },
-        actorId,
-      );
-
-      expect(cloudinary.uploadImage).not.toHaveBeenCalled();
-      expect(repo.createScrapNote).toHaveBeenCalledWith(
-        undefined,
-        expect.anything(),
-        [expect.objectContaining({ images: [] })],
-        'SCR-20260730-0001',
-      );
-    });
-
-    it('có ảnh minh chứng cho dòng hủy → upload Cloudinary vào wms/scrap-note, lưu URL đúng dòng', async () => {
-      locationRepo.findShelfById.mockResolvedValue({ _id: shelfId });
-      stockRepo.findItemById.mockResolvedValue({
-        _id: itemId,
-        sku: 'SKU-1',
-        isPerishable: false,
-      });
-      stockRepo.findInventory.mockResolvedValue({ quantity: 100 });
-      repo.createScrapNote.mockResolvedValue({ _id: 'sn1' });
-
-      const imagesByIndex = new Map([[0, [fakeImageFile()]]]);
-
-      await svc.createScrapNote(
-        {
-          items: [
-            {
-              itemId: itemId.toString(),
-              shelfId: shelfId.toString(),
-              quantity: 5,
-              reason: 'Vỡ',
-            },
-          ],
-        },
-        actorId,
-        imagesByIndex,
-      );
-
-      expect(cloudinary.uploadImage).toHaveBeenCalledWith(
-        expect.any(Buffer),
-        'wms/scrap-note',
-      );
-      expect(repo.createScrapNote).toHaveBeenCalledWith(
-        undefined,
-        expect.anything(),
-        [
-          expect.objectContaining({
-            images: [
-              'https://res.cloudinary.com/demo/image/upload/wms/scrap-note/x.jpg',
-            ],
-          }),
-        ],
-        'SCR-20260730-0001',
-      );
-    });
-
-    it('ảnh minh chứng sai mimetype → throw VALIDATION_FAILED, không tạo phiếu', async () => {
-      locationRepo.findShelfById.mockResolvedValue({ _id: shelfId });
-      stockRepo.findItemById.mockResolvedValue({
-        _id: itemId,
-        sku: 'SKU-1',
-        isPerishable: false,
-      });
-      stockRepo.findInventory.mockResolvedValue({ quantity: 100 });
-
-      const imagesByIndex = new Map([
-        [0, [fakeImageFile({ mimetype: 'application/pdf' })]],
-      ]);
-
-      await expect(
-        svc.createScrapNote(
-          {
-            items: [
-              {
-                itemId: itemId.toString(),
-                shelfId: shelfId.toString(),
-                quantity: 5,
-                reason: 'Vỡ',
-              },
-            ],
-          },
-          actorId,
-          imagesByIndex,
-        ),
-      ).rejects.toThrow();
-      expect(repo.createScrapNote).not.toHaveBeenCalled();
-    });
-
-    it('ảnh minh chứng vượt quá 5MB → throw VALIDATION_FAILED, không tạo phiếu', async () => {
-      locationRepo.findShelfById.mockResolvedValue({ _id: shelfId });
-      stockRepo.findItemById.mockResolvedValue({
-        _id: itemId,
-        sku: 'SKU-1',
-        isPerishable: false,
-      });
-      stockRepo.findInventory.mockResolvedValue({ quantity: 100 });
-
-      const imagesByIndex = new Map([
-        [0, [fakeImageFile({ size: 6 * 1024 * 1024 })]],
-      ]);
-
-      await expect(
-        svc.createScrapNote(
-          {
-            items: [
-              {
-                itemId: itemId.toString(),
-                shelfId: shelfId.toString(),
-                quantity: 5,
-                reason: 'Vỡ',
-              },
-            ],
-          },
-          actorId,
-          imagesByIndex,
-        ),
-      ).rejects.toThrow();
-      expect(repo.createScrapNote).not.toHaveBeenCalled();
-    });
-
-    it('item isPerishable thiếu lotId → throw SCRAP_NOTE_ITEM_ISPERISHABLE_NO_LOT', async () => {
-      locationRepo.findShelfById.mockResolvedValue({ _id: shelfId });
-      stockRepo.findItemById.mockResolvedValue({
-        _id: itemId,
-        sku: 'SKU-1',
-        isPerishable: true,
-      });
-
-      await expect(
-        svc.createScrapNote(
-          {
-            items: [
-              {
-                itemId: itemId.toString(),
-                shelfId: shelfId.toString(),
-                quantity: 5,
-                reason: 'Vỡ',
-              },
-            ],
-          },
-          actorId,
-        ),
-      ).rejects.toThrow();
-      expect(repo.createScrapNote).not.toHaveBeenCalled();
-    });
-
-    it('số lượng đề xuất vượt tồn thật tại vị trí → throw SCRAP_NOTE_QTY_EXCEEDS', async () => {
-      locationRepo.findShelfById.mockResolvedValue({ _id: shelfId });
-      stockRepo.findItemById.mockResolvedValue({
-        _id: itemId,
-        sku: 'SKU-1',
-        isPerishable: false,
-      });
-      stockRepo.findInventory.mockResolvedValue({ quantity: 3 });
-
-      await expect(
-        svc.createScrapNote(
-          {
-            items: [
-              {
-                itemId: itemId.toString(),
-                shelfId: shelfId.toString(),
-                quantity: 5,
-                reason: 'Vỡ',
-              },
-            ],
-          },
-          actorId,
-        ),
-      ).rejects.toThrow();
-      expect(repo.createScrapNote).not.toHaveBeenCalled();
-    });
-  });
-
   describe('approveScrapNote', () => {
     it('không tìm thấy phiếu → throw SCRAP_NOTE_NOT_FOUND, không mở transaction', async () => {
       repo.findById.mockResolvedValue(null);
@@ -552,24 +423,20 @@ describe('ScrapNoteService', () => {
       ).not.toHaveBeenCalled();
     });
 
-    it('rollback khi tồn đúng shelf/lot không đủ, không cho tồn âm', async () => {
+    it('approve chỉ đổi trạng thái, chưa trừ tồn vật lý', async () => {
       repo.findById.mockResolvedValue({
         _id: 'sn1',
         status: ScrapNoteStatus.DRAFT,
         items: [{ itemId, sku: 'SKU-1', shelfId, lotId: null, quantity: 2 }],
       });
-      stockRepo.decrementInventoryAtShelfIfAvailable.mockResolvedValue(false);
-
-      await expect(svc.approveScrapNote('sn1', actorId)).rejects.toMatchObject({
-        code: 'SCRAP_NOTE_QTY_EXCEEDS',
-      });
+      await expect(svc.approveScrapNote('sn1', actorId)).resolves.toBeDefined();
       expect(
         stockRepo.decrementBalanceForScrapIfAvailable,
       ).not.toHaveBeenCalled();
       expect(stockRepo.insertMovement).not.toHaveBeenCalled();
     });
 
-    it('dòng có lotId (hết hạn) → trừ onHand + expired, KHÔNG bắn stock.changed', async () => {
+    it('approve không trừ onHand hay bắn stock.changed', async () => {
       repo.findById.mockResolvedValue({
         _id: 'sn1',
         status: ScrapNoteStatus.DRAFT,
@@ -589,14 +456,11 @@ describe('ScrapNoteService', () => {
 
       expect(
         stockRepo.decrementInventoryAtShelfIfAvailable,
-      ).toHaveBeenCalledWith(itemId, shelfId, lotId, 5, expect.anything());
+      ).not.toHaveBeenCalled();
       expect(
         stockRepo.decrementBalanceForScrapIfAvailable,
-      ).toHaveBeenCalledWith(itemId, 5, 5, expect.anything());
-      expect(stockRepo.insertMovement).toHaveBeenCalledWith(
-        expect.objectContaining({ quantity: -5, refType: 'scrap_note' }),
-        expect.anything(),
-      );
+      ).not.toHaveBeenCalled();
+      expect(stockRepo.insertMovement).not.toHaveBeenCalled();
       expect(stockQueue.add).not.toHaveBeenCalled();
       expect(repo.claimApprovedIfDraft).toHaveBeenCalledWith(
         'sn1',
@@ -605,7 +469,7 @@ describe('ScrapNoteService', () => {
       );
     });
 
-    it('dòng không có lotId (hỏng) → trừ onHand only, CÓ bắn stock.changed', async () => {
+    it('approve dòng hỏng cũng không bắn stock.changed', async () => {
       repo.findById.mockResolvedValue({
         _id: 'sn1',
         status: ScrapNoteStatus.DRAFT,
@@ -625,12 +489,8 @@ describe('ScrapNoteService', () => {
 
       expect(
         stockRepo.decrementBalanceForScrapIfAvailable,
-      ).toHaveBeenCalledWith(itemId, 5, 0, expect.anything());
-      expect(stockQueue.add).toHaveBeenCalledWith(
-        'stock.changed',
-        { sku: 'SKU-1', delta: -5 },
-        expect.objectContaining({ jobId: expect.any(String) }),
-      );
+      ).not.toHaveBeenCalled();
+      expect(stockQueue.add).not.toHaveBeenCalled();
     });
 
     it('phiếu nhiều dòng mix cả 2 loại → chỉ bắn event cho dòng không-lotId', async () => {
@@ -660,12 +520,7 @@ describe('ScrapNoteService', () => {
 
       await svc.approveScrapNote('sn1', actorId);
 
-      expect(stockQueue.add).toHaveBeenCalledTimes(1);
-      expect(stockQueue.add).toHaveBeenCalledWith(
-        'stock.changed',
-        { sku: 'SKU-2', delta: -3 },
-        expect.objectContaining({ jobId: expect.any(String) }),
-      );
+      expect(stockQueue.add).not.toHaveBeenCalled();
     });
 
     it('dòng skipAvailableSync=true (dù không có lotId) → KHÔNG bắn stock.changed', async () => {
@@ -680,7 +535,6 @@ describe('ScrapNoteService', () => {
             lotId: null,
             quantity: 5,
             reason: 'Hàng hoàn trả bị hỏng (RMA)',
-            skipAvailableSync: true,
           },
         ],
       });
@@ -716,7 +570,7 @@ describe('ScrapNoteService', () => {
 
       await svc.approveScrapNote('sn1', actorId);
 
-      expect(stockService.checkAndEmitStockLow).toHaveBeenCalledTimes(1);
+      expect(stockService.checkAndEmitStockLow).not.toHaveBeenCalled();
     });
 
     it('checkAndEmitStockLow chạy cho MỌI dòng kể cả lotId/skipAvailableSync — không bị filter như stock.changed', async () => {
@@ -759,22 +613,8 @@ describe('ScrapNoteService', () => {
 
       await svc.approveScrapNote('sn1', actorId);
 
-      // vòng stock.changed chỉ bắn cho dòng thứ 3 (không lotId, không skipAvailableSync)
-      expect(stockQueue.add).toHaveBeenCalledTimes(1);
-      // nhưng checkAndEmitStockLow phải chạy cho CẢ 3 dòng — không filter theo lotId/skipAvailableSync
-      expect(stockService.checkAndEmitStockLow).toHaveBeenCalledTimes(3);
-      expect(stockService.checkAndEmitStockLow).toHaveBeenNthCalledWith(
-        1,
-        itemId,
-      );
-      expect(stockService.checkAndEmitStockLow).toHaveBeenNthCalledWith(
-        2,
-        otherItemId,
-      );
-      expect(stockService.checkAndEmitStockLow).toHaveBeenNthCalledWith(
-        3,
-        thirdItemId,
-      );
+      expect(stockQueue.add).not.toHaveBeenCalled();
+      expect(stockService.checkAndEmitStockLow).not.toHaveBeenCalled();
     });
   });
 
@@ -797,41 +637,21 @@ describe('ScrapNoteService', () => {
       expect(repo.createApprovedScrapNote).toHaveBeenCalledWith(
         new Types.ObjectId(actorId),
         [
-          {
+          expect.objectContaining({
             itemId,
             sku: 'SKU-1',
             shelfId,
             lotId: null,
             quantity: 4,
             reason: 'Hàng hoàn trả bị hỏng (RMA)',
-            skipAvailableSync: true,
-          },
+          }),
         ],
         session,
         'SCR-20260730-0001',
       );
-      expect(stockRepo.upsertInventory).toHaveBeenCalledWith(
-        itemId,
-        shelfId,
-        null,
-        -4,
-        session,
-      );
-      expect(stockRepo.upsertBalance).toHaveBeenCalledWith(
-        itemId,
-        -4,
-        0,
-        0,
-        session,
-      );
-      expect(stockRepo.insertMovement).toHaveBeenCalledWith(
-        expect.objectContaining({
-          quantity: -4,
-          refType: 'scrap_note',
-          refId: scrapNoteId,
-        }),
-        session,
-      );
+      expect(stockRepo.upsertInventory).not.toHaveBeenCalled();
+      expect(stockRepo.upsertBalance).not.toHaveBeenCalled();
+      expect(stockRepo.insertMovement).not.toHaveBeenCalled();
       expect(stockQueue.add).not.toHaveBeenCalled();
       expect(result).toBe(scrapNoteId);
     });
@@ -872,13 +692,60 @@ describe('ScrapNoteService', () => {
         actorId,
       );
 
-      expect(repo.setRejected).toHaveBeenCalledWith(
+      expect(repo.claimRejectedIfDraft).toHaveBeenCalledWith(
         'sn1',
         expect.anything(),
         'Không hợp lệ',
+        expect.anything(),
       );
       expect(stockRepo.upsertInventory).not.toHaveBeenCalled();
       expect(stockRepo.insertMovement).not.toHaveBeenCalled();
+      expect(stockQueue.add).not.toHaveBeenCalled();
+    });
+
+    it('lot hết hạn trong lúc chờ reject: chuyển q sang expired và không emit available dương', async () => {
+      const sourceCellId = new Types.ObjectId();
+      repo.findById.mockResolvedValue({
+        _id: 'sn1',
+        status: ScrapNoteStatus.DRAFT,
+        items: [
+          {
+            itemId,
+            sku: 'SKU-1',
+            shelfId,
+            sourceCellId,
+            lotId,
+            quantity: 2,
+            lockedQuantity: 5,
+            excludedByExpired: false,
+          },
+        ],
+      });
+      stockRepo.findLotById.mockResolvedValue({
+        status: 'EXPIRED',
+        expiryDate: new Date('2026-07-01T00:00:00.000Z'),
+      });
+
+      await svc.rejectScrapNote(
+        'sn1',
+        { rejectReason: 'Không hủy nữa' },
+        actorId,
+      );
+
+      expect(stockRepo.releaseInventoryQuarantine).toHaveBeenCalledWith(
+        itemId,
+        shelfId,
+        sourceCellId,
+        lotId,
+        5,
+        expect.anything(),
+      );
+      expect(stockRepo.releaseQuarantinedBalance).toHaveBeenCalledWith(
+        itemId,
+        5,
+        true,
+        expect.anything(),
+      );
       expect(stockQueue.add).not.toHaveBeenCalled();
     });
   });

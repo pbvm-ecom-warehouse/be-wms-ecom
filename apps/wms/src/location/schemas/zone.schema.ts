@@ -1,5 +1,11 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { HydratedDocument, Types } from 'mongoose';
+import { ItemType } from '../../stock/schemas/warehouse-item.schema';
+
+export enum ZonePurpose {
+  STORAGE = 'STORAGE',
+  SCRAP = 'SCRAP',
+}
 
 @Schema({ collection: 'zones', timestamps: true })
 export class Zone {
@@ -8,6 +14,14 @@ export class Zone {
 
   @Prop({ required: true })
   code!: string;
+
+  /** STORAGE dùng cho tồn có thể bán/xuất; SCRAP là khu cách ly chờ tiêu hủy. */
+  @Prop({ enum: ZonePurpose, default: ZonePurpose.STORAGE })
+  zonePurpose!: ZonePurpose;
+
+  /** Rỗng = khu lưu trữ chung. Khu chuyên biệt chỉ nhận đúng ItemType. */
+  @Prop({ type: [String], enum: ItemType, default: [] })
+  allowedItemTypes!: ItemType[];
 
   /** Toạ độ góc trên-trái trên sơ đồ kho, đơn vị mét. */
   @Prop({ type: Number, default: 0 })
@@ -42,4 +56,14 @@ ZoneSchema.index({ deletedAt: 1 });
 ZoneSchema.index(
   { code: 1 },
   { unique: true, partialFilterExpression: { deletedAt: null } },
+);
+ZoneSchema.index(
+  { zonePurpose: 1 },
+  {
+    unique: true,
+    partialFilterExpression: {
+      zonePurpose: ZonePurpose.SCRAP,
+      deletedAt: null,
+    },
+  },
 );
