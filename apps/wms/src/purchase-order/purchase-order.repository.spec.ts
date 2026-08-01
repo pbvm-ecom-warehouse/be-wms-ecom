@@ -60,7 +60,12 @@ describe('PurchaseOrderRepository', () => {
         expect.objectContaining({
           poNumber: 'PO-20260702-0001',
           status: PurchaseOrderStatus.CONFIRMED,
-          items: resolvedItems,
+          items: [
+            {
+              ...resolvedItems[0],
+              itemId: new Types.ObjectId(itemId),
+            },
+          ],
         }),
       );
     });

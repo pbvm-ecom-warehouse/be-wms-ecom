@@ -37,3 +37,18 @@ describe('CreateWarehouseItemDto — minQuantity', () => {
     expect(errors).toHaveLength(0);
   });
 });
+
+describe('CreateWarehouseItemDto — altUnits qua multipart (JSON string)', () => {
+  it('altUnits gửi dạng JSON string (multipart form) vẫn hợp lệ với whitelist+forbidNonWhitelisted', async () => {
+    const dto = plainToInstance(CreateWarehouseItemDto, {
+      ...BASE,
+      attributeOptionIds: JSON.stringify(BASE.attributeOptionIds),
+      altUnits: JSON.stringify([{ factor: 5, unit: 'hộp' }]),
+    });
+    const errors = await validate(dto, {
+      whitelist: true,
+      forbidNonWhitelisted: true,
+    });
+    expect(errors).toHaveLength(0);
+  });
+});

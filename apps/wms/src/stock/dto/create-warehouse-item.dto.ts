@@ -4,7 +4,7 @@ import {
   OmitType,
   PartialType,
 } from '@nestjs/swagger';
-import { Transform, Type } from 'class-transformer';
+import { plainToInstance, Transform, Type } from 'class-transformer';
 import {
   ArrayMaxSize,
   ArrayMinSize,
@@ -31,6 +31,19 @@ function parseJsonArrayIfString({ value }: { value: unknown }): unknown {
   } catch {
     return value;
   }
+}
+
+/** Giống parseJsonArrayIfString nhưng tự plainToInstance từng phần tử sang
+ * AltUnitDto ngay trong Transform. @Type(() => AltUnitDto) không tự áp dụng
+ * được ở đây vì giá trị gốc là string — class-transformer xét shape giá trị
+ * gốc (string) để quyết định có instantiate nested class hay không, nên nó
+ * bỏ qua bước convert dù Transform đã trả về array sau đó. Kết quả: phần tử
+ * vẫn là plain object, ValidateNested + whitelist coi mọi field là "không
+ * tồn tại trên class" → lỗi "property should not exist". */
+function parseAltUnitsIfString({ value }: { value: unknown }): unknown {
+  const parsed = parseJsonArrayIfString({ value });
+  if (!Array.isArray(parsed)) return parsed;
+  return parsed.map((item: unknown) => plainToInstance(AltUnitDto, item));
 }
 
 /** Multipart form gửi boolean dạng string "true"/"false" — Boolean("false") vẫn
@@ -102,7 +115,7 @@ export class CreateWarehouseItemDto {
     description:
       'Đơn vị chính (unit) luôn là thùng dùng để nhập/mua — bắt buộc khai đúng 1 đơn vị lẻ để quy đổi.',
   })
-  @Transform(parseJsonArrayIfString)
+  @Transform(parseAltUnitsIfString)
   @IsArray()
   @ArrayMinSize(1)
   @ArrayMaxSize(1)

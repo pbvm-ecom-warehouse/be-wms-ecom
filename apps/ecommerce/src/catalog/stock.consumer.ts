@@ -67,6 +67,7 @@ export class StockConsumer extends WorkerHost {
           const applied = await this.catalogRepo.createProductVariantFromWms(
             String(job.id),
             job.name,
+            payload.name,
             payload.sku,
             payload.type,
             payload.initialQty || 0,

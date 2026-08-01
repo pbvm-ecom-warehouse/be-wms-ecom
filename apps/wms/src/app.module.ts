@@ -31,6 +31,7 @@ import { ScrapNoteModule } from './scrap-note/scrap-note.module';
 import { GoodsReturnModule } from './goods-return/goods-return.module';
 import { ReportModule } from './report/report.module';
 import { ShippingModule } from './shipping/shipping.module';
+import { OrderConsumerModule } from './order-consumer/order-consumer.module';
 import { appConfig } from './config/app.config';
 import { authConfig } from './config/auth.config';
 import { validateEnv } from './config/env.validation';
@@ -72,6 +73,7 @@ import { validateEnv } from './config/env.validation';
     GoodsReturnModule, // UC-09: nhận order.returned, sinh GoodsReturn, RECEIVER inspect/confirm/cancel
     ReportModule, // S4-03: báo cáo tồn (theo SKU, theo lô) + hiệu suất kho, read-only — [ADMIN, MANAGER]
     ShippingModule, // Shipper nội bộ: package + shipment carrierless; giữ Carrier cho legacy
+    OrderConsumerModule, // Consumer hợp nhất cho order-queue để tránh xung đột BullMQ
   ],
   controllers: [AppController],
   providers: [

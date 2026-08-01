@@ -71,27 +71,23 @@ export class CatalogRepository {
   }
 
   async findOrCreateProductForVariant(
+    name: string,
     sku: string,
     type: string,
     attributes: Record<string, string>,
   ): Promise<Types.ObjectId> {
-    let productName = `Sản phẩm kho - ${type}`;
+    let productName = name || `Sản phẩm kho - ${type}`;
+    let slug = `san-pham-kho-${sku.toLowerCase()}`;
 
-    if (type === 'MATERIAL') {
-      // Ví dụ: attributes.category = "Trà", "Sữa", "Đường"
-      // Lấy attributes.category làm tên sản phẩm
-      productName = attributes['category'] || 'Nguyên liệu';
-    } else if (type === 'PACKAGING') {
-      // Ví dụ: attributes.packaging = "Ống hút", "Túi", "Hộp", "Nắp ly"
-      // Lấy attributes.packaging làm tên sản phẩm
-      productName = attributes['packaging'] || 'Bao bì';
-    } else if (type === 'CUP_BLANK') {
-      productName = 'Ly trơn';
-    } else if (type === 'CUP_PRINTED') {
-      productName = 'Ly in';
+    if (type === 'CUP_BLANK' || type === 'CUP_PRINTED') {
+      slug = `san-pham-kho-${sku.split('-').slice(0, 2).join('-').toLowerCase()}`;
+      if (type === 'CUP_BLANK') {
+        productName = 'Ly trơn';
+      } else if (type === 'CUP_PRINTED') {
+        productName = 'Ly in';
+      }
     }
 
-    const slug = `san-pham-kho-${sku.split('-').slice(0, 2).join('-').toLowerCase()}`;
     const existing = await this.productModel.findOne({ slug }).lean();
     if (existing) {
       return existing._id;
@@ -110,6 +106,7 @@ export class CatalogRepository {
   async createProductVariantFromWms(
     jobId: string,
     eventName: string,
+    name: string,
     sku: string,
     type: string,
     initialQty: number,
@@ -125,6 +122,7 @@ export class CatalogRepository {
           .lean();
         if (!existing) {
           const productId = await this.findOrCreateProductForVariant(
+            name,
             sku,
             type,
             attributes,

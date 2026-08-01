@@ -556,7 +556,7 @@ export class OrderService {
       if (paidRatio >= 0.99) {
         nextPaymentStatus = PaymentStatus.PAID;
         nextOrderStatus = OrderStatus.CONFIRMED;
-        nextFulfillmentStatus = FulfillmentStatus.ISSUED;
+        nextFulfillmentStatus = FulfillmentStatus.READY_TO_PICK;
       } else if (paidRatio >= 0.49) {
         nextPaymentStatus = PaymentStatus.DEPOSIT_PAID;
         nextOrderStatus = OrderStatus.CONFIRMED;

@@ -6,7 +6,6 @@ import { GoodsReturn, GoodsReturnSchema } from './schemas/goods-return.schema';
 import { GoodsReturnRepository } from './goods-return.repository';
 import { GoodsReturnService } from './goods-return.service';
 import { GoodsReturnController } from './goods-return.controller';
-import { OrderReturnedConsumer } from './order-returned.consumer';
 import { LocationModule } from '../location/location.module';
 import { StockModule } from '../stock/stock.module';
 import { ScrapNoteModule } from '../scrap-note/scrap-note.module';
@@ -26,7 +25,7 @@ import { PutAwayModule } from '../put-away/put-away.module';
     DocumentNumberModule,
     PutAwayModule,
   ],
-  providers: [GoodsReturnRepository, GoodsReturnService, OrderReturnedConsumer],
+  providers: [GoodsReturnRepository, GoodsReturnService],
   controllers: [GoodsReturnController],
   exports: [GoodsReturnService],
 })
