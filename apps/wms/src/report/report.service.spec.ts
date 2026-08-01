@@ -25,7 +25,7 @@ describe('ReportService', () => {
   });
 
   describe('getStockReport', () => {
-    it('tính available = onHand - reserved - expired', async () => {
+    it('trả quarantined và tính available sau khi trừ tồn cách ly', async () => {
       repo.aggregateStockReport.mockResolvedValue({
         data: [
           {
@@ -33,6 +33,7 @@ describe('ReportService', () => {
             onHand: 10,
             reserved: 3,
             expired: 1,
+            quarantined: 2,
             item: { sku: 'SKU-1', name: 'Item 1' },
           },
         ],
@@ -47,7 +48,8 @@ describe('ReportService', () => {
         onHand: 10,
         reserved: 3,
         expired: 1,
-        available: 6,
+        quarantined: 2,
+        available: 4,
       });
       expect(repo.aggregateStockReport).toHaveBeenCalledWith({}, 1, 20);
     });

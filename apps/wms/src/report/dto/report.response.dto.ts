@@ -28,6 +28,10 @@ export class StockReportItemDto {
 
   @Expose()
   @ApiProperty()
+  quarantined!: number;
+
+  @Expose()
+  @ApiProperty()
   available!: number;
 }
 

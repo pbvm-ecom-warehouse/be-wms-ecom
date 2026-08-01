@@ -32,6 +32,13 @@ export class CountStockCountItemDto {
   @IsMongoId()
   shelfId!: string;
 
+  @ApiProperty({
+    example: '665f1a2b3c4d5e6f7a8b9c1c',
+    description: 'Khoang lưu hàng của đúng dòng kiểm kê.',
+  })
+  @IsMongoId()
+  cellId!: string;
+
   @ApiPropertyOptional({ example: '665f1a2b3c4d5e6f7a8b9c1b' })
   @IsOptional()
   @IsMongoId()
@@ -64,6 +71,13 @@ export class CountStockCountItemFormDto {
   @ApiProperty({ example: '665f1a2b3c4d5e6f7a8b9c1a' })
   @IsMongoId()
   shelfId!: string;
+
+  @ApiProperty({
+    example: '665f1a2b3c4d5e6f7a8b9c1c',
+    description: 'Khoang lưu hàng của đúng dòng kiểm kê.',
+  })
+  @IsMongoId()
+  cellId!: string;
 
   @ApiPropertyOptional({ example: '665f1a2b3c4d5e6f7a8b9c1b' })
   @IsOptional()
@@ -135,6 +149,13 @@ export class StockCountItemResponseDto {
   )
   @ApiProperty()
   shelfId!: string;
+
+  @Expose()
+  @Transform(({ obj }: { obj: { cellId?: Types.ObjectId | null } }) =>
+    obj.cellId ? obj.cellId.toString() : null,
+  )
+  @ApiPropertyOptional()
+  cellId!: string | null;
 
   @Expose()
   @Transform(({ obj }: { obj: { lotId?: Types.ObjectId | null } }) =>

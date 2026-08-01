@@ -10,6 +10,11 @@ export enum PutAwayTaskStatus {
   COMPLETED = 'COMPLETED',
 }
 
+export enum PutAwayTaskSourceType {
+  GOODS_RECEIPT = 'GOODS_RECEIPT',
+  GOODS_RETURN = 'GOODS_RETURN',
+}
+
 /**
  * Sub-document: 1 dòng cần xếp (map 1-1 với 1 dòng GRN theo item+lô).
  * Không audit riêng — kế thừa từ PutAwayTask cha.
@@ -21,6 +26,10 @@ export enum PutAwayTaskStatus {
 export class PutAwayItem {
   @Prop({ type: Types.ObjectId, required: true })
   itemId!: Types.ObjectId;
+
+  /** Snapshot để task từ hàng hoàn vẫn hiển thị/quét được mà không cần GRN. */
+  @Prop()
+  sku?: string;
 
   @Prop({ type: Types.ObjectId, default: null })
   lotId!: Types.ObjectId | null;
@@ -53,8 +62,22 @@ const PutAwayItemSchema = SchemaFactory.createForClass(PutAwayItem);
  */
 @Schema({ collection: 'put_away_tasks', timestamps: true })
 export class PutAwayTask {
+  /**
+   * ID chứng từ nguồn. Tên grnId được giữ để tương thích dữ liệu/API cũ;
+   * sourceType phân biệt phiếu nhập với hàng hoàn.
+   */
   @Prop({ type: Types.ObjectId, required: true })
   grnId!: Types.ObjectId;
+
+  @Prop({
+    enum: PutAwayTaskSourceType,
+    default: PutAwayTaskSourceType.GOODS_RECEIPT,
+  })
+  sourceType!: PutAwayTaskSourceType;
+
+  /** Mã nghiệp vụ snapshot (đặc biệt RET-* cho task hàng hoàn). */
+  @Prop()
+  sourceNumber?: string;
 
   /** Nguồn nhận tạm được chốt lúc duyệt GRN; đổi cấu hình layout sau đó không làm hỏng task. */
   @Prop({ type: Types.ObjectId, default: null })

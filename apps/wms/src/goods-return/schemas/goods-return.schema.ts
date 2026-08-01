@@ -61,6 +61,10 @@ export class GoodsReturnItem {
   @Prop({ type: Types.ObjectId, default: null })
   scrapNoteId!: Types.ObjectId | null;
 
+  /** Task cất hàng được tạo cho dòng GOOD sau confirm. */
+  @Prop({ type: Types.ObjectId, default: null })
+  putAwayTaskId!: Types.ObjectId | null;
+
   /** Ảnh minh chứng tình trạng hàng (đặc biệt DAMAGED) — set lúc inspect, optional. */
   @Prop({ type: [String], default: [] })
   images!: string[];

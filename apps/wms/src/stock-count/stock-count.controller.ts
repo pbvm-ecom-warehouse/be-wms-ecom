@@ -117,6 +117,7 @@ export class StockCountController {
       type: 'object',
       properties: {
         shelfId: { type: 'string' },
+        cellId: { type: 'string' },
         lotId: { type: 'string' },
         actualQty: { type: 'number' },
         reason: { type: 'string' },
@@ -125,6 +126,7 @@ export class StockCountController {
           items: { type: 'string', format: 'binary' },
         },
       },
+      required: ['shelfId', 'cellId', 'actualQty'],
     },
   })
   @ApiOkResponse({ type: StockCountResponseDto })

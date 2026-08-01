@@ -37,6 +37,14 @@ export class InventoryStock {
   })
   quantity!: number;
 
+  /** true = khóa toàn dòng trong lúc chờ duyệt/chuyển khu hủy. */
+  @Prop({ type: Boolean, default: false })
+  isQuarantined!: boolean;
+
+  /** Số lượng trong dòng đang bị cách ly; cho phép nhiều phiếu dùng chung row. */
+  @Prop({ type: Number, default: 0, min: 0 })
+  quarantinedQuantity!: number;
+
   /** Chỉ để hiển thị tham khảo (vd "= 24 cái") — không dùng để tính toán số lượng. */
   @Prop({ type: Number })
   packageFactor?: number;

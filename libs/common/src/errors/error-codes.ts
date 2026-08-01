@@ -211,6 +211,14 @@ export const ERROR_CATALOG = {
     status: HttpStatus.BAD_REQUEST,
     message: 'Operation không được phép cho loại entity này',
   },
+  LAYOUT_RESET_REQUIRES_EMPTY_STOCK: {
+    status: HttpStatus.CONFLICT,
+    message: 'Chỉ được đặt lại sơ đồ khi kho không còn tồn hàng',
+  },
+  SCRAP_ZONE_ALREADY_EXISTS: {
+    status: HttpStatus.CONFLICT,
+    message: 'Kho chỉ được cấu hình một khu hủy hàng đang hoạt động',
+  },
 
   // ── WMS — Supplier ─────────────────────────────────────────────────────────
   SUPPLIER_NOT_FOUND: {
@@ -363,6 +371,14 @@ export const ERROR_CATALOG = {
     status: HttpStatus.CONFLICT,
     message: 'Số lượng tồn kho không đủ',
   },
+  STOCK_BALANCE_NOT_FOUND: {
+    status: HttpStatus.NOT_FOUND,
+    message: 'Không tìm thấy số dư tồn kho của mặt hàng',
+  },
+  STOCK_BALANCE_INVALID: {
+    status: HttpStatus.CONFLICT,
+    message: 'Số dư tồn kho không còn hợp lệ cho thao tác này',
+  },
   LOT_NOT_FOUND: {
     status: HttpStatus.NOT_FOUND,
     message: 'Không tìm thấy lô hàng',
@@ -413,6 +429,14 @@ export const ERROR_CATALOG = {
     status: HttpStatus.CONFLICT,
     message: 'Khoang đã chọn không còn đủ thể tích',
   },
+  PUTAWAY_ZONE_NOT_ALLOWED: {
+    status: HttpStatus.BAD_REQUEST,
+    message: 'Không thể cất hàng vào khu hủy hoặc khu không còn hoạt động',
+  },
+  PUTAWAY_ITEM_TYPE_NOT_ALLOWED: {
+    status: HttpStatus.BAD_REQUEST,
+    message: 'Loại mặt hàng này không được phép cất trong khu đã chọn',
+  },
 
   // ── WMS — Goods Issue ────────────────────────────────────────────────────
   GOODS_ISSUE_NOT_FOUND: {
@@ -458,6 +482,30 @@ export const ERROR_CATALOG = {
   GOODS_ISSUE_ALREADY_CONFIRMED: {
     status: HttpStatus.CONFLICT,
     message: 'Phiếu xuất đã hoàn tất',
+  },
+  GOODS_ISSUE_SHIPPER_REQUIRED: {
+    status: HttpStatus.BAD_REQUEST,
+    message: 'Phải chọn Shipper phụ trách phiếu xuất',
+  },
+  GOODS_ISSUE_ASSIGNEE_NOT_SHIPPER: {
+    status: HttpStatus.BAD_REQUEST,
+    message: 'Nhân viên được chọn không phải Shipper đang hoạt động',
+  },
+  GOODS_ISSUE_ALREADY_ASSIGNED: {
+    status: HttpStatus.CONFLICT,
+    message: 'Phiếu xuất đã được gán cho Shipper khác',
+  },
+  GOODS_ISSUE_NOT_ASSIGNED: {
+    status: HttpStatus.CONFLICT,
+    message: 'Phiếu xuất chưa được Admin hoặc Manager gán cho Shipper',
+  },
+  GOODS_ISSUE_SOURCE_NOT_PICKABLE: {
+    status: HttpStatus.CONFLICT,
+    message: 'Nguồn hàng đã thay đổi hoặc không còn đủ điều kiện để lấy',
+  },
+  GOODS_ISSUE_SOURCE_QUARANTINED: {
+    status: HttpStatus.CONFLICT,
+    message: 'Nguồn hàng đang cách ly hoặc chờ hủy, hãy chọn gợi ý khác',
   },
 
   // ── WMS — Print Job ──────────────────────────────────────────────────────
@@ -523,6 +571,14 @@ export const ERROR_CATALOG = {
     status: HttpStatus.CONFLICT,
     message: 'Phiếu chưa đếm xong, không thể duyệt',
   },
+  STOCK_COUNT_NOT_COUNTABLE: {
+    status: HttpStatus.CONFLICT,
+    message: 'Phiếu kiểm không còn ở trạng thái cho phép nhập số đếm',
+  },
+  STOCK_COUNT_STALE_LINE: {
+    status: HttpStatus.CONFLICT,
+    message: 'Dòng tồn đã thay đổi sau khi kiểm đếm, vui lòng kiểm lại',
+  },
 
   // ── WMS — Scrap Note ─────────────────────────────────────────────────────
   SCRAP_NOTE_NOT_FOUND: {
@@ -557,6 +613,42 @@ export const ERROR_CATALOG = {
     status: HttpStatus.CONFLICT,
     message: 'Phiếu đã được duyệt hoặc từ chối, không thể xử lý lại',
   },
+  SCRAP_NOTE_NOT_APPROVED: {
+    status: HttpStatus.CONFLICT,
+    message: 'Phiếu hủy chưa được duyệt để chuyển hàng vào khu hủy',
+  },
+  SCRAP_NOTE_NOT_QUARANTINED: {
+    status: HttpStatus.CONFLICT,
+    message: 'Chưa chuyển đủ hàng của phiếu vào khu hủy',
+  },
+  SCRAP_NOTE_ALREADY_DISPOSED: {
+    status: HttpStatus.CONFLICT,
+    message: 'Phiếu hủy đã được xác nhận tiêu hủy trước đó',
+  },
+  SCRAP_NOTE_CELL_NOT_FOUND: {
+    status: HttpStatus.NOT_FOUND,
+    message: 'Không tìm thấy khoang nguồn hoặc khoang hủy theo mã quét',
+  },
+  SCRAP_NOTE_TARGET_NOT_SCRAP_ZONE: {
+    status: HttpStatus.BAD_REQUEST,
+    message: 'Khoang đích không thuộc khu hủy hàng',
+  },
+  SCRAP_NOTE_ITEM_MISMATCH: {
+    status: HttpStatus.BAD_REQUEST,
+    message: 'Mặt hàng hoặc khoang quét không khớp dòng phiếu hủy',
+  },
+  SCRAP_NOTE_ITEM_ALREADY_MOVED: {
+    status: HttpStatus.CONFLICT,
+    message: 'Dòng hàng đã được chuyển vào khu hủy trước đó',
+  },
+  SCRAP_NOTE_SOURCE_ROW_LOCKED: {
+    status: HttpStatus.CONFLICT,
+    message: 'Dòng tồn này đã được khóa bởi một phiếu hủy đang xử lý',
+  },
+  SCRAP_NOTE_QTY_EXCEEDS_LOCKED_ROW: {
+    status: HttpStatus.CONFLICT,
+    message: 'Số lượng xử lý vượt quá lượng hàng đã khóa chờ hủy',
+  },
 
   // ── WMS — Goods Return ───────────────────────────────────────────────────
   GOODS_RETURN_NOT_FOUND: {
@@ -578,6 +670,14 @@ export const ERROR_CATALOG = {
   GOODS_RETURN_ITEM_ISPERISHABLE_NO_LOT: {
     status: HttpStatus.BAD_REQUEST,
     message: 'Mặt hàng có hạn sử dụng phải chọn lô khi nhập lại hàng tốt',
+  },
+  GOODS_RETURN_LOT_NOT_ACTIVE: {
+    status: HttpStatus.CONFLICT,
+    message: 'Lô hàng hoàn không còn hoạt động hoặc đã hết hạn',
+  },
+  GOODS_RETURN_ITEM_NO_DIMENSIONS: {
+    status: HttpStatus.CONFLICT,
+    message: 'Mặt hàng hoàn thiếu kích thước để tạo lệnh cất hàng',
   },
 
   // ── WMS — Shipping ───────────────────────────────────────────────────────

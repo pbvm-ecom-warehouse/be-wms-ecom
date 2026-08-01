@@ -27,7 +27,6 @@ export interface CreateGoodsIssueInput {
 export interface QueryGoodsIssueInput {
   status?: GoodsIssueStatus;
   assignedShipperId?: string;
-  includeUnassigned?: boolean;
   page?: number;
   limit?: number;
 }
@@ -47,7 +46,7 @@ export class GoodsIssueRepository {
     return this.model.findOne({ _id: id }).exec();
   }
 
-  claim(
+  assign(
     id: string,
     shipperId: Types.ObjectId,
   ): Promise<GoodsIssueDocument | null> {
@@ -109,17 +108,7 @@ export class GoodsIssueRepository {
     if (query.status) filter['status'] = query.status;
     if (query.assignedShipperId) {
       const owner = new Types.ObjectId(query.assignedShipperId);
-      if (query.includeUnassigned) {
-        filter['$or'] = [
-          { assignedShipperId: owner },
-          {
-            assignedShipperId: null,
-            status: GoodsIssueStatus.PENDING,
-          },
-        ];
-      } else {
-        filter['assignedShipperId'] = owner;
-      }
+      filter['assignedShipperId'] = owner;
     }
 
     const [data, total] = await Promise.all([

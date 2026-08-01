@@ -21,6 +21,7 @@ export interface RawStockReportRow {
   onHand: number;
   reserved: number;
   expired: number;
+  quarantined?: number;
   item: { sku: string; name: string };
 }
 

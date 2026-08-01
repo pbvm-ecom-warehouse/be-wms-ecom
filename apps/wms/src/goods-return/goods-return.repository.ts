@@ -131,6 +131,7 @@ export class GoodsReturnRepository {
   async setRestocked(
     id: string,
     scrapNoteIdByItemId: Map<string, Types.ObjectId>,
+    putAwayTaskIdByItemId: Map<string, Types.ObjectId>,
     session: ClientSession,
   ): Promise<void> {
     const doc = await this.model.findOne({ _id: id }, null, { session }).exec();
@@ -139,6 +140,8 @@ export class GoodsReturnRepository {
     for (const item of doc.items) {
       const scrapNoteId = scrapNoteIdByItemId.get(item.itemId.toString());
       if (scrapNoteId) item.scrapNoteId = scrapNoteId;
+      const putAwayTaskId = putAwayTaskIdByItemId.get(item.itemId.toString());
+      if (putAwayTaskId) item.putAwayTaskId = putAwayTaskId;
     }
     await doc.save({ session });
   }

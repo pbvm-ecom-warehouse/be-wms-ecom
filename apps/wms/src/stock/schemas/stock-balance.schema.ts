@@ -3,7 +3,7 @@ import { HydratedDocument, SchemaTypes, Types } from 'mongoose';
 
 /**
  * Lớp 1 tồn kho — snapshot tổng per item.
- * available = onHand - reserved - expired → đây là số đẩy sang Ecommerce.
+ * available = onHand - reserved - expired - quarantined.
  * Nguồn sự thật đối soát là stock_movements (append-only).
  * Audit: chỉ updatedAt (snapshot — không có createdAt, không soft-delete).
  */
@@ -45,6 +45,17 @@ export class StockBalance {
     },
   })
   expired!: number;
+
+  /** Hàng bị khóa/chuyển khu hủy, loại khỏi available nhưng vẫn còn vật lý. */
+  @Prop({
+    required: true,
+    default: 0,
+    validate: {
+      validator: Number.isInteger,
+      message: 'quarantined phải là số nguyên',
+    },
+  })
+  quarantined!: number;
 
   /** Ngưỡng cảnh báo hàng sắp hết — bắn event stock.low khi available < minQuantity */
   @Prop({ default: 0 })

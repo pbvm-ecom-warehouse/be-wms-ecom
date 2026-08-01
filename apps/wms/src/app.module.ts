@@ -31,7 +31,6 @@ import { ScrapNoteModule } from './scrap-note/scrap-note.module';
 import { GoodsReturnModule } from './goods-return/goods-return.module';
 import { ReportModule } from './report/report.module';
 import { ShippingModule } from './shipping/shipping.module';
-import { InventoryReconciliationModule } from './inventory-reconciliation/inventory-reconciliation.module';
 import { appConfig } from './config/app.config';
 import { authConfig } from './config/auth.config';
 import { validateEnv } from './config/env.validation';
@@ -72,7 +71,6 @@ import { validateEnv } from './config/env.validation';
     ScrapNoteModule, // UC-08: COUNTER/RECEIVER đề xuất hủy hàng hết hạn/hỏng, MANAGER duyệt/từ chối
     GoodsReturnModule, // UC-09: nhận order.returned, sinh GoodsReturn, RECEIVER inspect/confirm/cancel
     ReportModule, // S4-03: báo cáo tồn (theo SKU, theo lô) + hiệu suất kho, read-only — [ADMIN, MANAGER]
-    InventoryReconciliationModule, // Phân khoang tồn cũ, không tạo StockMovement lịch sử giả
     ShippingModule, // Shipper nội bộ: package + shipment carrierless; giữ Carrier cho legacy
   ],
   controllers: [AppController],

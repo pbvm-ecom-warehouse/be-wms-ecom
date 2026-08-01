@@ -1,6 +1,7 @@
 import { Types } from 'mongoose';
 import { PutAwayRepository } from './put-away.repository';
 import { PutAwayTaskStatus } from './schemas/put-away-task.schema';
+import { PutAwayTaskSourceType } from './schemas/put-away-task.schema';
 
 const packageSpec = {
   unit: 'thùng',
@@ -43,6 +44,7 @@ describe('PutAwayRepository', () => {
       [
         {
           grnId,
+          sourceType: PutAwayTaskSourceType.GOODS_RECEIPT,
           sourceShelfId,
           status: PutAwayTaskStatus.PENDING,
           items: [

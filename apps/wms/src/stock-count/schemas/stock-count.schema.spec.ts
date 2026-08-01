@@ -34,12 +34,13 @@ describe('StockCountSchema', () => {
     expect(statusOnly).toBeDefined();
   });
 
-  it('StockCountStatus có đủ 4 giá trị', () => {
+  it('StockCountStatus có trạng thái đóng an toàn cho phiếu legacy', () => {
     expect(Object.values(StockCountStatus)).toEqual([
       'DRAFT',
       'IN_PROGRESS',
       'COMPLETED',
       'APPROVED',
+      'CANCELLED',
     ]);
   });
 
@@ -60,5 +61,12 @@ describe('StockCountSchema', () => {
         ? (imagesPath.defaultValue as () => unknown)()
         : imagesPath.defaultValue;
     expect(defaultValue).toEqual([]);
+  });
+
+  it('StockCountItem định danh chính xác cả khoang cellId', () => {
+    const itemPaths = StockCountSchema.path('items') as unknown as {
+      schema: { paths: Record<string, unknown> };
+    };
+    expect(itemPaths.schema.paths['cellId']).toBeDefined();
   });
 });

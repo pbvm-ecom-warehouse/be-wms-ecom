@@ -1,13 +1,14 @@
 import { MovementType, StockMovementSchema } from './stock-movement.schema';
 
 describe('StockMovement schema', () => {
-  it('MovementType có đủ 10 giá trị (đã thêm RETURN_IN cho UC-09, RESERVE/RELEASE cho saga)', () => {
+  it('MovementType có đủ 11 giá trị (gồm SCRAP_TRANSFER, RETURN_IN và RESERVE/RELEASE)', () => {
     expect(Object.values(MovementType)).toEqual([
       'RECEIVE',
       'PUTAWAY',
       'ISSUE',
       'ADJUST',
       'SCRAP',
+      'SCRAP_TRANSFER',
       'PRINT_CONSUME',
       'PRINT_OUTPUT',
       'RETURN_IN',
@@ -37,7 +38,8 @@ describe('StockMovement schema', () => {
     expect(col ?? 'stock_movements').toBe('stock_movements');
   });
 
-  it('bao gồm RESERVE và RELEASE trong MovementType', () => {
+  it('bao gồm SCRAP_TRANSFER, RESERVE và RELEASE trong MovementType', () => {
+    expect(MovementType.SCRAP_TRANSFER).toBe('SCRAP_TRANSFER');
     expect(MovementType.RESERVE).toBe('RESERVE');
     expect(MovementType.RELEASE).toBe('RELEASE');
   });

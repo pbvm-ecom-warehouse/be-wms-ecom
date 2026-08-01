@@ -4,11 +4,13 @@ import { ClientSession, Model, Types } from 'mongoose';
 import {
   PutAwayTask,
   PutAwayTaskDocument,
+  PutAwayTaskSourceType,
   PutAwayTaskStatus,
 } from './schemas/put-away-task.schema';
 
 export interface CreatePutAwayLineInput {
   itemId: Types.ObjectId;
+  sku?: string;
   lotId: Types.ObjectId | null;
   quantity: number;
   packageSpec?: {
@@ -41,15 +43,22 @@ export class PutAwayRepository {
     actorId: string,
     session: ClientSession,
     sourceShelfId: Types.ObjectId,
+    source: {
+      type: PutAwayTaskSourceType;
+      number?: string;
+    } = { type: PutAwayTaskSourceType.GOODS_RECEIPT },
   ): Promise<PutAwayTaskDocument> {
     const [doc] = await this.model.create(
       [
         {
           grnId,
+          sourceType: source.type,
+          ...(source.number ? { sourceNumber: source.number } : {}),
           sourceShelfId,
           status: PutAwayTaskStatus.PENDING,
           items: lines.map((l) => ({
             itemId: l.itemId,
+            ...(l.sku ? { sku: l.sku } : {}),
             lotId: l.lotId,
             quantity: l.quantity,
             remainingQty: l.quantity,

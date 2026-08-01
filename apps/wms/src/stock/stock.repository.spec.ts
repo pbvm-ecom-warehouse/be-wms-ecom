@@ -225,6 +225,7 @@ describe('StockRepository', () => {
           cellId: cellA,
           lotId: null,
           quantity: { $gte: 3 },
+          isQuarantined: { $ne: true },
         },
         { $inc: { quantity: -3 } },
         { new: true, session },
@@ -237,6 +238,7 @@ describe('StockRepository', () => {
           cellId: cellB,
           lotId: null,
           quantity: { $gte: 1 },
+          isQuarantined: { $ne: true },
         },
         { $inc: { quantity: -1 } },
         { new: true, session },
@@ -256,6 +258,90 @@ describe('StockRepository', () => {
       );
       expect(result).toBe(false);
       expect(inventoryModel.findOneAndUpdate).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('quarantine quantity isolation', () => {
+    it('tồn thường chỉ được trừ trong phần quantity chưa bị quarantine', async () => {
+      const cellId = new Types.ObjectId();
+      const session = {} as never;
+      inventoryModel.exec.mockResolvedValueOnce({ quantity: 7 });
+
+      await repo.decrementInventoryIfAvailable(
+        itemId,
+        shelfId,
+        cellId,
+        null,
+        3,
+        session,
+      );
+
+      expect(inventoryModel.findOneAndUpdate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          itemId,
+          shelfId,
+          cellId,
+          lotId: null,
+          $expr: {
+            $gte: [
+              {
+                $subtract: [
+                  '$quantity',
+                  expect.any(Object) as Record<string, unknown>,
+                ],
+              },
+              3,
+            ],
+          },
+        }),
+        { $inc: { quantity: -3 } },
+        { new: true, session },
+      );
+    });
+
+    it('chuyển một allocation quarantine chỉ giảm đúng quantity và giữ khóa nếu allocation khác còn lại', async () => {
+      const cellId = new Types.ObjectId();
+      const session = {} as never;
+      inventoryModel.exec.mockResolvedValueOnce({
+        quantity: 3,
+        quarantinedQuantity: 3,
+        isQuarantined: true,
+      });
+
+      await repo.decrementQuarantinedInventoryIfAvailable(
+        itemId,
+        shelfId,
+        cellId,
+        null,
+        2,
+        session,
+      );
+
+      const [, update] = inventoryModel.findOneAndUpdate.mock.calls[0] as [
+        Record<string, unknown>,
+        Array<Record<string, unknown>>,
+      ];
+      expect(update).toEqual([
+        {
+          $set: expect.objectContaining({
+            quantity: { $subtract: ['$quantity', 2] },
+            quarantinedQuantity: {
+              $subtract: [expect.any(Object) as Record<string, unknown>, 2],
+            },
+            isQuarantined: {
+              $gt: [
+                {
+                  $subtract: [
+                    expect.any(Object) as Record<string, unknown>,
+                    2,
+                  ],
+                },
+                0,
+              ],
+            },
+          }) as Record<string, unknown>,
+        },
+      ]);
     });
   });
 
@@ -294,7 +380,20 @@ describe('StockRepository', () => {
         {
           itemId,
           $expr: {
-            $gte: [{ $subtract: ['$onHand', '$reserved', '$expired'] }, 4],
+            $gte: [
+              {
+                $subtract: [
+                  {
+                    $subtract: [
+                      { $subtract: ['$onHand', '$reserved'] },
+                      '$expired',
+                    ],
+                  },
+                  { $ifNull: ['$quarantined', 0] },
+                ],
+              },
+              4,
+            ],
           },
         },
         { $inc: { reserved: 4 } },
@@ -618,6 +717,51 @@ describe('StockRepository', () => {
     });
   });
 
+  describe('goods issue master-data locks', () => {
+    it('khóa đúng mặt hàng còn active và chưa soft-delete', async () => {
+      const session = {} as never;
+      const activeItem = { _id: itemId, isActive: true, deletedAt: null };
+      warehouseItemModel.exec.mockResolvedValue(activeItem);
+
+      await expect(
+        repo.lockActiveItemForIssue(itemId.toString(), session),
+      ).resolves.toBe(activeItem);
+
+      expect(warehouseItemModel.findOneAndUpdate).toHaveBeenCalledWith(
+        {
+          _id: itemId.toString(),
+          isActive: true,
+          deletedAt: null,
+        },
+        { $set: { updatedAt: expect.any(Date) } },
+        { new: true, session },
+      );
+    });
+
+    it('khóa lô đúng item, ACTIVE và có expiryDate sau thời điểm xác nhận', async () => {
+      const session = {} as never;
+      const lotId = new Types.ObjectId();
+      const now = new Date('2026-07-30T04:00:00.000Z');
+      const activeLot = { _id: lotId, itemId };
+      lotModel.exec.mockResolvedValue(activeLot);
+
+      await expect(
+        repo.lockActiveLotForIssue(lotId, itemId, now, session),
+      ).resolves.toBe(activeLot);
+
+      expect(lotModel.findOneAndUpdate).toHaveBeenCalledWith(
+        {
+          _id: lotId,
+          itemId,
+          status: 'ACTIVE',
+          expiryDate: { $gt: now },
+        },
+        { $set: { updatedAt: expect.any(Date) } },
+        { new: true, session },
+      );
+    });
+  });
+
   describe('findInventoryByScope', () => {
     it('không kèm filter shelfId khi không truyền shelfIds', async () => {
       inventoryModel.find = jest.fn().mockReturnThis();
@@ -665,25 +809,38 @@ describe('StockRepository', () => {
       const pipeline = (inventoryModel.aggregate as jest.Mock).mock
         .calls[0][0] as Record<string, unknown>[];
       expect(pipeline[0]).toEqual({
-        $match: { lotId, quantity: { $gt: 0 } },
+        $match: {
+          lotId,
+          quantity: { $gt: 0 },
+          isQuarantined: { $ne: true },
+        },
       });
     });
   });
 
   describe('findAvailableStockForPick', () => {
-    it('hàng perishable: dùng aggregate join Lot + Shelf, sắp expiryDate tăng dần (FEFO), loại EXPIRED trong pipeline, trả kèm shelfCode', async () => {
+    it('hàng perishable: chỉ lấy tồn khả dụng tại vị trí active, lot ACTIVE chưa hết hạn và sắp FEFO', async () => {
       const pickItemId = new Types.ObjectId();
       const lotAShelf = new Types.ObjectId();
+      const lotACell = new Types.ObjectId();
+      const lotARack = new Types.ObjectId();
       const lotA = new Types.ObjectId();
+      const expiryDate = new Date('2026-08-01');
 
       inventoryModel.aggregate = jest.fn().mockResolvedValue([
         {
           shelfId: lotAShelf,
+          cellId: lotACell,
           shelfCode: 'A1-1',
+          cellCode: 'A1-1-B02',
+          rackId: lotARack,
+          level: 1,
+          bay: 2,
           lotId: lotA,
           lotNumber: 'LOT-A',
-          expiryDate: new Date('2026-07-01'),
+          expiryDate,
           quantity: 5,
+          packageFactor: 12,
         },
       ]);
 
@@ -695,49 +852,108 @@ describe('StockRepository', () => {
       expect(pipeline[0]).toMatchObject({
         $match: {
           itemId: pickItemId,
+          cellId: { $ne: null },
           quantity: { $gt: 0 },
           lotId: { $ne: null },
+          isQuarantined: { $ne: true },
         },
       });
-      expect(pipeline.some((stage) => '$sort' in stage)).toBe(true);
-      expect(
-        pipeline.some(
-          (stage) =>
-            '$match' in stage &&
-            (stage['$match'] as Record<string, unknown>)['lot.status'] ===
-              'ACTIVE',
-        ),
-      ).toBe(true);
-      // Phải join sang collection shelves để lấy code (barcode PICKER đọc/quét) —
-      // không chỉ trả shelfId (ObjectId nội bộ, người dùng không đọc được).
-      expect(
-        pipeline.some(
-          (stage) =>
-            '$lookup' in stage &&
-            (stage['$lookup'] as Record<string, unknown>)['from'] === 'shelves',
-        ),
-      ).toBe(true);
+      const lotMatch = pipeline.find(
+        (stage) =>
+          '$match' in stage &&
+          'lot.status' in (stage['$match'] as Record<string, unknown>),
+      );
+      expect(lotMatch).toEqual({
+        $match: {
+          'lot.status': 'ACTIVE',
+          'lot.expiryDate': { $gt: expect.any(Date) as Date },
+        },
+      });
+      expect(pipeline).toEqual(
+        expect.arrayContaining([
+          {
+            $lookup: expect.objectContaining({ from: 'shelves' }) as object,
+          },
+          {
+            $match: {
+              'shelf.isStaging': false,
+              'shelf.deletedAt': null,
+            },
+          },
+          {
+            $lookup: expect.objectContaining({
+              from: 'storage_cells',
+            }) as object,
+          },
+          {
+            $match: {
+              'cell.status': 'ACTIVE',
+              'cell.deletedAt': null,
+            },
+          },
+          {
+            $lookup: expect.objectContaining({ from: 'racks' }) as object,
+          },
+          { $match: { 'rack.deletedAt': null } },
+          {
+            $lookup: expect.objectContaining({ from: 'zones' }) as object,
+          },
+          {
+            $match: {
+              'zone.deletedAt': null,
+              'zone.zonePurpose': { $ne: 'SCRAP' },
+            },
+          },
+          { $sort: { 'lot.expiryDate': 1 } },
+        ]),
+      );
+      const project = pipeline.find((stage) => '$project' in stage)?.[
+        '$project'
+      ] as Record<string, unknown>;
+      expect(project).toMatchObject({
+        cellId: 1,
+        cellCode: '$cell.code',
+        rackId: '$cell.rackId',
+        level: '$cell.level',
+        bay: '$cell.bay',
+      });
       expect(result).toEqual([
         {
           shelfId: lotAShelf,
+          cellId: lotACell,
           shelfCode: 'A1-1',
+          cellCode: 'A1-1-B02',
+          rackId: lotARack,
+          level: 1,
+          bay: 2,
           lotId: lotA,
           lotNumber: 'LOT-A',
-          expiryDate: new Date('2026-07-01'),
+          expiryDate,
           quantity: 5,
+          packageFactor: 12,
         },
       ]);
     });
 
-    it('hàng không perishable: dùng aggregate join Shelf, lotId=null, sắp quantity giảm dần, trả kèm shelfCode', async () => {
+    it('hàng không perishable: loại quarantine/SCRAP và chỉ lấy tồn tại vị trí active', async () => {
       const pickItemId = new Types.ObjectId();
       const shelfA = new Types.ObjectId();
+      const cellA = new Types.ObjectId();
+      const rackA = new Types.ObjectId();
 
-      inventoryModel.aggregate = jest
-        .fn()
-        .mockResolvedValue([
-          { shelfId: shelfA, shelfCode: 'B2-3', quantity: 20 },
-        ]);
+      inventoryModel.aggregate = jest.fn().mockResolvedValue([
+        {
+          shelfId: shelfA,
+          cellId: cellA,
+          shelfCode: 'B2-3',
+          cellCode: 'B2-3-B04',
+          rackId: rackA,
+          level: 2,
+          bay: 4,
+          quantity: 20,
+          packageFactor: 24,
+        },
+      ]);
 
       const result = await repo.findAvailableStockForPick(pickItemId, false);
 
@@ -748,25 +964,73 @@ describe('StockRepository', () => {
         $match: {
           itemId: pickItemId,
           lotId: null,
+          cellId: { $ne: null },
           quantity: { $gt: 0 },
+          isQuarantined: { $ne: true },
         },
       });
-      expect(
-        pipeline.some(
-          (stage) =>
-            '$lookup' in stage &&
-            (stage['$lookup'] as Record<string, unknown>)['from'] === 'shelves',
-        ),
-      ).toBe(true);
-      expect(pipeline.some((stage) => '$sort' in stage)).toBe(true);
+      expect(pipeline).toEqual(
+        expect.arrayContaining([
+          {
+            $lookup: expect.objectContaining({ from: 'shelves' }) as object,
+          },
+          {
+            $match: {
+              'shelf.isStaging': false,
+              'shelf.deletedAt': null,
+            },
+          },
+          {
+            $lookup: expect.objectContaining({
+              from: 'storage_cells',
+            }) as object,
+          },
+          {
+            $match: {
+              'cell.status': 'ACTIVE',
+              'cell.deletedAt': null,
+            },
+          },
+          {
+            $lookup: expect.objectContaining({ from: 'racks' }) as object,
+          },
+          { $match: { 'rack.deletedAt': null } },
+          {
+            $lookup: expect.objectContaining({ from: 'zones' }) as object,
+          },
+          {
+            $match: {
+              'zone.deletedAt': null,
+              'zone.zonePurpose': { $ne: 'SCRAP' },
+            },
+          },
+          { $sort: { quantity: -1 } },
+        ]),
+      );
+      const project = pipeline.find((stage) => '$project' in stage)?.[
+        '$project'
+      ] as Record<string, unknown>;
+      expect(project).toMatchObject({
+        cellId: 1,
+        cellCode: '$cell.code',
+        rackId: '$cell.rackId',
+        level: '$cell.level',
+        bay: '$cell.bay',
+      });
       expect(result).toEqual([
         {
           shelfId: shelfA,
+          cellId: cellA,
           shelfCode: 'B2-3',
+          cellCode: 'B2-3-B04',
+          rackId: rackA,
+          level: 2,
+          bay: 4,
           lotId: null,
           lotNumber: null,
           expiryDate: null,
           quantity: 20,
+          packageFactor: 24,
         },
       ]);
     });

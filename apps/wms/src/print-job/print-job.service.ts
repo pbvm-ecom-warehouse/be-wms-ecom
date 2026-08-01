@@ -29,6 +29,7 @@ import { ItemType } from '../stock/schemas/warehouse-item.schema';
 import { LocationRepository } from '../location/location.repository';
 import { StockTransactionHelper } from '../stock/helpers/with-stock-transaction.helper';
 import { MovementType } from '../stock/schemas/stock-movement.schema';
+import { ZonePurpose } from '../location/schemas/zone.schema';
 import { BarcodeService } from '../stock/barcode/barcode.service';
 import { DocumentNumberService } from '../document-number/document-number.service';
 
@@ -833,6 +834,23 @@ export class PrintJobService {
       if (!activeShelf) throw new AppException('PUTAWAY_SHELF_NOT_FOUND');
       if (activeShelf.isStaging) {
         throw new AppException('PUTAWAY_SHELF_IS_STAGING');
+      }
+      const rack = await this.locationRepo.findRackById(
+        activeCell.rackId.toString(),
+        session,
+      );
+      const zone = rack
+        ? await this.locationRepo.findZoneById(rack.zoneId.toString(), session)
+        : null;
+      if (!zone || zone.zonePurpose === ZonePurpose.SCRAP) {
+        throw new AppException('PUTAWAY_ZONE_NOT_ALLOWED');
+      }
+      const allowedItemTypes = zone.allowedItemTypes ?? [];
+      if (
+        allowedItemTypes.length > 0 &&
+        !allowedItemTypes.includes(outputItem.type)
+      ) {
+        throw new AppException('PUTAWAY_ITEM_TYPE_NOT_ALLOWED');
       }
       if (
         outputDepth > activeCell.innerDepth ||

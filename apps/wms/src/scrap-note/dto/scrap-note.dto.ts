@@ -1,8 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Expose, Transform, Type } from 'class-transformer';
 import {
-  ArrayMinSize,
-  IsArray,
   IsEnum,
   IsInt,
   IsMongoId,
@@ -11,78 +9,9 @@ import {
   Max,
   Min,
   MinLength,
-  ValidateNested,
 } from 'class-validator';
 import { Types } from 'mongoose';
 import { ScrapNoteStatus } from '../schemas/scrap-note.schema';
-
-export class CreateScrapNoteItemDto {
-  @ApiProperty({ example: '665f1a2b3c4d5e6f7a8b9c1a' })
-  @IsMongoId()
-  itemId!: string;
-
-  @ApiPropertyOptional({
-    example: '665f1a2b3c4d5e6f7a8b9c1b',
-    description:
-      'Bắt buộc nếu item isPerishable. Có giá trị = hủy vì hết hạn (trừ cả expired); không có = hủy vì hỏng/vỡ (chỉ trừ onHand, có sync Ecom)',
-  })
-  @IsOptional()
-  @IsMongoId()
-  lotId?: string;
-
-  @ApiProperty({ example: '665f1a2b3c4d5e6f7a8b9c1c' })
-  @IsMongoId()
-  shelfId!: string;
-
-  @ApiProperty({
-    example: 10,
-    description: 'Số thùng đề xuất hủy — luôn là số nguyên.',
-  })
-  @IsInt()
-  @Min(1)
-  quantity!: number;
-
-  @ApiProperty({ example: 'Vỡ trong lúc vận chuyển nội bộ' })
-  @IsString()
-  @MinLength(1)
-  reason!: string;
-}
-
-export class CreateScrapNoteDto {
-  @ApiPropertyOptional({ example: 'Kiểm tra định kỳ phát hiện hàng hỏng' })
-  @IsOptional()
-  @IsString()
-  note?: string;
-
-  @ApiProperty({ type: [CreateScrapNoteItemDto] })
-  @IsArray()
-  @ArrayMinSize(1)
-  @ValidateNested({ each: true })
-  @Type(() => CreateScrapNoteItemDto)
-  items!: CreateScrapNoteItemDto[];
-}
-
-/**
- * Request DTO cho POST /scrap-notes dạng multipart/form-data — cần multipart vì
- * mỗi dòng đề xuất hủy có thể kèm ảnh minh chứng (field file riêng theo index,
- * xem controller). `items` gửi dưới dạng JSON string (form field thường), parse
- * + validate thủ công bằng CreateScrapNoteDto thay vì để ValidationPipe global
- * làm (pipe không parse JSON lồng trong multipart form field).
- */
-export class CreateScrapNoteFormDto {
-  @ApiPropertyOptional({ example: 'Kiểm tra định kỳ phát hiện hàng hỏng' })
-  @IsOptional()
-  @IsString()
-  note?: string;
-
-  @ApiProperty({
-    description: 'JSON string của mảng CreateScrapNoteItemDto',
-    example:
-      '[{"itemId":"665f...","shelfId":"665f...","quantity":5,"reason":"Vỡ"}]',
-  })
-  @IsString()
-  items!: string;
-}
 
 export class CreateStockCountScrapFormDto {
   @ApiProperty({ description: 'Barcode của đúng SKU trên dòng kiểm kê' })
@@ -93,6 +22,10 @@ export class CreateStockCountScrapFormDto {
   @ApiProperty({ example: '665f1a2b3c4d5e6f7a8b9c1c' })
   @IsMongoId()
   shelfId!: string;
+
+  @ApiProperty({ example: '665f1a2b3c4d5e6f7a8b9c1d' })
+  @IsMongoId()
+  cellId!: string;
 
   @ApiPropertyOptional({ example: '665f1a2b3c4d5e6f7a8b9c1b' })
   @IsOptional()
@@ -109,6 +42,23 @@ export class CreateStockCountScrapFormDto {
   @IsString()
   @MinLength(1)
   reason!: string;
+}
+
+export class MoveScrapItemDto {
+  @ApiProperty({ description: 'Barcode của đúng mặt hàng cần chuyển' })
+  @IsString()
+  @MinLength(1)
+  itemBarcode!: string;
+
+  @ApiProperty({ description: 'Barcode khoang nguồn đang bị khóa' })
+  @IsString()
+  @MinLength(1)
+  sourceCellBarcode!: string;
+
+  @ApiProperty({ description: 'Barcode khoang đích thuộc khu hủy' })
+  @IsString()
+  @MinLength(1)
+  targetCellBarcode!: string;
 }
 
 export class RejectScrapNoteDto {
@@ -158,6 +108,24 @@ export class ScrapNoteItemResponseDto {
   )
   @ApiProperty()
   shelfId!: string;
+
+  @Expose()
+  @Transform(({ obj }: { obj: { sourceCellId?: Types.ObjectId | null } }) =>
+    obj.sourceCellId ? obj.sourceCellId.toString() : null,
+  )
+  @ApiPropertyOptional()
+  sourceCellId!: string | null;
+
+  @Expose()
+  @ApiProperty()
+  lockedQuantity!: number;
+
+  @Expose()
+  @Transform(({ obj }: { obj: { scrapCellId?: Types.ObjectId | null } }) =>
+    obj.scrapCellId ? obj.scrapCellId.toString() : null,
+  )
+  @ApiPropertyOptional()
+  scrapCellId!: string | null;
 
   @Expose()
   @Transform(({ obj }: { obj: { lotId?: Types.ObjectId | null } }) =>
@@ -232,6 +200,17 @@ export class ScrapNoteResponseDto {
   @Expose()
   @ApiPropertyOptional()
   rejectReason?: string;
+
+  @Expose()
+  @Transform(({ obj }: { obj: { disposedBy?: Types.ObjectId | null } }) =>
+    obj.disposedBy ? obj.disposedBy.toString() : null,
+  )
+  @ApiPropertyOptional()
+  disposedBy?: string | null;
+
+  @Expose()
+  @ApiPropertyOptional()
+  disposedAt?: Date;
 
   @Expose()
   @Type(() => ScrapNoteItemResponseDto)

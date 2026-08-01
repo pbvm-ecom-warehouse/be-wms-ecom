@@ -4,6 +4,7 @@ import { PrintStage } from '@app/events';
 import { PrintJobService } from './print-job.service';
 import { PrintJobStatus, PrintJobLineStatus } from './schemas/print-job.schema';
 import { ItemType } from '../stock/schemas/warehouse-item.schema';
+import { ZonePurpose } from '../location/schemas/zone.schema';
 
 const makeRepo = () => ({
   findByOrderAndStage: jest.fn(),
@@ -41,6 +42,8 @@ const makeLocationRepo = () => ({
   findStagingShelf: jest.fn(),
   findCellByCode: jest.fn(),
   findShelfById: jest.fn(),
+  findRackById: jest.fn(),
+  findZoneById: jest.fn(),
   lockActiveCellForInventory: jest.fn(),
   lockActiveShelfForInventory: jest.fn(),
 });
@@ -1182,6 +1185,8 @@ describe('PrintJobService', () => {
     const stagingShelfId = new Types.ObjectId();
     const targetShelfId = new Types.ObjectId();
     const targetCellId = new Types.ObjectId();
+    const targetRackId = new Types.ObjectId();
+    const targetZoneId = new Types.ObjectId();
     const productionJob = () => ({
       _id: new Types.ObjectId(),
       orderId,
@@ -1213,6 +1218,7 @@ describe('PrintJobService', () => {
       barcodeSvc.findItemIdByCode.mockResolvedValue(printedItemId);
       stockRepo.findItemByIdDocument.mockResolvedValue({
         _id: printedItemId,
+        type: ItemType.CUP_PRINTED,
         depth: 10,
         width: 8,
         height: 12,
@@ -1220,6 +1226,7 @@ describe('PrintJobService', () => {
       locationRepo.findStagingShelf.mockResolvedValue({ _id: stagingShelfId });
       locationRepo.findCellByCode.mockResolvedValue({
         _id: targetCellId,
+        rackId: targetRackId,
         shelfId: targetShelfId,
       });
       locationRepo.findShelfById.mockResolvedValue({
@@ -1228,6 +1235,7 @@ describe('PrintJobService', () => {
       });
       locationRepo.lockActiveCellForInventory.mockResolvedValue({
         _id: targetCellId,
+        rackId: targetRackId,
         shelfId: targetShelfId,
         innerDepth: 100,
         innerWidth: 100,
@@ -1237,6 +1245,15 @@ describe('PrintJobService', () => {
       locationRepo.lockActiveShelfForInventory.mockResolvedValue({
         _id: targetShelfId,
         isStaging: false,
+      });
+      locationRepo.findRackById.mockResolvedValue({
+        _id: targetRackId,
+        zoneId: targetZoneId,
+      });
+      locationRepo.findZoneById.mockResolvedValue({
+        _id: targetZoneId,
+        zonePurpose: ZonePurpose.STORAGE,
+        allowedItemTypes: [ItemType.CUP_PRINTED],
       });
       stockRepo.findOccupiedVolumeForCell.mockResolvedValue(0);
       stockRepo.decrementInventoryIfAvailable.mockResolvedValue({});
@@ -1346,12 +1363,14 @@ describe('PrintJobService', () => {
       barcodeSvc.findItemIdByCode.mockResolvedValue(printedItemId);
       stockRepo.findItemByIdDocument.mockResolvedValue({
         _id: printedItemId,
+        type: ItemType.CUP_PRINTED,
         depth: 10,
         width: 8,
         height: 12,
       });
       locationRepo.findCellByCode.mockResolvedValue({
         _id: targetCellId,
+        rackId: targetRackId,
         shelfId: targetShelfId,
       });
       locationRepo.findShelfById.mockResolvedValue({
@@ -1360,6 +1379,7 @@ describe('PrintJobService', () => {
       });
       locationRepo.lockActiveCellForInventory.mockResolvedValue({
         _id: targetCellId,
+        rackId: targetRackId,
         shelfId: targetShelfId,
         innerDepth: 10,
         innerWidth: 8,
@@ -1369,6 +1389,15 @@ describe('PrintJobService', () => {
       locationRepo.lockActiveShelfForInventory.mockResolvedValue({
         _id: targetShelfId,
         isStaging: false,
+      });
+      locationRepo.findRackById.mockResolvedValue({
+        _id: targetRackId,
+        zoneId: targetZoneId,
+      });
+      locationRepo.findZoneById.mockResolvedValue({
+        _id: targetZoneId,
+        zonePurpose: ZonePurpose.STORAGE,
+        allowedItemTypes: [ItemType.CUP_PRINTED],
       });
       stockRepo.findOccupiedVolumeForCell.mockResolvedValue(0);
       repo.decrementPutawayRemainingQty.mockResolvedValue({});
@@ -1388,6 +1417,66 @@ describe('PrintJobService', () => {
       expect(stockRepo.decrementInventoryIfAvailable).not.toHaveBeenCalled();
       expect(stockRepo.upsertInventory).not.toHaveBeenCalled();
       expect(shipmentQueue.add).not.toHaveBeenCalled();
+    });
+
+    it('chặn cất CUP_PRINTED vào khu SCRAP trước khi ghi tồn', async () => {
+      repo.findById.mockResolvedValue(productionJob());
+      barcodeSvc.findItemIdByCode.mockResolvedValue(printedItemId);
+      stockRepo.findItemByIdDocument.mockResolvedValue({
+        _id: printedItemId,
+        type: ItemType.CUP_PRINTED,
+        depth: 10,
+        width: 8,
+        height: 12,
+      });
+      locationRepo.findCellByCode.mockResolvedValue({
+        _id: targetCellId,
+        rackId: targetRackId,
+        shelfId: targetShelfId,
+      });
+      locationRepo.findShelfById.mockResolvedValue({
+        _id: targetShelfId,
+        isStaging: false,
+      });
+      locationRepo.lockActiveCellForInventory.mockResolvedValue({
+        _id: targetCellId,
+        rackId: targetRackId,
+        shelfId: targetShelfId,
+        innerDepth: 100,
+        innerWidth: 100,
+        innerHeight: 100,
+        fillFactor: 0.75,
+      });
+      locationRepo.lockActiveShelfForInventory.mockResolvedValue({
+        _id: targetShelfId,
+        isStaging: false,
+      });
+      locationRepo.findRackById.mockResolvedValue({
+        _id: targetRackId,
+        zoneId: targetZoneId,
+      });
+      locationRepo.findZoneById.mockResolvedValue({
+        _id: targetZoneId,
+        zonePurpose: ZonePurpose.SCRAP,
+        allowedItemTypes: [ItemType.CUP_PRINTED],
+      });
+      repo.decrementPutawayRemainingQty.mockResolvedValue({});
+
+      await expect(
+        svc.putawayItem(
+          pjId,
+          blankItemId.toString(),
+          {
+            itemBarcode: '2000000000015',
+            cellBarcode: 'R01-T1-B1',
+            quantity: 1,
+          },
+          actorId,
+        ),
+      ).rejects.toMatchObject({ code: 'PUTAWAY_ZONE_NOT_ALLOWED' });
+      expect(stockRepo.decrementInventoryIfAvailable).not.toHaveBeenCalled();
+      expect(stockRepo.upsertInventory).not.toHaveBeenCalled();
+      expect(stockRepo.insertMovement).not.toHaveBeenCalled();
     });
 
     it('retry sau khi cất đủ chỉ phát lại event idempotent, không ghi tồn lần hai', async () => {

@@ -11,10 +11,13 @@ const makeRepo = () => ({
   markCompletedIfAllCounted: jest.fn(),
   setApproved: jest.fn(),
   claimApprovedIfCompleted: jest.fn(),
+  reopenLineForRecount: jest.fn(),
 });
 
 const makeStockRepo = () => ({
   findInventoryByScope: jest.fn(),
+  findInventory: jest.fn(),
+  decrementInventoryIfAvailable: jest.fn(),
   upsertInventory: jest.fn(),
   upsertBalance: jest.fn(),
   insertMovement: jest.fn(),
@@ -71,6 +74,7 @@ describe('StockCountService', () => {
   const zoneId = new Types.ObjectId();
   const itemId = new Types.ObjectId();
   const shelfId = new Types.ObjectId();
+  const cellId = new Types.ObjectId();
 
   beforeEach(() => {
     repo = makeRepo();
@@ -82,6 +86,8 @@ describe('StockCountService', () => {
     cloudinary = makeCloudinaryService();
     documentNumber = makeDocumentNumberService();
     repo.claimApprovedIfCompleted.mockResolvedValue(true);
+    stockRepo.findInventory.mockResolvedValue({ quantity: 50 });
+    stockRepo.decrementInventoryIfAvailable.mockResolvedValue({ quantity: 45 });
     svc = new StockCountService(
       repo as never,
       stockRepo as never,
@@ -97,7 +103,7 @@ describe('StockCountService', () => {
   describe('createStockCount', () => {
     it('tạo phiếu toàn kho khi không truyền zoneId, dòng lấy từ InventoryStock', async () => {
       stockRepo.findInventoryByScope.mockResolvedValue([
-        { itemId, shelfId, lotId: null, quantity: 50 },
+        { itemId, shelfId, cellId, lotId: null, quantity: 50 },
       ]);
       stockRepo.findItemsByIds.mockResolvedValue([
         { _id: itemId, sku: 'SKU-1' },
@@ -118,6 +124,7 @@ describe('StockCountService', () => {
             itemId,
             sku: 'SKU-1',
             shelfId,
+            cellId,
             lotId: null,
             systemQty: 50,
           },
@@ -131,7 +138,7 @@ describe('StockCountService', () => {
       locationRepo.findZoneById.mockResolvedValue({ _id: zoneId });
       locationRepo.findShelfIdsByZone.mockResolvedValue([shelfId]);
       stockRepo.findInventoryByScope.mockResolvedValue([
-        { itemId, shelfId, lotId: null, quantity: 30 },
+        { itemId, shelfId, cellId, lotId: null, quantity: 30 },
       ]);
       stockRepo.findItemsByIds.mockResolvedValue([
         { _id: itemId, sku: 'SKU-1' },
@@ -154,10 +161,11 @@ describe('StockCountService', () => {
       const orphanItemId = new Types.ObjectId();
       const otherShelfId = new Types.ObjectId();
       stockRepo.findInventoryByScope.mockResolvedValue([
-        { itemId, shelfId, lotId: null, quantity: 50 },
+        { itemId, shelfId, cellId, lotId: null, quantity: 50 },
         {
           itemId: orphanItemId,
           shelfId: otherShelfId,
+          cellId: new Types.ObjectId(),
           lotId: null,
           quantity: 10,
         },
@@ -179,6 +187,7 @@ describe('StockCountService', () => {
             itemId,
             sku: 'SKU-1',
             shelfId,
+            cellId,
             lotId: null,
             systemQty: 50,
           },
@@ -190,7 +199,7 @@ describe('StockCountService', () => {
     it('mọi dòng InventoryStock đều mồ côi → throw STOCK_COUNT_EMPTY_SCOPE, không tạo phiếu', async () => {
       const orphanItemId = new Types.ObjectId();
       stockRepo.findInventoryByScope.mockResolvedValue([
-        { itemId: orphanItemId, shelfId, lotId: null, quantity: 10 },
+        { itemId: orphanItemId, shelfId, cellId, lotId: null, quantity: 10 },
       ]);
       stockRepo.findItemsByIds.mockResolvedValue([]);
 
@@ -213,14 +222,21 @@ describe('StockCountService', () => {
       repo.findById.mockResolvedValue({
         _id: 'sc1',
         status: StockCountStatus.DRAFT,
-        items: [{ itemId, sku: 'SKU-1', shelfId, lotId: null, systemQty: 50 }],
+        items: [
+          { itemId, sku: 'SKU-1', shelfId, cellId, lotId: null, systemQty: 50 },
+        ],
       });
       repo.countItem.mockResolvedValue({ _id: 'sc1' });
 
       await svc.countItem(
         'sc1',
         itemId.toString(),
-        { shelfId: shelfId.toString(), actualQty: 45, reason: 'Hao hụt' },
+        {
+          shelfId: shelfId.toString(),
+          cellId: cellId.toString(),
+          actualQty: 45,
+          reason: 'Hao hụt',
+        },
         actorId,
       );
 
@@ -232,7 +248,9 @@ describe('StockCountService', () => {
         'sc1',
         itemId,
         shelfId,
+        cellId,
         null,
+        50,
         45,
         'Hao hụt',
         [],
@@ -244,14 +262,21 @@ describe('StockCountService', () => {
       repo.findById.mockResolvedValue({
         _id: 'sc1',
         status: StockCountStatus.DRAFT,
-        items: [{ itemId, sku: 'SKU-1', shelfId, lotId: null, systemQty: 50 }],
+        items: [
+          { itemId, sku: 'SKU-1', shelfId, cellId, lotId: null, systemQty: 50 },
+        ],
       });
       repo.countItem.mockResolvedValue({ _id: 'sc1' });
 
       await svc.countItem(
         'sc1',
         itemId.toString(),
-        { shelfId: shelfId.toString(), actualQty: 45, reason: 'Hao hụt' },
+        {
+          shelfId: shelfId.toString(),
+          cellId: cellId.toString(),
+          actualQty: 45,
+          reason: 'Hao hụt',
+        },
         actorId,
       );
 
@@ -260,7 +285,9 @@ describe('StockCountService', () => {
         'sc1',
         itemId,
         shelfId,
+        cellId,
         null,
+        50,
         45,
         'Hao hụt',
         [],
@@ -271,14 +298,21 @@ describe('StockCountService', () => {
       repo.findById.mockResolvedValue({
         _id: 'sc1',
         status: StockCountStatus.DRAFT,
-        items: [{ itemId, sku: 'SKU-1', shelfId, lotId: null, systemQty: 50 }],
+        items: [
+          { itemId, sku: 'SKU-1', shelfId, cellId, lotId: null, systemQty: 50 },
+        ],
       });
       repo.countItem.mockResolvedValue({ _id: 'sc1' });
 
       await svc.countItem(
         'sc1',
         itemId.toString(),
-        { shelfId: shelfId.toString(), actualQty: 45, reason: 'Hao hụt' },
+        {
+          shelfId: shelfId.toString(),
+          cellId: cellId.toString(),
+          actualQty: 45,
+          reason: 'Hao hụt',
+        },
         actorId,
         [fakeImageFile()],
       );
@@ -291,7 +325,9 @@ describe('StockCountService', () => {
         'sc1',
         itemId,
         shelfId,
+        cellId,
         null,
+        50,
         45,
         'Hao hụt',
         ['https://res.cloudinary.com/demo/image/upload/wms/stock-count/x.jpg'],
@@ -302,14 +338,20 @@ describe('StockCountService', () => {
       repo.findById.mockResolvedValue({
         _id: 'sc1',
         status: StockCountStatus.DRAFT,
-        items: [{ itemId, sku: 'SKU-1', shelfId, lotId: null, systemQty: 50 }],
+        items: [
+          { itemId, sku: 'SKU-1', shelfId, cellId, lotId: null, systemQty: 50 },
+        ],
       });
 
       await expect(
         svc.countItem(
           'sc1',
           itemId.toString(),
-          { shelfId: shelfId.toString(), actualQty: 45 },
+          {
+            shelfId: shelfId.toString(),
+            cellId: cellId.toString(),
+            actualQty: 45,
+          },
           actorId,
           [fakeImageFile({ mimetype: 'application/pdf' })],
         ),
@@ -321,14 +363,20 @@ describe('StockCountService', () => {
       repo.findById.mockResolvedValue({
         _id: 'sc1',
         status: StockCountStatus.DRAFT,
-        items: [{ itemId, sku: 'SKU-1', shelfId, lotId: null, systemQty: 50 }],
+        items: [
+          { itemId, sku: 'SKU-1', shelfId, cellId, lotId: null, systemQty: 50 },
+        ],
       });
 
       await expect(
         svc.countItem(
           'sc1',
           itemId.toString(),
-          { shelfId: shelfId.toString(), actualQty: 45 },
+          {
+            shelfId: shelfId.toString(),
+            cellId: cellId.toString(),
+            actualQty: 45,
+          },
           actorId,
           [fakeImageFile({ size: 6 * 1024 * 1024 })],
         ),
@@ -354,11 +402,92 @@ describe('StockCountService', () => {
       expect(repo.countItem).not.toHaveBeenCalled();
     });
 
+    it('phiếu đã COMPLETED không được sửa lại dòng đếm', async () => {
+      repo.findById.mockResolvedValue({
+        _id: 'sc1',
+        status: StockCountStatus.COMPLETED,
+        items: [
+          {
+            itemId,
+            sku: 'SKU-1',
+            shelfId,
+            cellId,
+            lotId: null,
+            systemQty: 50,
+          },
+        ],
+      });
+
+      await expect(
+        svc.countItem(
+          'sc1',
+          itemId.toString(),
+          {
+            shelfId: shelfId.toString(),
+            cellId: cellId.toString(),
+            actualQty: 10,
+          },
+          actorId,
+        ),
+      ).rejects.toMatchObject({ code: 'STOCK_COUNT_NOT_COUNTABLE' });
+      expect(repo.countItem).not.toHaveBeenCalled();
+    });
+
+    it('làm mới systemQty từ đúng khoang tại thời điểm đếm', async () => {
+      repo.findById.mockResolvedValue({
+        _id: 'sc1',
+        status: StockCountStatus.IN_PROGRESS,
+        items: [
+          {
+            itemId,
+            sku: 'SKU-1',
+            shelfId,
+            cellId,
+            lotId: null,
+            systemQty: 50,
+          },
+        ],
+      });
+      stockRepo.findInventory.mockResolvedValue({ quantity: 47 });
+
+      await svc.countItem(
+        'sc1',
+        itemId.toString(),
+        {
+          shelfId: shelfId.toString(),
+          cellId: cellId.toString(),
+          actualQty: 45,
+        },
+        actorId,
+      );
+
+      expect(stockRepo.findInventory).toHaveBeenCalledWith(
+        itemId,
+        shelfId,
+        null,
+        undefined,
+        cellId,
+      );
+      expect(repo.countItem).toHaveBeenCalledWith(
+        'sc1',
+        itemId,
+        shelfId,
+        cellId,
+        null,
+        47,
+        45,
+        null,
+        [],
+      );
+    });
+
     it('không khớp dòng nào (itemId/shelfId/lotId sai) → throw STOCK_COUNT_ITEM_MISMATCH', async () => {
       repo.findById.mockResolvedValue({
         _id: 'sc1',
         status: StockCountStatus.DRAFT,
-        items: [{ itemId, sku: 'SKU-1', shelfId, lotId: null, systemQty: 50 }],
+        items: [
+          { itemId, sku: 'SKU-1', shelfId, cellId, lotId: null, systemQty: 50 },
+        ],
       });
       const otherShelf = new Types.ObjectId();
 
@@ -366,7 +495,11 @@ describe('StockCountService', () => {
         svc.countItem(
           'sc1',
           itemId.toString(),
-          { shelfId: otherShelf.toString(), actualQty: 10 },
+          {
+            shelfId: otherShelf.toString(),
+            cellId: cellId.toString(),
+            actualQty: 10,
+          },
           actorId,
         ),
       ).rejects.toThrow();
@@ -376,14 +509,21 @@ describe('StockCountService', () => {
       repo.findById.mockResolvedValue({
         _id: 'sc1',
         status: StockCountStatus.IN_PROGRESS,
-        items: [{ itemId, sku: 'SKU-1', shelfId, lotId: null, systemQty: 50 }],
+        items: [
+          { itemId, sku: 'SKU-1', shelfId, cellId, lotId: null, systemQty: 50 },
+        ],
       });
       repo.countItem.mockResolvedValue({ _id: 'sc1' });
 
       await svc.countItem(
         'sc1',
         itemId.toString(),
-        { shelfId: shelfId.toString(), actualQty: 48, reason: 'Hao hụt' },
+        {
+          shelfId: shelfId.toString(),
+          cellId: cellId.toString(),
+          actualQty: 48,
+          reason: 'Hao hụt',
+        },
         actorId,
       );
 
@@ -392,7 +532,9 @@ describe('StockCountService', () => {
         'sc1',
         itemId,
         shelfId,
+        cellId,
         null,
+        50,
         48,
         'Hao hụt',
         [],
@@ -421,6 +563,7 @@ describe('StockCountService', () => {
             itemId,
             sku: 'SKU-1',
             shelfId,
+            cellId,
             lotId: null,
             delta: 5,
           },
@@ -434,6 +577,31 @@ describe('StockCountService', () => {
       expect(stockRepo.upsertInventory).not.toHaveBeenCalled();
     });
 
+    it('từ chối duyệt khi tồn tại khoang đã đổi sau lúc đếm', async () => {
+      repo.findById.mockResolvedValue({
+        _id: 'sc1',
+        status: StockCountStatus.COMPLETED,
+        items: [
+          {
+            itemId,
+            sku: 'SKU-1',
+            shelfId,
+            cellId,
+            lotId: null,
+            systemQty: 50,
+            actualQty: 45,
+            delta: -5,
+          },
+        ],
+      });
+      stockRepo.findInventory.mockResolvedValue({ quantity: 49 });
+
+      await expect(
+        svc.approveStockCount('sc1', {}, actorId),
+      ).rejects.toMatchObject({ code: 'STOCK_COUNT_STALE_LINE' });
+      expect(stockRepo.upsertInventory).not.toHaveBeenCalled();
+    });
+
     it('duyệt dòng lệch dương → onHand/InventoryStock += delta, ghi ADJUST, bắn stock.changed', async () => {
       repo.findById.mockResolvedValue({
         _id: new Types.ObjectId('665f1a2b3c4d5e6f7a8b9c99'),
@@ -443,6 +611,7 @@ describe('StockCountService', () => {
             itemId,
             sku: 'SKU-1',
             shelfId,
+            cellId,
             lotId: null,
             systemQty: 50,
             actualQty: 55,
@@ -459,6 +628,7 @@ describe('StockCountService', () => {
         null,
         5,
         expect.anything(),
+        { cellId },
       );
       expect(stockRepo.upsertBalance).toHaveBeenCalledWith(
         itemId,
@@ -468,7 +638,11 @@ describe('StockCountService', () => {
         expect.anything(),
       );
       expect(stockRepo.insertMovement).toHaveBeenCalledWith(
-        expect.objectContaining({ quantity: 5, refType: 'stock_count' }),
+        expect.objectContaining({
+          cellId,
+          quantity: 5,
+          refType: 'stock_count',
+        }),
         expect.anything(),
       );
       expect(stockQueue.add).toHaveBeenCalledWith(
@@ -484,6 +658,60 @@ describe('StockCountService', () => {
       );
     });
 
+    it('system 10, actual 8, scrap khóa 2: chỉ trừ phần chưa quarantine và giữ khóa hợp lệ', async () => {
+      repo.findById.mockResolvedValue({
+        _id: new Types.ObjectId('665f1a2b3c4d5e6f7a8b9c99'),
+        status: StockCountStatus.COMPLETED,
+        items: [
+          {
+            itemId,
+            sku: 'SKU-1',
+            shelfId,
+            cellId,
+            lotId: null,
+            systemQty: 10,
+            actualQty: 8,
+            delta: -2,
+          },
+        ],
+      });
+      stockRepo.findInventory.mockResolvedValue({
+        quantity: 10,
+        quarantinedQuantity: 2,
+      });
+      stockRepo.decrementInventoryIfAvailable.mockResolvedValue({
+        quantity: 8,
+        quarantinedQuantity: 2,
+      });
+
+      await svc.approveStockCount('sc1', { reason: 'Duyệt' }, actorId);
+
+      expect(stockRepo.decrementInventoryIfAvailable).toHaveBeenCalledWith(
+        itemId,
+        shelfId,
+        cellId,
+        null,
+        2,
+        expect.anything(),
+      );
+      expect(stockRepo.upsertInventory).not.toHaveBeenCalled();
+      expect(stockRepo.upsertBalance).toHaveBeenCalledWith(
+        itemId,
+        -2,
+        0,
+        0,
+        expect.anything(),
+      );
+      expect(stockRepo.insertMovement).toHaveBeenCalledWith(
+        expect.objectContaining({
+          cellId,
+          quantity: -2,
+          refType: 'stock_count',
+        }),
+        expect.anything(),
+      );
+    });
+
     it('mọi dòng delta=0 → set APPROVED nhưng không ghi movement/event nào', async () => {
       repo.findById.mockResolvedValue({
         _id: 'sc1',
@@ -493,6 +721,7 @@ describe('StockCountService', () => {
             itemId,
             sku: 'SKU-1',
             shelfId,
+            cellId,
             lotId: null,
             systemQty: 50,
             actualQty: 50,
@@ -511,6 +740,8 @@ describe('StockCountService', () => {
 
     it('approveStockCount gọi checkAndEmitStockLow cho mỗi dòng có delta ≠ 0', async () => {
       const itemId2 = new Types.ObjectId();
+      const cellId2 = new Types.ObjectId();
+      const cellId3 = new Types.ObjectId();
       repo.findById.mockResolvedValue({
         _id: 'sc1',
         status: StockCountStatus.COMPLETED,
@@ -519,6 +750,7 @@ describe('StockCountService', () => {
             itemId,
             sku: 'SKU-1',
             shelfId,
+            cellId,
             lotId: null,
             systemQty: 50,
             actualQty: 55,
@@ -528,6 +760,7 @@ describe('StockCountService', () => {
             itemId: itemId2,
             sku: 'SKU-2',
             shelfId,
+            cellId: cellId2,
             lotId: null,
             systemQty: 20,
             actualQty: 15,
@@ -537,6 +770,7 @@ describe('StockCountService', () => {
             itemId: new Types.ObjectId(),
             sku: 'SKU-3',
             shelfId,
+            cellId: cellId3,
             lotId: null,
             systemQty: 10,
             actualQty: 10,
@@ -544,6 +778,10 @@ describe('StockCountService', () => {
           },
         ],
       });
+      stockRepo.findInventory
+        .mockResolvedValueOnce({ quantity: 50 })
+        .mockResolvedValueOnce({ quantity: 20 })
+        .mockResolvedValueOnce({ quantity: 10 });
 
       await svc.approveStockCount('sc1', { reason: 'Duyệt' }, actorId);
 
@@ -554,6 +792,7 @@ describe('StockCountService', () => {
 
     it('approveStockCount gọi checkAndEmitStockLow 1 lần khi nhiều dòng lệch cùng itemId (dedup)', async () => {
       const otherShelfId = new Types.ObjectId();
+      const otherCellId = new Types.ObjectId();
       repo.findById.mockResolvedValue({
         _id: 'sc1',
         status: StockCountStatus.COMPLETED,
@@ -562,6 +801,7 @@ describe('StockCountService', () => {
             itemId,
             sku: 'SKU-1',
             shelfId,
+            cellId,
             lotId: null,
             systemQty: 50,
             actualQty: 45,
@@ -572,6 +812,7 @@ describe('StockCountService', () => {
             itemId,
             sku: 'SKU-1',
             shelfId: otherShelfId,
+            cellId: otherCellId,
             lotId: null,
             systemQty: 20,
             actualQty: 18,
@@ -579,11 +820,20 @@ describe('StockCountService', () => {
           },
         ],
       });
+      stockRepo.findInventory
+        .mockResolvedValueOnce({ quantity: 50 })
+        .mockResolvedValueOnce({ quantity: 20 });
 
       await svc.approveStockCount('sc1', { reason: 'Duyệt' }, actorId);
 
       expect(stockService.checkAndEmitStockLow).toHaveBeenCalledTimes(1);
       expect(stockService.checkAndEmitStockLow).toHaveBeenCalledWith(itemId);
+      expect(stockQueue.add).toHaveBeenCalledTimes(1);
+      expect(stockQueue.add).toHaveBeenCalledWith(
+        'stock.changed',
+        { sku: 'SKU-1', delta: -7 },
+        expect.objectContaining({ jobId: 'stock_count:sc1:SKU-1' }),
+      );
     });
   });
 

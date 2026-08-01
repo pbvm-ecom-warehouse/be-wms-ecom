@@ -4,6 +4,7 @@ import { AppException } from '@app/common/errors/app.exception';
 import { LocationRepository } from './location.repository';
 import { StockRepository } from '../stock/stock.repository';
 import type { ZoneDocument } from './schemas/zone.schema';
+import { ZonePurpose } from './schemas/zone.schema';
 import type { RackDocument } from './schemas/rack.schema';
 import type { ShelfDocument } from './schemas/shelf.schema';
 import type { CreateZoneDto, UpdateZoneDto } from './dto/zone.dto';
@@ -17,12 +18,23 @@ import type { GateDocument } from './schemas/gate.schema';
 import type { CreateGateDto, UpdateGateDto } from './dto/gate.dto';
 import { validateWarehouseLayoutGeometry } from './warehouse-layout.validator';
 
-function isMongoDuplicateKeyError(error: unknown): boolean {
+function isMongoDuplicateKeyError(
+  error: unknown,
+): error is { code: 11000; keyPattern?: Record<string, unknown> } {
   return (
     typeof error === 'object' &&
     error !== null &&
     'code' in error &&
     error.code === 11000
+  );
+}
+
+function isMongoDuplicateKeyFor(error: unknown, field: string): boolean {
+  return (
+    isMongoDuplicateKeyError(error) &&
+    typeof error.keyPattern === 'object' &&
+    error.keyPattern !== null &&
+    field in error.keyPattern
   );
 }
 
@@ -84,7 +96,27 @@ export class LocationService {
     return this.mutateWithRevision(actorId, async (session) => {
       const existing = await this.repo.findZoneByCode(dto.code, session);
       if (existing) throw new AppException('ZONE_CODE_EXISTS');
-      return this.repo.createZone(dto, actorId, session);
+      if (
+        dto.zonePurpose === ZonePurpose.SCRAP &&
+        (await this.repo.findScrapZone(session))
+      ) {
+        throw new AppException('SCRAP_ZONE_ALREADY_EXISTS');
+      }
+      const normalizedDto =
+        dto.zonePurpose === ZonePurpose.SCRAP
+          ? { ...dto, allowedItemTypes: [] }
+          : dto;
+      try {
+        return await this.repo.createZone(normalizedDto, actorId, session);
+      } catch (error) {
+        if (isMongoDuplicateKeyFor(error, 'zonePurpose')) {
+          throw new AppException('SCRAP_ZONE_ALREADY_EXISTS');
+        }
+        if (isMongoDuplicateKeyError(error)) {
+          throw new AppException('ZONE_CODE_EXISTS');
+        }
+        throw error;
+      }
     });
   }
 
@@ -104,12 +136,49 @@ export class LocationService {
     actorId: string,
   ): Promise<ZoneDocument> {
     return this.mutateWithRevision(actorId, async (session) => {
+      const current = await this.repo.findZoneById(id, session);
+      if (!current) throw new AppException('ZONE_NOT_FOUND');
       if (dto.code) {
         const existing = await this.repo.findZoneByCode(dto.code, session);
         if (existing && existing._id.toString() !== id)
           throw new AppException('ZONE_CODE_EXISTS');
       }
-      const doc = await this.repo.updateZone(id, dto, actorId, session);
+      if (
+        dto.zonePurpose !== undefined &&
+        dto.zonePurpose !== current.zonePurpose
+      ) {
+        const shelfIds = await this.repo.findShelfIdsByZone(id, session);
+        if (
+          await this.stockRepo.hasPositiveInventoryOnAnyShelf(
+            shelfIds,
+            session,
+          )
+        ) {
+          throw new AppException('SHELF_HAS_STOCK');
+        }
+      }
+      if (dto.zonePurpose === ZonePurpose.SCRAP) {
+        const scrapZone = await this.repo.findScrapZone(session);
+        if (scrapZone && scrapZone._id.toString() !== id) {
+          throw new AppException('SCRAP_ZONE_ALREADY_EXISTS');
+        }
+      }
+      const normalizedDto =
+        dto.zonePurpose === ZonePurpose.SCRAP
+          ? { ...dto, allowedItemTypes: [] }
+          : dto;
+      let doc: ZoneDocument | null;
+      try {
+        doc = await this.repo.updateZone(id, normalizedDto, actorId, session);
+      } catch (error) {
+        if (isMongoDuplicateKeyFor(error, 'zonePurpose')) {
+          throw new AppException('SCRAP_ZONE_ALREADY_EXISTS');
+        }
+        if (isMongoDuplicateKeyError(error)) {
+          throw new AppException('ZONE_CODE_EXISTS');
+        }
+        throw error;
+      }
       if (!doc) throw new AppException('ZONE_NOT_FOUND');
       return doc;
     });

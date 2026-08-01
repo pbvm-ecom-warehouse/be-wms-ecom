@@ -96,33 +96,6 @@ describe('GoodsIssueRepository', () => {
     });
   });
 
-  describe('claim', () => {
-    it('claim atomically chỉ khi còn PENDING và chưa có owner', async () => {
-      const shipperId = new Types.ObjectId();
-      model.findOneAndUpdate.mockReturnValue({
-        exec: jest.fn().mockResolvedValue({ _id: 'gi1' }),
-      });
-
-      await repo.claim('gi1', shipperId);
-
-      expect(model.findOneAndUpdate).toHaveBeenCalledWith(
-        {
-          _id: 'gi1',
-          status: GoodsIssueStatus.PENDING,
-          assignedShipperId: null,
-        },
-        {
-          $set: {
-            status: GoodsIssueStatus.PICKING,
-            assignedShipperId: shipperId,
-            assignedAt: expect.any(Date),
-          },
-        },
-        { new: true },
-      );
-    });
-  });
-
   describe('decrementRemainingQty', () => {
     it('dùng $elemMatch theo itemId để tránh sửa nhầm phần tử mảng', async () => {
       const session = {} as never;

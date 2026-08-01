@@ -270,23 +270,22 @@ describe('LocationRepository', () => {
       shelfModel.sort = jest.fn().mockReturnThis();
       shelfModel.exec = jest
         .fn()
-        .mockResolvedValueOnce([{ _id: shelfA1 }])
-        .mockResolvedValueOnce([{ _id: shelfB1 }]);
+        .mockResolvedValue([{ _id: shelfA1 }, { _id: shelfB1 }]);
 
-      const ids = await repo.findShelfIdsByZone(zId);
+      const ids = await repo.findShelfIdsByZone(zId, session as never);
 
       expect(rackModel.find).toHaveBeenCalledWith({
         zoneId: new Types.ObjectId(zId),
         deletedAt: null,
       });
-      expect(shelfModel.find).toHaveBeenNthCalledWith(1, {
-        rackId: rackA,
+      expect(shelfModel.find).toHaveBeenCalledTimes(1);
+      expect(shelfModel.find).toHaveBeenCalledWith({
+        rackId: { $in: [rackA, rackB] },
         deletedAt: null,
       });
-      expect(shelfModel.find).toHaveBeenNthCalledWith(2, {
-        rackId: rackB,
-        deletedAt: null,
-      });
+      expect(shelfModel.select).toHaveBeenCalledWith('_id');
+      expect(rackModel.session).toHaveBeenCalledWith(session);
+      expect(shelfModel.session).toHaveBeenCalledWith(session);
       expect(ids).toEqual([shelfA1, shelfB1]);
     });
 
@@ -302,6 +301,7 @@ describe('LocationRepository', () => {
       const ids = await repo.findShelfIdsByZone(zId);
 
       expect(ids).toEqual([]);
+      expect(shelfModel.find).not.toHaveBeenCalled();
     });
   });
 
@@ -371,6 +371,32 @@ describe('LocationRepository', () => {
 
       expect(shelfModel.findOneAndUpdate).toHaveBeenCalledWith(
         { _id: shelfId.toString(), deletedAt: null },
+        { $set: { updatedAt: expect.any(Date) } },
+        { new: true, session },
+      );
+    });
+
+    it('khóa rack và zone active bằng write trong transaction', async () => {
+      const rackId = new Types.ObjectId();
+      const activeRack = { _id: rackId, zoneId };
+      const activeZone = { _id: zoneId, zonePurpose: 'STORAGE' };
+      rackModel.exec.mockResolvedValue(activeRack);
+      zoneModel.exec.mockResolvedValue(activeZone);
+
+      await expect(
+        repo.lockActiveRackForInventory(rackId.toString(), session as never),
+      ).resolves.toBe(activeRack);
+      await expect(
+        repo.lockActiveZoneForInventory(zoneId.toString(), session as never),
+      ).resolves.toBe(activeZone);
+
+      expect(rackModel.findOneAndUpdate).toHaveBeenCalledWith(
+        { _id: rackId.toString(), deletedAt: null },
+        { $set: { updatedAt: expect.any(Date) } },
+        { new: true, session },
+      );
+      expect(zoneModel.findOneAndUpdate).toHaveBeenCalledWith(
+        { _id: zoneId.toString(), deletedAt: null },
         { $set: { updatedAt: expect.any(Date) } },
         { new: true, session },
       );

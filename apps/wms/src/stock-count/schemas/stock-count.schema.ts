@@ -6,10 +6,12 @@ export enum StockCountStatus {
   IN_PROGRESS = 'IN_PROGRESS',
   COMPLETED = 'COMPLETED',
   APPROVED = 'APPROVED',
+  /** Phiếu legacy thiếu cellId được đóng khi nâng cấp exact-cell workflow. */
+  CANCELLED = 'CANCELLED',
 }
 
 /**
- * Sub-document: 1 dòng cần đếm — 1 (item, shelf, lot) cụ thể tại thời điểm
+ * Sub-document: 1 dòng cần đếm — 1 (item, shelf, cell, lot) cụ thể tại thời điểm
  * tạo phiếu. Không audit riêng — kế thừa từ StockCount cha.
  */
 @Schema({ _id: false })
@@ -23,6 +25,9 @@ export class StockCountItem {
 
   @Prop({ type: Types.ObjectId, required: true })
   shelfId!: Types.ObjectId;
+
+  @Prop({ type: Types.ObjectId, required: true })
+  cellId!: Types.ObjectId;
 
   /** null nếu item không isPerishable */
   @Prop({ type: Types.ObjectId, default: null })
@@ -108,6 +113,12 @@ export class StockCount {
   /** Lý do chung ghi lúc duyệt cả phiếu */
   @Prop()
   approveReason?: string;
+
+  @Prop()
+  cancelReason?: string;
+
+  @Prop({ type: Date })
+  cancelledAt?: Date;
 
   @Prop({ type: [StockCountItemSchema], required: true })
   items!: StockCountItem[];

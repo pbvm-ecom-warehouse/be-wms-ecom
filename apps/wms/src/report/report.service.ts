@@ -48,7 +48,9 @@ export class ReportService {
         onHand: row.onHand,
         reserved: row.reserved,
         expired: row.expired,
-        available: row.onHand - row.reserved - row.expired,
+        quarantined: row.quarantined ?? 0,
+        available:
+          row.onHand - row.reserved - row.expired - (row.quarantined ?? 0),
       })),
       total,
     };

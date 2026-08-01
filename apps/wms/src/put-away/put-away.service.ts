@@ -12,10 +12,15 @@ import { LocationService } from '../location/location.service';
 import { StockTransactionHelper } from '../stock/helpers/with-stock-transaction.helper';
 import { MovementType } from '../stock/schemas/stock-movement.schema';
 import { BarcodeService } from '../stock/barcode/barcode.service';
-import type { PutAwayTaskDocument } from './schemas/put-away-task.schema';
+import {
+  PutAwayTaskSourceType,
+  type PutAwayTaskDocument,
+} from './schemas/put-away-task.schema';
+import { ZonePurpose } from '../location/schemas/zone.schema';
 
 export interface CreatePutAwayLineFromGrnInput {
   itemId: string;
+  sku?: string;
   lotId: Types.ObjectId | null;
   quantity: number;
   packageSpec?: {
@@ -54,11 +59,16 @@ export class PutAwayService {
     actorId: string,
     session: ClientSession,
     sourceShelfId: Types.ObjectId,
+    source: {
+      type: PutAwayTaskSourceType;
+      number?: string;
+    } = { type: PutAwayTaskSourceType.GOODS_RECEIPT },
   ): Promise<PutAwayTaskDocument> {
     return this.repo.createTask(
       grnId,
       lines.map((l) => ({
         itemId: new Types.ObjectId(l.itemId),
+        sku: l.sku,
         lotId: l.lotId,
         quantity: l.quantity,
         packageSpec: l.packageSpec,
@@ -66,6 +76,7 @@ export class PutAwayService {
       actorId,
       session,
       sourceShelfId,
+      source,
     );
   }
 
@@ -152,7 +163,59 @@ export class PutAwayService {
       if (activeShelf.isStaging) {
         throw new AppException('PUTAWAY_SHELF_IS_STAGING');
       }
+      if (activeShelf.rackId.toString() !== activeCell.rackId.toString()) {
+        throw new AppException('PUTAWAY_ZONE_NOT_ALLOWED');
+      }
+      const rack = await this.locationRepo.lockActiveRackForInventory(
+        activeCell.rackId.toString(),
+        session,
+      );
+      const zone = rack
+        ? await this.locationRepo.lockActiveZoneForInventory(
+            rack.zoneId.toString(),
+            session,
+          )
+        : null;
+      if (!zone || zone.zonePurpose === ZonePurpose.SCRAP) {
+        throw new AppException('PUTAWAY_ZONE_NOT_ALLOWED');
+      }
+      const allowedItemTypes = zone.allowedItemTypes ?? [];
+      if (
+        allowedItemTypes.length > 0 &&
+        !allowedItemTypes.includes(item.type)
+      ) {
+        throw new AppException('PUTAWAY_ITEM_TYPE_NOT_ALLOWED');
+      }
 
+      const activeSourceShelf =
+        await this.locationRepo.lockActiveShelfForInventory(
+          sourceShelfId.toString(),
+          session,
+        );
+      if (!activeSourceShelf || !activeSourceShelf.isStaging) {
+        throw new AppException('PUTAWAY_SHELF_NOT_FOUND');
+      }
+      const sourceRack = await this.locationRepo.lockActiveRackForInventory(
+        activeSourceShelf.rackId.toString(),
+        session,
+      );
+      const sourceZone = sourceRack
+        ? await this.locationRepo.lockActiveZoneForInventory(
+            sourceRack.zoneId.toString(),
+            session,
+          )
+        : null;
+      if (!sourceZone || sourceZone.zonePurpose === ZonePurpose.SCRAP) {
+        throw new AppException('PUTAWAY_ZONE_NOT_ALLOWED');
+      }
+
+      if (
+        packageSpec.depthCm > activeCell.innerDepth ||
+        packageSpec.widthCm > activeCell.innerWidth ||
+        packageSpec.heightCm > activeCell.innerHeight
+      ) {
+        throw new AppException('PUTAWAY_CELL_DIMENSION_MISMATCH');
+      }
       const occupiedVolume = await this.stockRepo.findOccupiedVolumeForCell(
         activeCell._id,
         session,
@@ -169,7 +232,7 @@ export class PutAwayService {
 
       const stagingUpdated = await this.stockRepo.decrementInventoryIfAvailable(
         item._id,
-        sourceShelfId,
+        activeSourceShelf._id,
         null,
         lotId,
         quantity,
@@ -191,7 +254,7 @@ export class PutAwayService {
       await this.stockRepo.insertMovement(
         {
           itemId: item._id,
-          shelfId: sourceShelfId,
+          shelfId: activeSourceShelf._id,
           lotId,
           type: MovementType.PUTAWAY,
           quantity: -quantity,

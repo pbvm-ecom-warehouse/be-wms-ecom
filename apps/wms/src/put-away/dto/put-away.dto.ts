@@ -11,7 +11,10 @@ import {
   MinLength,
 } from 'class-validator';
 import { Types } from 'mongoose';
-import { PutAwayTaskStatus } from '../schemas/put-away-task.schema';
+import {
+  PutAwayTaskSourceType,
+  PutAwayTaskStatus,
+} from '../schemas/put-away-task.schema';
 
 export class ConfirmPutAwayLineDto {
   @ApiProperty({ example: 'CUP-PLA-500-RED', description: 'Barcode quét SKU' })
@@ -114,6 +117,10 @@ export class PutAwayItemResponseDto {
   itemId!: string;
 
   @Expose()
+  @ApiPropertyOptional()
+  sku?: string;
+
+  @Expose()
   @Transform(({ obj }: { obj: { lotId?: Types.ObjectId | null } }) =>
     obj.lotId ? obj.lotId.toString() : null,
   )
@@ -149,6 +156,14 @@ export class PutAwayTaskResponseDto {
   )
   @ApiProperty()
   grnId!: string;
+
+  @Expose()
+  @ApiProperty({ enum: PutAwayTaskSourceType })
+  sourceType!: PutAwayTaskSourceType;
+
+  @Expose()
+  @ApiPropertyOptional()
+  sourceNumber?: string;
 
   @Expose()
   @ApiProperty({ enum: PutAwayTaskStatus })
