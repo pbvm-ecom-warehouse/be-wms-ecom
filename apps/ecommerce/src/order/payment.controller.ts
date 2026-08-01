@@ -71,20 +71,12 @@ export class PaymentController {
   @ApiOperation({
     summary: 'PayOS return URL (redirect từ cổng về, không cần auth)',
   })
-  async payosReturn(
-    @Query() query: Record<string, string>,
-    @Res() res: Response,
-  ) {
+  payosReturn(@Query() query: Record<string, string>, @Res() res: Response) {
     const status = query['status'];
-    // PayOS có thể trả `status=PAID` hoặc chỉ `code=00` tùy phiên bản
-    // redirect; cả hai đều là thanh toán thành công.
-    const success = status === 'PAID' || query['code'] === '00';
+    const success = status === 'PAID';
     const orderCodeNum = query['orderCode']
       ? parseInt(query['orderCode'], 10)
       : 0;
-    if (success && orderCodeNum > 0) {
-      await this.svc.reconcilePayosReturn(orderCodeNum);
-    }
     const baseCodeNum = Math.floor(orderCodeNum / 10);
     const orderCodeStr = baseCodeNum ? numberToOrderCode(baseCodeNum) : '';
 

@@ -199,46 +199,6 @@ export class PaymentService {
   }
 
   /**
-   * PayOS redirect là fallback cho trường hợp webhook đến chậm/mất. Đối soát
-   * payment link bằng API PayOS rồi chạy cùng một handler idempotent với
-   * webhook, nhờ đó đơn đã trả tiền vẫn phát order.ready_to_fulfill sang WMS.
-   */
-  async reconcilePayosReturn(orderCodeWithPhase: number): Promise<boolean> {
-    if (!this.payos || !Number.isFinite(orderCodeWithPhase)) return false;
-
-    try {
-      const paymentLink =
-        await this.payos.paymentRequests.get(orderCodeWithPhase);
-      if (paymentLink.status !== 'PAID') return false;
-
-      const baseOrderCode = numberToOrderCode(
-        Math.floor(orderCodeWithPhase / 10),
-      );
-      const order = await this.orderRepo.findByCode(baseOrderCode);
-      if (!order) return false;
-
-      const transactions = paymentLink.transactions ?? [];
-      if (transactions.length === 0) return false;
-
-      for (const transaction of transactions) {
-        await this.orderService.onPaymentSuccess(
-          order._id.toString(),
-          transaction.reference,
-          transaction.amount,
-          'PAYOS',
-        );
-      }
-      return true;
-    } catch (error) {
-      this.logger.warn(
-        `Không thể đối soát PayOS return orderCode=${orderCodeWithPhase}; chờ webhook retry.`,
-        error instanceof Error ? error.message : String(error),
-      );
-      return false;
-    }
-  }
-
-  /**
    * Hủy link thanh toán PayOS (khi đơn hàng bị hủy khi vẫn chưa trả tiền).
    */
   async cancelPayosPaymentLink(
